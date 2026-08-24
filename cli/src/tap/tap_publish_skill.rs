@@ -1,7 +1,10 @@
 use {
     super::*,
-    crate::tap::tap_validate_skill::{tap_package_path_for_config, validate_tap_package_manifest},
-    nexus_sdk::{dag::json::parse_dag_spec, sui::build::Environment},
+    crate::{
+        sui::resolve_creator_package,
+        tap::tap_validate_skill::{tap_package_path_for_config, validate_tap_package_manifest},
+    },
+    nexus_sdk::{dag::json::parse_dag_spec, sui::build::Environment, types::PackageRole},
 };
 
 /// Parse `<package_path>/Move.toml` and pick the `[environments]` entry whose
@@ -51,6 +54,7 @@ fn pick_publish_environment(
 
 pub(crate) async fn publish_skill(
     config_path: PathBuf,
+    workflow_package: Option<sui::types::Address>,
     out: Option<PathBuf>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
@@ -65,6 +69,8 @@ pub(crate) async fn publish_skill(
 
     command_title!("Publishing TAP skill");
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let workflow_package =
+        resolve_creator_package(&nexus_client, workflow_package, PackageRole::Workflow).await?;
     // New-style 2024 Sui Move packages resolve each dependency's
     // `Published.toml` via the active build environment. Pick the
     // `[environments]` entry whose chain id matches the connected RPC's
@@ -81,6 +87,7 @@ pub(crate) async fn publish_skill(
     let publish = nexus_client
         .tap()
         .publish_skill(
+            workflow_package,
             &config,
             dag,
             TapPackagePublishOptions {
@@ -166,6 +173,7 @@ mod tests {
 
         let error = publish_skill(
             tempdir.path().join("weather-skill/skill.tap.json"),
+            Some(sui::types::Address::from_static("0xa4")),
             None,
             None,
             DEFAULT_GAS_BUDGET,

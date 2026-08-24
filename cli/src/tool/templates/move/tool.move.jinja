@@ -71,7 +71,8 @@ fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
 /// 4. Last parameter: ctx: &mut TxContext
 /// 5. No return value; finalize and share result
 /// 6. Must satisfy the tool witness requirement
-entry fun execute(
+/// 7. Must be public so current Nexus code can compose it in one transaction
+public fun execute(
     authorization: ProvenValue<AgentVertexAuthorization>,
     requirements: UIDRequirements,
     result: OnchainToolResult,

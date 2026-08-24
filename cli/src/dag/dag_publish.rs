@@ -1,17 +1,21 @@
-use crate::{
-    command_title,
-    dag::dag_validate::validate_dag,
-    display::json_output,
-    loading,
-    notify_success,
-    prelude::*,
-    sui::*,
+use {
+    crate::{
+        command_title,
+        dag::dag_validate::validate_dag,
+        display::json_output,
+        loading,
+        notify_success,
+        prelude::*,
+        sui::*,
+    },
+    nexus_sdk::types::PackageRole,
 };
 
 /// Publish the provided Nexus DAG to the currently active Sui net. This also
 /// performs validation on the DAG before publishing.
 pub(crate) async fn publish_dag(
     path: PathBuf,
+    workflow_package: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -20,10 +24,12 @@ pub(crate) async fn publish_dag(
     command_title!("Publishing Nexus DAG");
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let workflow_package =
+        resolve_creator_package(&nexus_client, workflow_package, PackageRole::Workflow).await?;
 
     let tx_handle = loading!("Crafting and executing transaction...");
 
-    let response = match nexus_client.workflow().publish(dag).await {
+    let response = match nexus_client.workflow().publish(workflow_package, dag).await {
         Ok(res) => res,
         Err(e) => {
             tx_handle.error();

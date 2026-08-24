@@ -174,7 +174,15 @@ mod tests {
 
     #[test]
     fn verbose_and_quiet_are_mutually_exclusive() {
-        let error = match Cli::try_parse_from(["nexus", "-v", "-q", "task", "list"]) {
+        let error = match Cli::try_parse_from([
+            "nexus",
+            "-v",
+            "-q",
+            "task",
+            "list",
+            "--scheduler-package",
+            "0xa5",
+        ]) {
             Ok(_) => panic!("verbose and quiet should conflict"),
             Err(error) => error,
         };

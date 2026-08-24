@@ -31,7 +31,7 @@ mod snapshot;
 pub use {
     error::{ErrorSource, ScheduleError, SchedulerError},
     model::{
-        AuthorizationTemplate,
+        AuthorizationBindings,
         DispatchOffer,
         FailurePolicy,
         Occurrence,
@@ -61,6 +61,7 @@ pub use {
         TaskController,
         TaskPointer,
         TaskPointerPage,
+        TaskRejectionReason,
         TaskSnapshot,
         TaskStatus,
         WatchOptions,

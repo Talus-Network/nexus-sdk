@@ -13,8 +13,8 @@ use {
         move_bindings::interface::{
             agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
             payment::{
-                ExecutionPayment,
                 ExecutionPaymentFinalState,
+                ExecutionPaymentInnerV1,
                 PaymentSourceKind,
                 SkillPaymentPolicy,
             },
@@ -115,7 +115,10 @@ pub(crate) fn render_requirements(result: &GetSkillRequirementResult) -> String 
     output
 }
 
-pub(crate) fn render_payment(payment: &ExecutionPayment) -> String {
+pub(crate) fn render_payment(
+    payment_id: sui::types::Address,
+    payment: &ExecutionPaymentInnerV1,
+) -> String {
     let mut output = String::new();
     let source = match &payment.source_kind {
         PaymentSourceKind::UserFunded { user } => format!("user {user}"),
@@ -127,7 +130,7 @@ pub(crate) fn render_payment(payment: &ExecutionPayment) -> String {
         ExecutionPaymentFinalState::Refunded => "refunded",
     };
 
-    write_field(&mut output, "Payment", payment.payment_id());
+    write_field(&mut output, "Payment", payment_id);
     write_field(&mut output, "Execution", payment.execution_id);
     write_field(&mut output, "Agent", payment.agent_id.bytes);
     write_field(&mut output, "Skill", payment.skill_id);
@@ -167,7 +170,7 @@ pub(crate) fn render_payment(payment: &ExecutionPayment) -> String {
 }
 
 pub(crate) fn render_payment_wait(result: &WaitForPaymentResult) -> String {
-    let mut output = render_payment(&result.payment);
+    let mut output = render_payment(result.payment_id, &result.payment);
     write_field(
         &mut output,
         "Elapsed",
@@ -268,7 +271,7 @@ pub(crate) fn render_agent_remove(name: &str, removed: Option<AgentId>) -> Strin
 pub(crate) fn render_vault_balance(
     agent_id: AgentId,
     vault: &nexus_sdk::nexus::crawler::Response<
-        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultStateV1,
+        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultInnerV1,
     >,
 ) -> String {
     let mut output = String::new();
@@ -527,7 +530,10 @@ pub(crate) fn execution_abort_result_json(result: &AbortExecutionResult) -> serd
 // Payments: show, wait, list
 // ============================================================================
 
-pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json::Value {
+pub(crate) fn payment_show_result_json(
+    payment_id: sui::types::Address,
+    payment: &ExecutionPaymentInnerV1,
+) -> serde_json::Value {
     let source = match &payment.source_kind {
         PaymentSourceKind::UserFunded { user } => json!({
             "kind": "user_funded",
@@ -567,8 +573,7 @@ pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json
         .collect::<Vec<_>>();
 
     json!({
-        "payment_id": payment.payment_id(),
-        "protocol_version": payment.protocol_version,
+        "payment_id": payment_id,
         "execution_id": payment.execution_id,
         "agent_id": payment.agent_id.bytes,
         "skill_id": payment.skill_id,
@@ -594,7 +599,7 @@ pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json
 }
 
 pub(crate) fn payment_wait_result_json(result: &WaitForPaymentResult) -> serde_json::Value {
-    let mut base = payment_show_result_json(&result.payment);
+    let mut base = payment_show_result_json(result.payment_id, &result.payment);
     let object = base.as_object_mut().expect("payment show returns object");
     object.insert("elapsed_ms".to_string(), json!(result.elapsed_ms));
     object.insert("timed_out".to_string(), json!(result.timed_out));
@@ -646,7 +651,6 @@ pub(crate) fn registry_show_result_json(registry: &AgentRegistrySnapshot) -> ser
                 "active": skill.active(),
                 "dag_binding": skill_dag_binding_json(skill.dag_binding()),
                 "interface_revision": skill.current_interface_revision().inner,
-                "scheduled_task_count": skill.record.scheduled_task_count,
                 "requirements": skill_requirements_json(skill.requirements()),
             })
         })
@@ -687,7 +691,7 @@ pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> se
 pub(crate) fn vault_balance_result_json(
     agent_id: AgentId,
     vault: &nexus_sdk::nexus::crawler::Response<
-        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultStateV1,
+        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultInnerV1,
     >,
 ) -> serde_json::Value {
     json!({
@@ -786,7 +790,7 @@ mod tests {
             .expect("artifact builds")
     }
 
-    fn fixture_payment(accomplished: bool, refunded: bool) -> ExecutionPayment {
+    fn fixture_payment(accomplished: bool, refunded: bool) -> ExecutionPaymentInnerV1 {
         let final_state = if accomplished {
             ExecutionPaymentFinalState::Accomplished
         } else if refunded {
@@ -795,11 +799,7 @@ mod tests {
             ExecutionPaymentFinalState::Pending
         };
 
-        ExecutionPayment {
-            id: nexus_sdk::move_bindings::sui_framework::object::UID::new(
-                sui::types::Address::from_static("0xaa"),
-            ),
-            protocol_version: 1,
+        ExecutionPaymentInnerV1 {
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: nexus_sdk::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xcc"),
@@ -1008,7 +1008,9 @@ mod tests {
 
     #[test]
     fn payment_show_result_json_includes_terminal_flag() {
-        let json = payment_show_result_json(&fixture_payment(true, false));
+        let payment_id = sui::types::Address::from_static("0xaa");
+        let payment = fixture_payment(true, false);
+        let json = payment_show_result_json(payment_id, &payment);
         assert!(json.get("standard_tap").is_none());
         assert_eq!(json["accomplished"], serde_json::Value::Bool(true));
         assert_eq!(json["refunded"], serde_json::Value::Bool(false));
@@ -1029,7 +1031,7 @@ mod tests {
         assert!(!json.to_string().contains("\"bytes\""));
         assert!(!json.to_string().contains("\"phantom_t0\""));
 
-        let report = render_payment(&fixture_payment(true, false));
+        let report = render_payment(payment_id, &payment);
         assert!(report.contains("State               accomplished"));
         assert!(report.contains("Available funds     1000 MIST"));
     }
@@ -1037,6 +1039,7 @@ mod tests {
     #[test]
     fn payment_wait_result_json_adds_elapsed_and_timeout_flags() {
         let wait = WaitForPaymentResult {
+            payment_id: sui::types::Address::from_static("0xaa"),
             payment: fixture_payment(false, false),
             terminal: false,
             elapsed_ms: 1234,
@@ -1193,11 +1196,10 @@ mod tests {
                         fixed_tools: Vec::new(),
                     },
                     current_interface_revision: InterfaceVersion::new(3),
-                    scheduled_task_count: 2,
                 },
             }],
             default_executor: Some(DefaultDagExecutor {
-                agent: Agent::from_anchor(agent_id, sui::types::Address::from_static("0xa3"), 1),
+                agent: Agent::from_anchor(agent_id),
                 skill_id: 7,
             }),
         };
@@ -1244,7 +1246,6 @@ mod tests {
                     dag_binding: SkillDagBinding::pinned(dag_id),
                     requirements: requirements.clone(),
                     current_interface_revision: InterfaceVersion::new(3),
-                    scheduled_task_count: 0,
                 },
             },
             skill_revision: SkillRevisionContext {

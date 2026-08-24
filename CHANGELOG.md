@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Finite credit and time pass transactions now construct payment beneficiaries through the canonical Move API instead of submitting unforgeable package values as pure PTB inputs.
 - Tool cashier inbox discovery, collection, and finite credit refund restoration now use the address owner representation produced by Transfer to Object.
 - Permissionless timeout builders now append owning Task settlement after Invocation resolution when the Task is supplied.
+- State observation now retries incomplete dynamic field metadata so concurrent object mutations cannot turn a recoverable RPC snapshot race into a read failure.
+- Tool inventory and inspection now isolate unsupported state to the affected Tool, and unregistration builds from stable object metadata plus current Registry authority without decoding the Tool inner value.
 - Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
 - Priority-fee withdrawal now encodes consensus-address-owned leader capabilities with their start version instead of submitting them as ordinary owned inputs.
 
@@ -30,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Finite credit and time pass purchases now withdraw their exact SUI price from the signer address balance inside the purchase PTB.
 - Invocation authorization now emits the executable walk request with its exact Invocation in the same transaction.
 - Automatic Invocation authorization can reimburse its measured submission gas from the execution payment, while user submitted authorization uses zero reimbursement.
+- Scheduler builders now pass the fixed runtime authority to standalone and recurring scheduling, decode allocation and advertisement as distinct events, and resolve proposal routing while runtime effects are paused.
+- Onchain Tool validation now requires the public composable `execute` ABI, and registration builders can configure the initial key and verifier support before sharing the binding.
+- Default address balance clients now share one process nonce authority, preventing independently constructed clients from rebuilding the same transaction digest.
 - Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
 - Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
@@ -59,6 +64,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Finite credit and time pass purchases now use the active signer address balance without requiring a payment coin object ID.
+
+#### Changed
+
+- Task and TAP commands now use the routing package graph for creation and pass `RuntimeAuthority` at the WorkAdmission scheduling boundary.
 
 ### `nexus-toolkit`
 

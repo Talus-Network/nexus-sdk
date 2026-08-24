@@ -11,7 +11,7 @@ use {
         move_boundary,
         sui,
         transactions::agent_input::AgentInput,
-        types::{NexusObjects, SkillId, TapPublishArtifact},
+        types::{NexusContext, SkillId, TapPublishArtifact},
     },
     sui::types::ProgrammableTransaction,
 };
@@ -20,18 +20,18 @@ pub(crate) fn agent_registry_arg(
     tx: &mut move_boundary::NexusPtbBuilder,
     mutability: bool,
 ) -> anyhow::Result<sui::types::Argument> {
-    let registry = tx.objects().agent_registry.clone();
+    let registry = tx.objects().agent_registry;
 
-    Ok(tx.shared_object(&registry, mutability)?)
+    Ok(tx.shared_root(&registry, mutability)?)
 }
 
 fn tool_registry_arg(
     tx: &mut move_boundary::NexusPtbBuilder,
     mutability: bool,
 ) -> anyhow::Result<sui::types::Argument> {
-    let registry = tx.objects().tool_registry.clone();
+    let registry = tx.objects().tool_registry;
 
-    Ok(tx.shared_object(&registry, mutability)?)
+    Ok(tx.shared_root(&registry, mutability)?)
 }
 
 pub(crate) fn create_agent(
@@ -44,7 +44,7 @@ pub(crate) fn create_agent(
 /// Build a PTB that publishes a TAP Move package and transfers the upgrade cap to `recipient`.
 #[cfg(feature = "move_publish")]
 pub(crate) fn publish_package_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     modules: Vec<Vec<u8>>,
     dependencies: Vec<sui::types::Address>,
     recipient: sui::types::Address,
@@ -59,11 +59,11 @@ pub(crate) fn publish_package_ptb(
 
 /// Build a PTB that creates a standard TAP agent and transfers it to `address`.
 pub(crate) fn create_agent_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     address: sui::types::Address,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let registry = tx.shared_object(&objects.agent_registry, true)?;
+        let registry = tx.shared_root(&objects.agent_registry, true)?;
         let agent = tx.call_target(agent_registry_binding::create_agent_target, vec![registry])?;
         let recipient = tx.arg(&address)?;
         tx.transfer_objects(vec![agent], recipient)?;
@@ -104,7 +104,7 @@ pub(crate) fn register_skill(
 
 /// Build a PTB that registers a skill on an existing TAP agent.
 pub(crate) fn register_skill_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     agent: AgentInput,
     dag: &sui::types::ObjectReference,
     artifact: &TapPublishArtifact,
@@ -112,7 +112,7 @@ pub(crate) fn register_skill_ptb(
     move_boundary::ptb(objects, |tx| {
         let registry = agent_registry_arg(tx, true)?;
         let agent = agent.mutable_ptb_argument(tx)?;
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
 
         register_skill(
             tx,
@@ -165,7 +165,7 @@ pub(crate) fn update_skill_policies(
 
 /// Build a PTB that updates a skill's current DAG and policy contract from an artifact.
 pub(crate) fn update_skill_from_artifact_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     agent: AgentInput,
     dag: &sui::types::ObjectReference,
     skill_id: SkillId,
@@ -176,7 +176,7 @@ pub(crate) fn update_skill_from_artifact_ptb(
         let registry_for_policies = agent_registry_arg(tx, true)?;
         let agent_for_dag = agent.clone().mutable_ptb_argument(tx)?;
         let agent_for_policies = agent.mutable_ptb_argument(tx)?;
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
 
         update_dag(tx, registry_for_dag, agent_for_dag, dag, skill_id)?;
 
@@ -195,7 +195,7 @@ pub(crate) fn update_skill_from_artifact_ptb(
 /// Builds a [`ProgrammableTransaction`] that deposits MIST from the sender's
 /// address balance into an agent vault.
 pub(crate) fn deposit_agent_payment_vault_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     agent: AgentInput,
     amount: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
@@ -212,14 +212,14 @@ pub(crate) fn deposit_agent_payment_vault_for_self_ptb(
 
 /// Build a PTB that creates an agent and registers its first skill atomically.
 pub(crate) fn bind_agent_skill_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     artifact: &TapPublishArtifact,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let registry = agent_registry_arg(tx, true)?;
         let agent = create_agent(tx, registry)?;
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
 
         register_skill(
             tx,

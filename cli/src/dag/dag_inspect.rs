@@ -28,12 +28,6 @@ fn render_dag(snapshot: &DagSnapshot) -> String {
     let mut output = String::new();
     writeln!(output, "DAG              {}", snapshot.dag_id)
         .expect("writing to a String cannot fail");
-    writeln!(
-        output,
-        "Protocol version {}",
-        snapshot.minimum_protocol_version
-    )
-    .expect("writing to a String cannot fail");
     writeln!(output, "Vertices         {}", snapshot.vertex_count)
         .expect("writing to a String cannot fail");
 
@@ -76,7 +70,6 @@ mod tests {
     fn human_output_explains_every_required_input() {
         let snapshot = DagSnapshot {
             dag_id: sui::types::Address::from_static("0xd"),
-            minimum_protocol_version: 1,
             vertex_count: 1,
             entry_groups: BTreeMap::from([(
                 "_default_group".to_owned(),

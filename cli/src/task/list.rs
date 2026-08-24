@@ -5,9 +5,9 @@ use {
         display::{human_output, json_output},
         loading,
         prelude::*,
-        sui::get_owner_nexus_client,
+        sui::{get_owner_nexus_client, resolve_creator_package},
     },
-    nexus_sdk::scheduler::TaskPointer,
+    nexus_sdk::{scheduler::TaskPointer, types::PackageRole},
 };
 
 #[derive(Serialize)]
@@ -16,7 +16,11 @@ struct TaskListOutput<'a> {
     next_cursor: Option<String>,
 }
 
-pub(crate) async fn run(cursor: Option<String>, limit: usize) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn run(
+    scheduler_package: Option<sui::types::Address>,
+    cursor: Option<String>,
+    limit: usize,
+) -> AnyResult<(), NexusCliError> {
     command_title!("Listing Tasks");
     let cursor = cursor
         .map(|cursor| {
@@ -26,8 +30,13 @@ pub(crate) async fn run(cursor: Option<String>, limit: usize) -> AnyResult<(), N
         .transpose()
         .map_err(NexusCliError::Any)?;
     let client = get_owner_nexus_client().await?;
+    let scheduler_package =
+        resolve_creator_package(&client, scheduler_package, PackageRole::Scheduler).await?;
     let progress = loading!("Reading owned TaskPointer objects...");
-    let page = client.scheduler().task_pointers(cursor, limit).await?;
+    let page = client
+        .scheduler()
+        .task_pointers(scheduler_package, cursor, limit)
+        .await?;
     progress.success();
     let next_cursor = page.next_cursor().map(hex::encode);
     human_output(&output::render_task_list(

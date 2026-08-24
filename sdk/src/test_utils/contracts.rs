@@ -1,7 +1,12 @@
 use {
     crate::{
+        events::NexusEventDecoder,
         move_boundary,
-        nexus::signer::{ExecutedTransaction, Signer},
+        nexus::{
+            crawler::Crawler,
+            signer::{ExecutedTransaction, Signer},
+            state::StateResolver,
+        },
         sui,
         test_utils::sui_mocks,
     },
@@ -97,11 +102,16 @@ pub async fn publish_move_package_with_overrides(
 
     let mut client = sui::grpc::client(rpc_url).expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
+    let signer_client = Arc::new(client.clone());
+    let objects = Arc::new(sui_mocks::mock_nexus_objects());
     let signer = Signer::new(
-        Arc::new(client.clone()),
+        Arc::clone(&signer_client),
         pk.clone(),
         std::time::Duration::from_secs(30),
-        Arc::new(sui_mocks::mock_nexus_objects()),
+        NexusEventDecoder::new(
+            StateResolver::new(Arc::new(Crawler::new(signer_client))),
+            objects,
+        ),
     );
 
     let reference_gas_price = client

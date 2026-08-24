@@ -31,6 +31,7 @@ use crate::{
     },
     sui,
     transactions::scheduler::{compile_create_task_ptb, compile_schedule_task_ptb},
+    types::{NexusContext, PackageRole},
 };
 pub use {occurrence::OccurrenceHandle, task::TaskHandle};
 
@@ -44,9 +45,12 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    async fn operation_client(&self) -> Result<NexusClient, SchedulerError> {
+    async fn creator_context(
+        &self,
+        scheduler_package: sui::types::Address,
+    ) -> Result<std::sync::Arc<NexusContext>, SchedulerError> {
         self.client
-            .operation_client()
+            .context_for_creator(scheduler_package, PackageRole::Scheduler, &[])
             .await
             .map_err(SchedulerError::from)
     }
@@ -60,9 +64,15 @@ impl Scheduler {
     ///
     /// Returns [`SchedulerError`] when the Task is invalid, the selected DAG cannot be read, or the
     /// entry group and input ports do not exactly match that DAG.
-    pub async fn preflight_task_inputs(&self, task: &TaskSpec) -> Result<(), SchedulerError> {
-        let client = self.operation_client().await?;
-        resolve::preflight_task_inputs(&client, task).await
+    pub async fn preflight_task_inputs(
+        &self,
+        scheduler_package: sui::types::Address,
+        task: &TaskSpec,
+    ) -> Result<(), SchedulerError> {
+        let context = self.creator_context(scheduler_package).await?;
+        resolve::preflight_task_inputs(&self.client, &context, task)
+            .await
+            .map(|_| ())
     }
 
     /// Creates and shares an empty Task.
@@ -74,12 +84,17 @@ impl Scheduler {
     ///
     /// Returns [`SchedulerError`] when the Task is invalid, request
     /// preparation fails, or the transaction is not confirmed.
-    pub async fn create_task(&self, task: TaskSpec) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let sender = client.owner().map_err(SchedulerError::from)?;
-        let prepared = resolve::prepare_task(&client, &task).await?;
-        let transaction = compile_create_task_ptb(&client.nexus_objects, &prepared, sender)?;
-        let executed = client
+    pub async fn create_task(
+        &self,
+        scheduler_package: sui::types::Address,
+        task: TaskSpec,
+    ) -> Result<TaskMutationReceipt, SchedulerError> {
+        let context = self.creator_context(scheduler_package).await?;
+        let sender = self.client.owner().map_err(SchedulerError::from)?;
+        let prepared = resolve::prepare_task(&self.client, &context, &task).await?;
+        let transaction = compile_create_task_ptb(&context, &prepared, sender)?;
+        let executed = self
+            .client
             .submit_transaction(transaction, sender)
             .await
             .map_err(SchedulerError::from)?;
@@ -97,21 +112,19 @@ impl Scheduler {
     /// including when the Schedule is empty, or when submission fails.
     pub async fn schedule_task(
         &self,
+        scheduler_package: sui::types::Address,
         task: TaskSpec,
         schedule: Schedule,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
         schedule.validate_for_task_creation()?;
-        let client = self.operation_client().await?;
-        let sender = client.owner().map_err(SchedulerError::from)?;
-        let prepared_task = resolve::prepare_task(&client, &task).await?;
-        let prepared_schedule = resolve::prepare_schedule(&client, &schedule).await?;
-        let transaction = compile_schedule_task_ptb(
-            &client.nexus_objects,
-            &prepared_task,
-            &prepared_schedule,
-            sender,
-        )?;
-        let executed = client
+        let context = self.creator_context(scheduler_package).await?;
+        let sender = self.client.owner().map_err(SchedulerError::from)?;
+        let prepared_task = resolve::prepare_task(&self.client, &context, &task).await?;
+        let prepared_schedule = resolve::prepare_schedule(&self.client, &schedule).await?;
+        let transaction =
+            compile_schedule_task_ptb(&context, &prepared_task, &prepared_schedule, sender)?;
+        let executed = self
+            .client
             .submit_transaction(transaction, sender)
             .await
             .map_err(SchedulerError::from)?;
@@ -136,6 +149,7 @@ impl Scheduler {
     /// identity.
     pub async fn task_pointers(
         &self,
+        scheduler_package: sui::types::Address,
         cursor: Option<Vec<u8>>,
         limit: usize,
     ) -> Result<TaskPointerPage, SchedulerError> {
@@ -144,10 +158,15 @@ impl Scheduler {
                 message: "Task pointer page limit must be greater than zero".to_owned(),
             });
         }
-        let client = self.operation_client().await?;
-        let owner = client.owner().map_err(SchedulerError::from)?;
-        let object_type = move_bindings::struct_tag::<MoveTaskPointer>(&client.nexus_objects);
-        let page = client
+        let context = self
+            .client
+            .context_for_creator(scheduler_package, PackageRole::Scheduler, &[])
+            .await
+            .map_err(SchedulerError::from)?;
+        let owner = self.client.owner().map_err(SchedulerError::from)?;
+        let object_type = move_bindings::struct_tag::<MoveTaskPointer>(&context);
+        let page = self
+            .client
             .crawler()
             .get_owned_object_page::<MoveTaskPointer>(owner, object_type, cursor, limit)
             .await
@@ -194,6 +213,9 @@ pub(super) fn mutation_receipt(
         }
 
         match &event.data {
+            NexusEventKind::OccurrenceAdvertised(event) => {
+                advertised = Some(OccurrenceRef::new(task_id, event.occurrence_id));
+            }
             NexusEventKind::OccurrenceScheduled(event) => {
                 scheduled.push(ScheduledOccurrence::new(
                     OccurrenceRef::new(task_id, event.occurrence_id),
@@ -208,9 +230,6 @@ pub(super) fn mutation_receipt(
                     OccurrenceRef::new(task_id, event.occurrence_id),
                     withdrawal_reason(event.reason),
                 ));
-            }
-            NexusEventKind::OccurrenceAdvertised(event) => {
-                advertised = Some(OccurrenceRef::new(task_id, event.occurrence_id));
             }
             _ => {}
         }
@@ -286,6 +305,9 @@ pub(super) const fn withdrawal_reason(
         }
         crate::move_bindings::scheduler::schedule::OccurrenceWithdrawalReason::TaskCanceled => {
             WithdrawalReason::TaskCanceled
+        }
+        crate::move_bindings::scheduler::schedule::OccurrenceWithdrawalReason::TaskRejected => {
+            WithdrawalReason::TaskRejected
         }
     }
 }
@@ -390,21 +412,20 @@ mod tests {
                 30,
                 MoveOccurrenceSource::Recurring { iteration: 3 },
             )),
+            NexusEventKind::OccurrenceAdvertised(
+                scheduler_binding::OccurrenceAdvertisedEvent::new(
+                    ID::new(task_id),
+                    1,
+                    100,
+                    MoveOption::from_option(Some(150)),
+                    20,
+                ),
+            ),
             NexusEventKind::OccurrenceWithdrawn(scheduler_binding::OccurrenceWithdrawnEvent::new(
                 ID::new(task_id),
                 1,
                 OccurrenceWithdrawalReason::RecurrenceCleared,
             )),
-            NexusEventKind::OccurrenceAdvertised(
-                scheduler_binding::OccurrenceAdvertisedEvent::new(
-                    ID::new(task_id),
-                    2,
-                    200,
-                    MoveOption::from_option(None),
-                    30,
-                    MoveOccurrenceSource::Recurring { iteration: 3 },
-                ),
-            ),
         ]);
 
         assert_eq!(
@@ -430,7 +451,7 @@ mod tests {
         );
         assert_eq!(
             receipt.delta().advertised(),
-            Some(OccurrenceRef::new(task_id, 2))
+            Some(OccurrenceRef::new(task_id, 1))
         );
     }
 
@@ -474,7 +495,6 @@ mod tests {
                     10,
                     MoveOption::from_option(None),
                     20,
-                    MoveOccurrenceSource::Standalone,
                 ),
             ),
             NexusEventKind::OccurrenceDispatched(
@@ -546,6 +566,10 @@ mod tests {
                 OccurrenceWithdrawalReason::TaskCanceled,
                 WithdrawalReason::TaskCanceled,
             ),
+            (
+                OccurrenceWithdrawalReason::TaskRejected,
+                WithdrawalReason::TaskRejected,
+            ),
         ] {
             assert_eq!(withdrawal_reason(stored), projected);
         }
@@ -553,7 +577,7 @@ mod tests {
 
     #[tokio::test]
     async fn task_pointer_discovery_reaches_grpc_without_owned_coins() {
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let nexus_objects = sui_mocks::mock_nexus_context();
         let pointer_id = address("0x61");
         let task_id = address("0x62");
         let pointer_ref = sui_mocks::object_ref_for_id(pointer_id);
@@ -561,7 +585,14 @@ mod tests {
         let expected_type = pointer_type.to_string();
         let request_cursor = Vec::from(&b"request-cursor"[..]);
         let response_cursor = Vec::from(&b"response-cursor"[..]);
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
         let mut state_service = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            nexus_objects.packages(),
+        );
         state_service
             .expect_list_owned_objects()
             .times(1)
@@ -602,6 +633,8 @@ mod tests {
                 }
             });
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
             state_service_mock: Some(state_service),
             ..Default::default()
         });
@@ -609,7 +642,14 @@ mod tests {
 
         let page = client
             .scheduler()
-            .task_pointers(Some(request_cursor), 7)
+            .task_pointers(
+                nexus_objects
+                    .require_package(PackageRole::Scheduler)
+                    .unwrap()
+                    .storage_id,
+                Some(request_cursor),
+                7,
+            )
             .await
             .expect("TaskPointer page");
 

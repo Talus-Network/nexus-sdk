@@ -24,7 +24,7 @@ use {
         },
         nexus::client::NexusClient,
         transactions::tool,
-        types::ToolMeta,
+        types::{NexusContext, ToolMeta},
     },
     std::io::Read as _,
 };
@@ -87,6 +87,7 @@ fn load_meta_from_source(
 async fn register_one_tool(
     meta: ToolMeta,
     nexus_client: &NexusClient,
+    context: &NexusContext,
     collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
 ) -> AnyResult<(serde_json::Value, Option<(ToolFqn, ToolOwnerCaps)>), NexusCliError> {
@@ -111,7 +112,7 @@ async fn register_one_tool(
     let tx_handle = loading!("Crafting transaction...");
 
     let tx = match tool::register_off_chain_for_self_ptb(
-        &nexus_objects,
+        context,
         &meta,
         address,
         &collateral_coin,
@@ -165,7 +166,7 @@ async fn register_one_tool(
                 return None;
             };
 
-            if struct_tag_matches::<CloneableOwnerCap<OverTool>>(&nexus_objects, &object_type) {
+            if struct_tag_matches::<CloneableOwnerCap<OverTool>>(context, &object_type) {
                 Some((obj.object_id(), object_type))
             } else {
                 None
@@ -177,7 +178,7 @@ async fn register_one_tool(
     let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverTool>(&nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverTool>(context, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -195,7 +196,7 @@ async fn register_one_tool(
     let cashier_admin = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverToolCashier>(&nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverToolCashier>(context, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -285,6 +286,11 @@ pub(crate) async fn register_off_chain_tool(
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let nexus_objects = nexus_client.get_nexus_objects();
+    let context = nexus_client
+        .context_for_root(&nexus_objects.tool_registry)
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     let mut registration_results = Vec::new();
     let mut caps_to_save: Vec<(ToolFqn, ToolOwnerCaps)> = Vec::new();
@@ -299,8 +305,14 @@ pub(crate) async fn register_off_chain_tool(
             url = meta.url
         );
 
-        let (result, caps) =
-            register_one_tool(meta, &nexus_client, collateral_coin, invocation_cost).await?;
+        let (result, caps) = register_one_tool(
+            meta,
+            &nexus_client,
+            &context,
+            collateral_coin,
+            invocation_cost,
+        )
+        .await?;
 
         registration_results.push(result);
         caps_to_save.extend(caps);
@@ -339,8 +351,14 @@ pub(crate) async fn register_off_chain_tool(
                 url = meta.url
             );
 
-            let (result, caps) =
-                register_one_tool(meta, &nexus_client, collateral_coin, invocation_cost).await?;
+            let (result, caps) = register_one_tool(
+                meta,
+                &nexus_client,
+                &context,
+                collateral_coin,
+                invocation_cost,
+            )
+            .await?;
 
             registration_results.push(result);
             caps_to_save.extend(caps);

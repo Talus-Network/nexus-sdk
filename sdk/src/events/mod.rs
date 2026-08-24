@@ -34,6 +34,15 @@ pub enum NexusEventDecodeError {
     /// The Sui event type is invalid.
     #[error("Nexus event type is invalid: {0}")]
     EventType(#[from] sui::types::TypeParseError),
+    /// The immutable package graph selected by the emitter is invalid.
+    #[error("Could not resolve Nexus event emitter package '{package}': {source}")]
+    EmitterPackage {
+        /// Package recorded as the event emitter.
+        package: sui::types::Address,
+        /// Resolver failure for that package.
+        #[source]
+        source: crate::nexus::error::NexusError,
+    },
     /// The inner datatype belongs to Nexus but is absent from the SDK contract.
     #[error(transparent)]
     UnsupportedEvent(#[from] UnsupportedNexusEvent),
@@ -125,13 +134,16 @@ pub struct NexusEvent {
 }
 
 impl NexusEvent {
-    /// Whether this event was emitted by a package in `objects`' protocol configuration.
+    /// Returns whether this event was emitted by a package in `context`.
     ///
     /// An operation pinned to a protocol version should use the configuration
     /// captured at its boundary. This permits compatible in flight work to
     /// finish without accepting an old package for newly created work.
-    pub fn was_emitted_by(&self, objects: &crate::types::NexusObjects) -> bool {
-        objects.is_active_emitter(self.emitting_package)
+    pub fn was_emitted_by(&self, context: &crate::types::NexusContext) -> bool {
+        context
+            .packages()
+            .all()
+            .any(|package| package.storage_id == self.emitting_package)
     }
 }
 
@@ -310,9 +322,5 @@ mod tests {
         ir_names.sort();
         catalog_names.sort();
         assert_eq!(catalog_names, ir_names);
-        assert!(
-            catalog_names.contains(&"ProtocolVersionActivatedV1Event".to_owned()),
-            "protocol activation belongs to the generic event catalog"
-        );
     }
 }

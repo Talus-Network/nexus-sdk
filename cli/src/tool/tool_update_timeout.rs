@@ -1,47 +1,34 @@
 use crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*};
 
-pub(crate) async fn update_tool_timeout(
+pub(crate) async fn update_timeout(
     tool_fqn: ToolFqn,
-    owner_cap: Option<sui::types::Address>,
     timeout: std::time::Duration,
+    owner_cap: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Setting '{timeout:?}' timeout for tool '{tool_fqn}'");
-
-    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    command_title!("Updating timeout for Tool '{tool_fqn}'");
+    let client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let conf = CliConf::load().await.unwrap_or_default();
-
-    // Use the provided or saved `owner_cap` object ID and fetch the object.
-    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|tool| tool.over_tool)) else {
-        return Err(NexusCliError::Any(anyhow!(
-            "No Tool owner capability was provided for tool '{tool_fqn}'. Pass --owner-cap or save the capability during registration."
-        )));
-    };
-
-    let tx_handle = loading!("Crafting and executing transaction...");
-
-    let response = match nexus_client
+    let owner_cap = owner_cap
+        .or_else(|| conf.tools.get(&tool_fqn).map(|tool| tool.over_tool))
+        .ok_or_else(|| {
+            NexusCliError::Any(anyhow!(
+                "No OwnerCap<OverTool> object ID found for Tool '{tool_fqn}'."
+            ))
+        })?;
+    let progress = loading!("Updating Tool timeout...");
+    let result = client
         .tool()
         .update_timeout(&tool_fqn, timeout, owner_cap)
         .await
-    {
-        Ok(resp) => resp,
-        Err(e) => {
-            tx_handle.error();
-
-            return Err(NexusCliError::Nexus(e));
-        }
-    };
-
-    tx_handle.success();
-
-    notify_success!(
-        "Transaction digest: {digest}",
-        digest = response.tx_digest.to_string().truecolor(100, 100, 100)
-    );
-
-    json_output(&json!({ "digest": response.tx_digest }))?;
-
-    Ok(())
+        .map_err(NexusCliError::Nexus)?;
+    progress.success();
+    notify_success!("Transaction digest: {digest}", digest = result.tx_digest);
+    json_output(&json!({
+        "action": "update_timeout",
+        "tool_fqn": tool_fqn,
+        "timeout_ms": timeout.as_millis(),
+        "digest": result.tx_digest,
+    }))
 }

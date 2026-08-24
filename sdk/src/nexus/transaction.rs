@@ -1,21 +1,34 @@
 //! Client scoped programmable transaction composition.
 
-use crate::{
-    move_boundary::NexusPtbBuilder,
-    nexus::{
-        client::NexusClient,
-        error::NexusError,
-        scheduler::resolve,
-        signer::ExecutedTransaction,
+use {
+    crate::{
+        move_boundary::NexusPtbBuilder,
+        nexus::{
+            client::NexusClient,
+            error::NexusError,
+            scheduler::resolve,
+            signer::ExecutedTransaction,
+        },
+        scheduler::{DispatchOffer, OccurrenceRef, Schedule, SchedulerError, TaskSpec},
+        sui,
+        transactions::scheduler::{
+            compile_append_dispatch_occurrence,
+            compile_append_expire_occurrence,
+            TaskDraftCompiler,
+        },
+        types::{NexusContext, PackageRole},
     },
-    scheduler::{DispatchOffer, OccurrenceRef, Schedule, SchedulerError, TaskSpec},
-    sui,
-    transactions::scheduler::{
-        compile_append_dispatch_occurrence,
-        compile_append_expire_occurrence,
-        TaskDraftCompiler,
-    },
+    std::sync::Arc,
 };
+
+#[derive(Clone, Copy, Debug)]
+enum TransactionSource {
+    Object(sui::types::Address),
+    Creator {
+        package: sui::types::Address,
+        role: PackageRole,
+    },
+}
 
 /// One programmable transaction scoped to a [`NexusClient`].
 ///
@@ -23,15 +36,33 @@ use crate::{
 #[must_use = "dropping a Nexus transaction discards its commands"]
 pub struct NexusTransaction {
     client: NexusClient,
+    source: TransactionSource,
     transaction: NexusPtbBuilder,
 }
 
 impl NexusTransaction {
-    pub(super) fn new(client: NexusClient) -> Self {
-        let objects = client.get_nexus_objects();
+    pub(super) fn for_object(
+        client: NexusClient,
+        context: Arc<NexusContext>,
+        object_id: sui::types::Address,
+    ) -> Self {
         Self {
             client,
-            transaction: NexusPtbBuilder::new(objects),
+            source: TransactionSource::Object(object_id),
+            transaction: NexusPtbBuilder::new(context),
+        }
+    }
+
+    pub(super) fn for_creator(
+        client: NexusClient,
+        context: Arc<NexusContext>,
+        package: sui::types::Address,
+        role: PackageRole,
+    ) -> Self {
+        Self {
+            client,
+            source: TransactionSource::Creator { package, role },
+            transaction: NexusPtbBuilder::new(context),
         }
     }
 
@@ -39,6 +70,7 @@ impl NexusTransaction {
     pub fn scheduler(&mut self) -> SchedulerTransaction<'_> {
         SchedulerTransaction {
             client: &self.client,
+            source: self.source,
             transaction: &mut self.transaction,
         }
     }
@@ -64,10 +96,33 @@ impl NexusTransaction {
 /// Scheduler commands appended to one [`NexusTransaction`].
 pub struct SchedulerTransaction<'transaction> {
     client: &'transaction NexusClient,
+    source: TransactionSource,
     transaction: &'transaction mut NexusPtbBuilder,
 }
 
 impl SchedulerTransaction<'_> {
+    fn require_task_source(
+        &self,
+        task: &sui::types::ObjectReference,
+    ) -> Result<(), SchedulerError> {
+        match self.source {
+            TransactionSource::Object(object_id) if object_id == *task.object_id() => Ok(()),
+            TransactionSource::Object(object_id) => Err(SchedulerError::InvalidRequest {
+                message: format!(
+                    "transaction source object '{object_id}' differs from Task '{}'",
+                    task.object_id()
+                ),
+            }),
+            TransactionSource::Creator { package, role } => Err(SchedulerError::InvalidRequest {
+                message: format!(
+                    "Task commands require an object source, but package '{package}' selected \
+                         the '{}' creator role",
+                    role.as_str()
+                ),
+            }),
+        }
+    }
+
     /// Creates an unshared Task draft.
     ///
     /// Call [`TaskDraft::share`] after adding any desired Schedule.
@@ -80,7 +135,18 @@ impl SchedulerTransaction<'_> {
         &'draft mut self,
         task: &TaskSpec,
     ) -> Result<TaskDraft<'draft>, SchedulerError> {
-        let prepared = resolve::prepare_task(self.client, task).await?;
+        if !matches!(
+            self.source,
+            TransactionSource::Creator {
+                role: PackageRole::Scheduler,
+                ..
+            }
+        ) {
+            return Err(SchedulerError::InvalidRequest {
+                message: "Task creation requires an explicit Scheduler creator package".to_owned(),
+            });
+        }
+        let prepared = resolve::prepare_task(self.client, self.transaction.context(), task).await?;
         let compiler = TaskDraftCompiler::create(self.transaction, &prepared)?;
         Ok(TaskDraft {
             client: self.client,
@@ -103,6 +169,7 @@ impl SchedulerTransaction<'_> {
         leader_cap: &sui::types::ObjectReference,
         gas_charge: u64,
     ) -> Result<(), SchedulerError> {
+        self.require_task_source(task)?;
         if offer.occurrence().task_id() != *task.object_id() {
             return Err(SchedulerError::InvalidRequest {
                 message: format!(
@@ -133,6 +200,7 @@ impl SchedulerTransaction<'_> {
         occurrence: OccurrenceRef,
         task: &sui::types::ObjectReference,
     ) -> Result<(), SchedulerError> {
+        self.require_task_source(task)?;
         if occurrence.task_id() != *task.object_id() {
             return Err(SchedulerError::InvalidRequest {
                 message: format!(

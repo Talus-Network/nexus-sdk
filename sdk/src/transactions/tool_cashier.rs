@@ -16,7 +16,7 @@ use crate::{
     },
     move_boundary,
     sui,
-    types::NexusObjects,
+    types::NexusContext,
 };
 
 fn cashier_admin_args(
@@ -31,7 +31,7 @@ fn cashier_admin_args(
 }
 
 fn policy_toggle_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     target: impl FnOnce() -> Result<sui_move_call::CallTarget, sui_move_call::CallSpecError>,
@@ -79,7 +79,7 @@ fn payment_source_kind_arg(
 
 /// Enables the canonical fixed price policy.
 pub fn enable_fixed_price_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -93,7 +93,7 @@ pub fn enable_fixed_price_ptb(
 
 /// Disables the canonical fixed price policy.
 pub fn disable_fixed_price_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -107,7 +107,7 @@ pub fn disable_fixed_price_ptb(
 
 /// Enables sponsored free Invocations.
 pub fn enable_free_invocation_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -121,7 +121,7 @@ pub fn enable_free_invocation_ptb(
 
 /// Disables sponsored free Invocations.
 pub fn disable_free_invocation_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -135,7 +135,7 @@ pub fn disable_free_invocation_ptb(
 
 /// Enables finite credit sales and admission.
 pub fn enable_finite_credits_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     price_per_credit: u64,
@@ -154,7 +154,7 @@ pub fn enable_finite_credits_ptb(
 
 /// Closes finite credit issuance without invalidating existing accounts.
 pub fn close_finite_credit_issuance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -168,7 +168,7 @@ pub fn close_finite_credit_issuance_ptb(
 
 /// Opens finite credit issuance using the current offer terms.
 pub fn open_finite_credit_issuance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -182,7 +182,7 @@ pub fn open_finite_credit_issuance_ptb(
 
 /// Updates the finite credit offer while preserving issued credits.
 pub fn update_finite_credit_terms_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     price_per_credit: u64,
@@ -201,7 +201,7 @@ pub fn update_finite_credit_terms_ptb(
 
 /// Purchases and shares the first canonical finite credit account.
 pub fn buy_finite_credits_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
     beneficiary: PaymentSourceKind,
@@ -224,7 +224,7 @@ pub fn buy_finite_credits_ptb(
 
 /// Purchases units for an existing canonical finite credit account.
 pub fn buy_more_finite_credits_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     credits: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
@@ -248,7 +248,7 @@ pub fn buy_more_finite_credits_ptb(
 /// The optional account selects whether the transaction creates the canonical
 /// account or adds units to the account that already occupies that slot.
 pub fn buy_finite_credits_from_balance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     account: Option<&sui::types::ObjectReference>,
     beneficiary: PaymentSourceKind,
@@ -285,7 +285,7 @@ pub fn buy_finite_credits_from_balance_ptb(
 
 /// Issues and shares the first canonical finite credit account.
 pub fn issue_finite_credits_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     beneficiary: PaymentSourceKind,
@@ -307,7 +307,7 @@ pub fn issue_finite_credits_ptb(
 
 /// Adds an owner grant to an existing canonical finite credit account.
 pub fn issue_more_finite_credits_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     credits: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
@@ -328,7 +328,7 @@ pub fn issue_more_finite_credits_ptb(
 
 /// Enables time pass sales and admission.
 pub fn enable_time_pass_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     price_per_ms: u64,
@@ -347,7 +347,7 @@ pub fn enable_time_pass_ptb(
 
 /// Closes time pass issuance without invalidating existing accounts.
 pub fn close_time_pass_issuance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -361,7 +361,7 @@ pub fn close_time_pass_issuance_ptb(
 
 /// Opens time pass issuance using the current offer terms.
 pub fn open_time_pass_issuance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -375,7 +375,7 @@ pub fn open_time_pass_issuance_ptb(
 
 /// Updates the time pass offer while preserving issued passes.
 pub fn update_time_pass_terms_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     price_per_ms: u64,
@@ -394,7 +394,7 @@ pub fn update_time_pass_terms_ptb(
 
 /// Purchases and shares the first canonical time pass account.
 pub fn buy_time_pass_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
     beneficiary: PaymentSourceKind,
@@ -418,7 +418,7 @@ pub fn buy_time_pass_ptb(
 
 /// Purchases duration for an existing canonical time pass account.
 pub fn buy_more_time_pass_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     pass: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
@@ -443,7 +443,7 @@ pub fn buy_more_time_pass_ptb(
 /// The optional account selects whether the transaction creates the canonical
 /// account or extends the account that already occupies that slot.
 pub fn buy_time_pass_from_balance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     account: Option<&sui::types::ObjectReference>,
     beneficiary: PaymentSourceKind,
@@ -481,7 +481,7 @@ pub fn buy_time_pass_from_balance_ptb(
 
 /// Issues and shares the first canonical time pass account.
 pub fn issue_time_pass_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     beneficiary: PaymentSourceKind,
@@ -505,7 +505,7 @@ pub fn issue_time_pass_ptb(
 
 /// Replaces an existing canonical time pass window under owner authority.
 pub fn update_time_pass_window_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     pass: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
@@ -528,7 +528,7 @@ pub fn update_time_pass_window_ptb(
 
 /// Restores a refunded Invocation to its exact finite credit account.
 pub fn restore_finite_credit_refund_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     credits: &sui::types::ObjectReference,
     refunded: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -550,7 +550,7 @@ pub fn restore_finite_credit_refund_ptb(
 /// only after execution and therefore does not join the admission conflict
 /// domain.
 pub fn collect_invocations_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     policy: &TypeName,
@@ -586,7 +586,7 @@ pub fn collect_invocations_ptb(
 /// Collects prepaid sale deposits from a [`ToolCashier`](crate::move_bindings::tool::tool_cashier::ToolCashier)
 /// inbox and sends one SUI coin to `recipient`.
 pub fn collect_deposits_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     deposits: &[sui::types::ObjectReference],
@@ -621,7 +621,7 @@ mod tests {
         super::*,
         crate::{
             move_bindings::move_std::type_name::TypeName,
-            test_utils::sui_mocks::{mock_nexus_objects, object_ref_for_id},
+            test_utils::sui_mocks::{mock_nexus_context, object_ref_for_id},
             transactions::invocation::InvocationPolicyCall,
         },
         sui_sdk_types::Command,
@@ -629,10 +629,10 @@ mod tests {
 
     #[test]
     fn collection_rejects_an_empty_invocation_batch() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
         let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
-        let policy = InvocationPolicyCall::fixed_price(&objects).policy;
+        let policy = InvocationPolicyCall::fixed_price(&objects).unwrap().policy;
 
         let error = collect_invocations_ptb(
             &objects,
@@ -649,7 +649,7 @@ mod tests {
 
     #[test]
     fn custom_policy_collection_calls_the_policy_module() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
         let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
         let invocation = object_ref_for_id(sui::types::Address::from_static("0xc4"));
@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn owner_issuance_publishes_canonical_entitlements() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
         let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
         let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xc3"));
@@ -711,7 +711,7 @@ mod tests {
 
     #[test]
     fn purchases_withdraw_exact_sui_from_the_sender_balance() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
         let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xc3"));
 
@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn agent_beneficiary_is_constructed_through_the_payment_module() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
         let beneficiary = PaymentSourceKind::agent_funded(sui::types::Address::from_static("0xa1"));
 
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn existing_accounts_are_updated_without_creating_another_account() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
         let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
         let credits = object_ref_for_id(sui::types::Address::from_static("0xc5"));
@@ -807,7 +807,7 @@ mod tests {
 
     #[test]
     fn refunded_invocation_is_restored_into_the_exact_account() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let credits = object_ref_for_id(sui::types::Address::from_static("0xc5"));
         let refunded = object_ref_for_id(sui::types::Address::from_static("0xc6"));
 

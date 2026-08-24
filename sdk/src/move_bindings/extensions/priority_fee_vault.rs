@@ -2,14 +2,14 @@
 
 use crate::{
     move_bindings::{
-        registry::priority_fee_vault::PriorityFeeVaultStateV1,
+        registry::priority_fee_vault::PriorityFeeVaultInnerV1,
         sui_framework::object::ID,
     },
     sui,
     types::{PriorityFeeSuiDrainQuote, PriorityFeeWithdrawalQuote},
 };
 
-impl PriorityFeeVaultStateV1 {
+impl PriorityFeeVaultInnerV1 {
     pub fn leader_share(&self, leader_cap_id: sui::types::Address) -> Option<u64> {
         self.leader_accounts
             .get(&ID::new(leader_cap_id))
@@ -88,10 +88,8 @@ mod tests {
         us_balance: u64,
         exchange_rate_million_mists_us: u64,
         total_share: u64,
-    ) -> PriorityFeeVaultStateV1 {
-        PriorityFeeVaultStateV1::new(
-            ID::new(sui::types::Address::from_static("0x1")),
-            1,
+    ) -> PriorityFeeVaultInnerV1 {
+        PriorityFeeVaultInnerV1::new(
             Balance::<SUI>::new(sui_balance),
             Balance::<US>::new(us_balance),
             exchange_rate_million_mists_us,

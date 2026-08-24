@@ -138,6 +138,12 @@ pub(crate) enum TapCommand {
         config: PathBuf,
         #[arg(
             long,
+            value_name = "PACKAGE_ID",
+            help = "Workflow package used to create the DAG"
+        )]
+        workflow_package: Option<sui::types::Address>,
+        #[arg(
+            long,
             help = "Write the publish artifact JSON to this path.",
             value_parser = ValueParser::from(expand_tilde)
         )]
@@ -445,8 +451,20 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
     match command {
         TapCommand::Scaffold { name, target } => scaffold_tap_skill(name, target).await,
         TapCommand::ValidateSkill { config } => validate_skill_command(config).await,
-        TapCommand::PublishSkill { config, out, gas } => {
-            publish_skill(config, out, gas.sui_gas_coin, gas.sui_gas_budget).await
+        TapCommand::PublishSkill {
+            config,
+            workflow_package,
+            out,
+            gas,
+        } => {
+            publish_skill(
+                config,
+                workflow_package,
+                out,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
         }
         TapCommand::CreateSkillArtifact {
             skill_name,
@@ -517,6 +535,7 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
+        clap::Parser,
         nexus_sdk::move_bindings::interface::{
             agent::{SkillRequirement, SkillSchedulePolicy},
             payment::SkillPaymentPolicy,
@@ -586,6 +605,26 @@ mod tests {
             .expect("valid artifact")
     }
 
+    #[test]
+    fn publish_skill_uses_live_routing_when_package_override_is_absent() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tap",
+            "publish-skill",
+            "--config",
+            "skill.tap.json",
+        ])
+        .expect("TAP publication should route through live package state");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Tap(TapCommand::PublishSkill {
+                workflow_package: None,
+                ..
+            })
+        ));
+    }
+
     #[tokio::test]
     #[serial_test::serial]
     async fn handle_dispatches_all_tap_command_variants_to_local_boundaries() {
@@ -610,6 +649,7 @@ mod tests {
 
         let publish_error = handle(TapCommand::PublishSkill {
             config: config.clone(),
+            workflow_package: Some(sui::types::Address::from_static("0xa4")),
             out: None,
             gas: gas_args(),
         })

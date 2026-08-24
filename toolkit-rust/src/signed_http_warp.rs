@@ -69,7 +69,7 @@ impl LeaderKeyResolver for RefreshingAllowedLeadersResolver {
 
 #[derive(Clone)]
 pub(crate) struct SignedInvokeRuntime {
-    signing_key: SigningKey,
+    response_signing_key: Option<SigningKey>,
     allowed_leaders: Arc<RefreshingAllowedLeadersResolver>,
     replay_cache_ttl_ms: u64,
 }
@@ -95,12 +95,12 @@ impl InvokeAuthRuntime {
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "<defaults>".to_string());
             anyhow::anyhow!(
-                "signed_http is enabled but no signing key is configured for tool_id='{tool_id}' (config={source})"
+                "signed_http is enabled but tool_id='{tool_id}' has no configuration (config={source})"
             )
         })?;
 
         Ok(Self::Signed(Box::new(SignedInvokeRuntime {
-            signing_key: tool.tool_signing_key.clone(),
+            response_signing_key: tool.response_signing_key.clone(),
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(
                 (*signed_http.allowed_leaders).clone(),
             )),
@@ -203,7 +203,7 @@ where
                 ReplayDecision::Return(cached) => cached.into_response(
                     &authenticated.leader_signature,
                     &authenticated.nonce,
-                    &runtime.signing_key,
+                    runtime.response_signing_key.as_ref(),
                 ),
                 ReplayDecision::InFlight => json_response(
                     StatusCode::CONFLICT,
@@ -224,7 +224,7 @@ where
                     cached.into_response(
                         &authenticated.leader_signature,
                         &authenticated.nonce,
-                        &runtime.signing_key,
+                        runtime.response_signing_key.as_ref(),
                     )
                 }
             }
@@ -244,11 +244,11 @@ impl CachedResponse {
         self,
         leader_signature: &[u8; 64],
         nonce: &[u8; 32],
-        signing_key: &SigningKey,
+        response_signing_key: Option<&SigningKey>,
     ) -> warp::reply::Response {
-        let signature = self
-            .is_result
-            .then(|| sign_response(leader_signature, nonce, &self.body, signing_key));
+        let signature = response_signing_key
+            .filter(|_| self.is_result)
+            .map(|key| sign_response(leader_signature, nonce, &self.body, key));
         response(self.status, self.body, self.is_result, signature.as_ref())
     }
 }
@@ -461,7 +461,16 @@ mod tests {
     fn signed_runtime(leader: &SigningKey, tool: &SigningKey) -> InvokeAuthRuntime {
         let allowed = AllowedLeaders::try_from(allowed_leaders_file("leader", 0, leader)).unwrap();
         InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
-            signing_key: tool.clone(),
+            response_signing_key: Some(tool.clone()),
+            allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(allowed)),
+            replay_cache_ttl_ms: 10_000,
+        }))
+    }
+
+    fn verification_runtime(leader: &SigningKey) -> InvokeAuthRuntime {
+        let allowed = AllowedLeaders::try_from(allowed_leaders_file("leader", 0, leader)).unwrap();
+        InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
+            response_signing_key: None,
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(allowed)),
             replay_cache_ttl_ms: 10_000,
         }))
@@ -521,10 +530,9 @@ mod tests {
     }
 
     #[test]
-    fn invoke_auth_runtime_requires_a_key_for_the_selected_tool() {
+    fn invoke_auth_runtime_requires_configuration_for_the_selected_tool() {
         let defaults =
-            ToolkitRuntimeConfig::from_json_str(r#"{"version":2,"invoke_max_body_bytes":1024}"#)
-                .unwrap();
+            ToolkitRuntimeConfig::from_json_str(r#"{"invoke_max_body_bytes":1024}"#).unwrap();
         assert!(matches!(
             InvokeAuthRuntime::from_toolkit_config_for_tool_id(&defaults, "xyz.demo@1").unwrap(),
             InvokeAuthRuntime::Unsigned
@@ -532,14 +540,13 @@ mod tests {
 
         let leader = SigningKey::from_bytes(&[7; 32]);
         let config = serde_json::json!({
-            "version": 2,
             "invoke_max_body_bytes": 1024,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders": allowed_leaders_file("leader", 0, &leader),
                 "tools": {
                     "xyz.demo@1": {
-                        "tool_signing_key": hex::encode([9u8; 32]),
+                        "response_signing_key": hex::encode([9u8; 32]),
                     }
                 }
             }
@@ -548,9 +555,9 @@ mod tests {
         assert!(
             InvokeAuthRuntime::from_toolkit_config_for_tool_id(&required, "xyz.missing@1")
                 .err()
-                .expect("missing Tool key must fail")
+                .expect("missing Tool configuration must fail")
                 .to_string()
-                .contains("no signing key is configured")
+                .contains("has no configuration")
         );
         let runtime =
             InvokeAuthRuntime::from_toolkit_config_for_tool_id(&required, "xyz.demo@1").unwrap();
@@ -722,6 +729,41 @@ mod tests {
         .await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert!(response.headers().get(HEADER_TOOL_SIGNATURE).is_none());
+    }
+
+    #[tokio::test]
+    async fn verification_only_runtime_authenticates_request_without_signing_result() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+        let replay = ReplayCache::new(1_000);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for _ in 0..2 {
+            let calls = Arc::clone(&calls);
+            let response = handle_invoke(
+                &verification_runtime(&leader),
+                &replay,
+                request_headers(&leader, input_hash, nonce),
+                Vec::new(),
+                move |context, _body| async move {
+                    let context = context.expect("signed mode authenticates the Leader");
+                    assert_eq!(context.input_hash, input_hash);
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    (StatusCode::OK, vec![4, 5, 6], true)
+                },
+            )
+            .await;
+
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(response.headers().get(HEADER_TOOL_SIGNATURE).is_none());
+            assert_eq!(
+                response.into_body().collect().await.unwrap().to_bytes(),
+                vec![4, 5, 6]
+            );
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -929,12 +971,12 @@ mod tests {
             .unwrap(),
         ));
         let runtime_a = InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
-            signing_key: tool_a.clone(),
+            response_signing_key: Some(tool_a.clone()),
             allowed_leaders: Arc::clone(&resolver),
             replay_cache_ttl_ms: 10_000,
         }));
         let runtime_b = InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
-            signing_key: tool_b.clone(),
+            response_signing_key: Some(tool_b.clone()),
             allowed_leaders: Arc::clone(&resolver),
             replay_cache_ttl_ms: 20_000,
         }));

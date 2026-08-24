@@ -5,13 +5,15 @@
 //! [`crate::types::SkillRevisionLookupKey`], and inspect lock counts without copying payment data
 //! into another model.
 
-use crate::move_bindings::interface::payment::ExecutionPayment;
+use crate::move_bindings::interface::payment::{ExecutionPayment, ExecutionPaymentInnerV1};
 
 impl ExecutionPayment {
     pub fn payment_id(&self) -> crate::sui::types::Address {
         self.id.id.bytes
     }
+}
 
+impl ExecutionPaymentInnerV1 {
     pub fn skill_revision_key(&self) -> crate::types::SkillRevisionLookupKey {
         crate::types::SkillRevisionLookupKey {
             agent_id: self.agent_id.bytes,

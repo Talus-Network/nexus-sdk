@@ -650,7 +650,7 @@ mod tests {
                 agent::{Agent, SkillSchedulePolicy},
                 payment::ExecutionPaymentFinalState,
             },
-            registry::agent_registry::AgentRegistryStateV1,
+            registry::agent_registry::AgentRegistryInnerV1,
             sui_framework::table::Table as MoveTable,
         },
         std::str::FromStr,
@@ -692,7 +692,6 @@ mod tests {
                 dag_binding: SkillDagBinding::pinned(addr("0x44")),
                 requirements: requirements(),
                 current_interface_revision: InterfaceVersion::new(current_interface_revision),
-                scheduled_task_count: 0,
             },
         }
     }
@@ -769,13 +768,9 @@ mod tests {
     #[cfg(feature = "bcs")]
     #[test]
     fn agent_registry_object_bcs_decodes_without_inline_default_executor() {
-        let raw = AgentRegistryStateV1 {
-            protocol_id: crate::move_bindings::sui_framework::object::ID::new(addr("0xe")),
-            minimum_protocol_version: 1,
-            agents: MoveTable::new(addr("0x90"), 0),
-        };
+        let raw = AgentRegistryInnerV1::new(MoveTable::new(addr("0x90"), 0));
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
-        let decoded: AgentRegistryStateV1 =
+        let decoded: AgentRegistryInnerV1 =
             bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
 
         assert_eq!(decoded.agents.id(), addr("0x90"));
@@ -896,20 +891,6 @@ mod tests {
                 .unwrap(),
             payment_state
         );
-    }
-
-    #[test]
-    fn tap_authorization_template_bcs_roundtrip() {
-        let template =
-            crate::move_bindings::interface::authorization::AgentVertexAuthorizationTemplate {
-                skill_id: 7,
-                vertex: crate::move_bindings::move_std::ascii::String::from("0xnothex"),
-                recipient_id: crate::move_bindings::sui_framework::object::ID::new(addr("0xda6")),
-            };
-        let decoded: crate::move_bindings::interface::authorization::AgentVertexAuthorizationTemplate =
-            bcs::from_bytes(&bcs::to_bytes(&template).unwrap()).unwrap();
-        assert_eq!(decoded, template);
-        assert_eq!(template.vertex.as_str(), "0xnothex");
     }
 
     #[test]
@@ -1116,7 +1097,7 @@ mod tests {
     fn default_dag_executor_requires_runtime_selected_skill() {
         let mut registry = registry_with_active_skill();
         registry.default_executor = Some(DefaultDagExecutor {
-            agent: Agent::from_anchor(addr("0xa"), addr("0xb"), 1),
+            agent: Agent::from_anchor(addr("0xa")),
             skill_id: 11,
         });
 

@@ -5,13 +5,14 @@ use {
         move_bindings::{
             interface::graph::RuntimeVertex,
             move_std::type_name::TypeName,
+            scheduler::invocation_adapter as scheduler_invocation_adapter_binding,
             tool::invocation::Invocation,
             workflow::invocation_adapter as invocation_adapter_binding,
         },
         move_boundary,
         sui,
         transactions::dag::OnchainToolArgument,
-        types::NexusObjects,
+        types::{NexusContext, PackageRole},
     },
     std::str::FromStr,
 };
@@ -43,71 +44,65 @@ impl InvocationPolicyCall {
     }
 
     /// Selects the canonical fixed price policy for this Nexus deployment.
-    pub fn fixed_price(objects: &NexusObjects) -> Self {
-        let origin = objects.packages.tool.type_origin("fixed_price", "Policy");
-        Self::new(
+    pub fn fixed_price(context: &NexusContext) -> anyhow::Result<Self> {
+        let origin = context.type_origin(PackageRole::Tool, "fixed_price", "Policy")?;
+        Ok(Self::new(
             TypeName::new(&format!("{origin}::fixed_price::Policy")),
             Vec::new(),
-        )
+        ))
     }
 
     /// Selects the canonical sponsored free policy for this Nexus deployment.
-    pub fn free_invocation(objects: &NexusObjects) -> Self {
-        let origin = objects
-            .packages
-            .tool
-            .type_origin("free_invocation", "Policy");
-        Self::new(
+    pub fn free_invocation(context: &NexusContext) -> anyhow::Result<Self> {
+        let origin = context.type_origin(PackageRole::Tool, "free_invocation", "Policy")?;
+        Ok(Self::new(
             TypeName::new(&format!("{origin}::free_invocation::Policy")),
             Vec::new(),
-        )
+        ))
     }
 
     /// Selects the canonical finite credit policy with one mutable account.
     pub fn finite_credits(
-        objects: &NexusObjects,
+        context: &NexusContext,
         credits: sui::types::Address,
         initial_shared_version: sui::types::Version,
-    ) -> Self {
-        Self::new(
-            Self::finite_credits_policy(objects),
+    ) -> anyhow::Result<Self> {
+        Ok(Self::new(
+            Self::finite_credits_policy(context)?,
             vec![OnchainToolArgument::SharedObject {
                 object_id: credits,
                 initial_shared_version,
                 mutable: true,
             }],
-        )
+        ))
     }
 
     /// Returns the canonical finite credits witness [TypeName].
-    pub fn finite_credits_policy(objects: &NexusObjects) -> TypeName {
-        let origin = objects
-            .packages
-            .tool
-            .type_origin("finite_credits", "Policy");
-        TypeName::new(&format!("{origin}::finite_credits::Policy"))
+    pub fn finite_credits_policy(context: &NexusContext) -> anyhow::Result<TypeName> {
+        let origin = context.type_origin(PackageRole::Tool, "finite_credits", "Policy")?;
+        Ok(TypeName::new(&format!("{origin}::finite_credits::Policy")))
     }
 
     /// Selects the canonical time pass policy with one read only shared account.
     pub fn time_pass(
-        objects: &NexusObjects,
+        context: &NexusContext,
         pass: sui::types::Address,
         initial_shared_version: sui::types::Version,
-    ) -> Self {
-        let origin = objects.packages.tool.type_origin("time_pass", "Policy");
-        Self::new(
+    ) -> anyhow::Result<Self> {
+        let origin = context.type_origin(PackageRole::Tool, "time_pass", "Policy")?;
+        Ok(Self::new(
             TypeName::new(&format!("{origin}::time_pass::Policy")),
             vec![OnchainToolArgument::SharedObject {
                 object_id: pass,
                 initial_shared_version,
                 mutable: false,
             }],
-        )
+        ))
     }
 }
 
 pub(crate) fn policy_target(
-    objects: &NexusObjects,
+    context: &NexusContext,
     policy: &TypeName,
 ) -> anyhow::Result<(sui::types::Address, String)> {
     let mut parts = policy.as_str().split("::");
@@ -127,8 +122,9 @@ pub(crate) fn policy_target(
     let defining_package = sui::types::Address::from_str(package).map_err(|error| {
         anyhow::anyhow!("Invalid Invocation policy package '{package}': {error}")
     })?;
-    let call_package = if objects.is_tool_package(defining_package) {
-        objects.tool_pkg_id()
+    let tool_package = context.require_package(PackageRole::Tool)?;
+    let call_package = if tool_package.contains_package(defining_package) {
+        tool_package.storage_id
     } else {
         defining_package
     };
@@ -168,14 +164,16 @@ pub fn authorize(
             .collect::<anyhow::Result<Vec<_>>>()?,
     );
     policy_arguments.push(request);
-    let (package, module) = policy_target(transaction.objects(), &policy.policy)?;
+    let (package, module) = policy_target(transaction.context(), &policy.policy)?;
     let authorized =
         transaction.call_function(package, module, "get_invocation", policy_arguments)?;
     let walk_index = transaction.arg(&target.walk_index)?;
     let submission_gas_charge = transaction.arg(&submission_gas_charge)?;
+    let runtime_authority = transaction.runtime_authority(false)?;
     transaction.call_target(
-        invocation_adapter_binding::lock_and_request_target,
+        scheduler_invocation_adapter_binding::lock_and_request_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             leader_registry,
@@ -193,20 +191,19 @@ pub fn authorize(
 /// `submission_gas_charge` reimburses the transaction sender from the
 /// execution payment. A user submitting for itself should pass zero.
 pub fn authorize_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     cashier: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
-    leader_registry: &sui::types::ObjectReference,
     target: InvocationTarget<'_>,
     policy: &InvocationPolicyCall,
     submission_gas_charge: u64,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(objects, |transaction| {
+    move_boundary::ptb(context, |transaction| {
         let cashier = transaction.shared_object(cashier, false)?;
         let dag = transaction.shared_object(dag, false)?;
         let execution = transaction.shared_object(execution, true)?;
-        let leader_registry = transaction.shared_object(leader_registry, false)?;
+        let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
         authorize(
             transaction,
             cashier,
@@ -231,9 +228,10 @@ pub(crate) fn settle(
 ) -> anyhow::Result<sui::types::Argument> {
     let vertex = super::dag::runtime_vertex_arg(transaction, vertex)?;
     let receiving = transaction.receiving_object::<Invocation>(invocation)?;
+    let runtime_authority = transaction.runtime_authority(false)?;
     transaction.call_target(
-        invocation_adapter_binding::settle_target,
-        vec![dag, execution, vertex, receiving],
+        scheduler_invocation_adapter_binding::settle_target,
+        vec![runtime_authority, dag, execution, vertex, receiving],
     )
 }
 
@@ -242,23 +240,24 @@ pub(crate) fn settle(
 /// When `task_settlement` is supplied, the owning Task is settled only after
 /// the Invocation refund has removed its accounting lock.
 pub fn abort_expired_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     vertex: &RuntimeVertex,
     invocation: &sui::types::ObjectReference,
     task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(objects, |transaction| {
+    move_boundary::ptb(context, |transaction| {
         let dag = transaction.shared_object(dag, false)?;
         let execution = transaction.shared_object(execution, true)?;
-        let leader_registry = transaction.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
         let vertex = super::dag::runtime_vertex_arg(transaction, vertex)?;
         let receiving = transaction.receiving_object::<Invocation>(invocation)?;
         let clock = transaction.clock()?;
+        let runtime_authority = transaction.runtime_authority(false)?;
         transaction.call_target(
-            invocation_adapter_binding::abort_expired_target,
-            vec![dag, execution, vertex, receiving, clock],
+            scheduler_invocation_adapter_binding::abort_expired_target,
+            vec![runtime_authority, dag, execution, vertex, receiving, clock],
         )?;
         if let Some(task) = task_settlement {
             super::scheduler::append_settle_occurrence(
@@ -266,7 +265,6 @@ pub fn abort_expired_ptb(
                 task,
                 execution,
                 leader_registry,
-                clock,
             )?;
         }
         Ok(())
@@ -279,7 +277,7 @@ mod tests {
         super::*,
         crate::{
             move_bindings::interface::graph::RuntimeVertex,
-            test_utils::sui_mocks::{mock_nexus_objects, object_ref_for_id},
+            test_utils::sui_mocks::{mock_nexus_context, object_ref_for_id},
         },
         sui_sdk_types::{Argument, Command, Input},
     };
@@ -290,22 +288,21 @@ mod tests {
 
     #[test]
     fn fixed_price_authorization_calls_policy_before_lock_and_request() {
-        let objects = mock_nexus_objects();
+        let context = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0x81"));
         let dag = object_ref_for_id(sui::types::Address::from_static("0x82"));
         let execution = object_ref_for_id(sui::types::Address::from_static("0x83"));
-        let leader_registry = object_ref_for_id(sui::types::Address::from_static("0x84"));
+        let policy = InvocationPolicyCall::fixed_price(&context).unwrap();
         let ptb = authorize_ptb(
-            &objects,
+            &context,
             &cashier,
             &dag,
             &execution,
-            &leader_registry,
             InvocationTarget {
                 walk_index: 0,
                 vertex: &vertex(),
             },
-            &InvocationPolicyCall::fixed_price(&objects),
+            &policy,
             42,
         )
         .unwrap();
@@ -352,8 +349,8 @@ mod tests {
                 _ => None,
             })
             .expect("lock and request call");
-        assert_eq!(lock_and_request.arguments.len(), 8);
-        let Argument::Input(gas_charge) = lock_and_request.arguments[6] else {
+        assert_eq!(lock_and_request.arguments.len(), 9);
+        let Argument::Input(gas_charge) = lock_and_request.arguments[7] else {
             panic!("gas charge must be a pure input")
         };
         let Input::Pure(gas_charge) = &ptb.inputs[usize::from(gas_charge)] else {
@@ -367,10 +364,10 @@ mod tests {
 
     #[test]
     fn policy_witness_selects_runtime_module() {
-        let objects = mock_nexus_objects();
+        let context = mock_nexus_context();
         let policy = TypeName::new("0x71::custom_terms::Policy");
         assert_eq!(
-            policy_target(&objects, &policy).unwrap(),
+            policy_target(&context, &policy).unwrap(),
             (
                 sui::types::Address::from_static("0x71"),
                 "custom_terms".to_owned()
@@ -380,12 +377,13 @@ mod tests {
 
     #[test]
     fn finite_credits_selects_one_mutable_shared_object() {
-        let objects = mock_nexus_objects();
+        let context = mock_nexus_context();
         let credits = sui::types::Address::from_static("0x91");
         let initial_shared_version = 7;
 
         let policy =
-            InvocationPolicyCall::finite_credits(&objects, credits, initial_shared_version);
+            InvocationPolicyCall::finite_credits(&context, credits, initial_shared_version)
+                .unwrap();
 
         assert!(policy.policy.as_str().ends_with("::finite_credits::Policy"));
         assert_eq!(
@@ -400,10 +398,10 @@ mod tests {
 
     #[test]
     fn time_pass_selects_one_read_only_shared_object() {
-        let objects = mock_nexus_objects();
+        let context = mock_nexus_context();
         let pass = sui::types::Address::from_static("0x92");
 
-        let policy = InvocationPolicyCall::time_pass(&objects, pass, 7);
+        let policy = InvocationPolicyCall::time_pass(&context, pass, 7).unwrap();
 
         assert!(policy.policy.as_str().ends_with("::time_pass::Policy"));
         assert_eq!(
@@ -418,13 +416,13 @@ mod tests {
 
     #[test]
     fn timeout_refund_settles_the_task_after_the_invocation() {
-        let objects = mock_nexus_objects();
+        let context = mock_nexus_context();
         let dag = object_ref_for_id(sui::types::Address::from_static("0x82"));
         let execution = object_ref_for_id(sui::types::Address::from_static("0x83"));
         let invocation = object_ref_for_id(sui::types::Address::from_static("0x84"));
         let task = object_ref_for_id(sui::types::Address::from_static("0x85"));
         let ptb = abort_expired_ptb(
-            &objects,
+            &context,
             &dag,
             &execution,
             &vertex(),
