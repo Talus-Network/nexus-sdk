@@ -29,7 +29,6 @@ use {
             },
             move_std::type_name::TypeName,
             sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
-            tool::{finite_credits::Credits, time_pass::TimePass},
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},
                 execution_events::{
@@ -40,6 +39,8 @@ use {
                 execution_failure::WorkflowFailureClass,
                 invocation_adapter::InvocationLockedEvent,
             },
+            FiniteCredits,
+            TimePass,
         },
         move_boundary,
         nexus::{
@@ -91,8 +92,8 @@ pub struct PublishResult {
 pub enum InvocationPolicy {
     FixedPrice,
     Free,
-    FiniteCredits { credits_id: sui::types::Address },
-    TimePass { pass_id: sui::types::Address },
+    FiniteCredits,
+    TimePass,
     Custom(InvocationPolicyCall),
 }
 
@@ -1398,25 +1399,31 @@ pub async fn should_settle_tool_err_eval_gas(
 
 async fn resolve_invocation_policy_call(
     client: &NexusClient,
-    tool_id: sui::types::Address,
     cashier_id: sui::types::Address,
+    beneficiary: crate::move_bindings::interface::payment::PaymentSourceKind,
     policy: InvocationPolicy,
 ) -> Result<InvocationPolicyCall, NexusError> {
     let objects = &client.nexus_objects;
     match policy {
         InvocationPolicy::FixedPrice => Ok(InvocationPolicyCall::fixed_price(objects)),
         InvocationPolicy::Free => Ok(InvocationPolicyCall::free_invocation(objects)),
-        InvocationPolicy::FiniteCredits { credits_id } => {
+        InvocationPolicy::FiniteCredits => {
+            let credits_id = crate::move_bindings::derive_finite_credits_id(
+                objects,
+                cashier_id,
+                beneficiary.clone(),
+            )
+            .map_err(NexusError::Parsing)?;
             let credits = client
                 .crawler()
-                .get_object::<Credits>(credits_id)
+                .get_object::<FiniteCredits>(credits_id)
                 .await
                 .map_err(|error| {
                     NexusError::Configuration(format!(
                         "Finite credits '{credits_id}' could not be resolved: {error}"
                     ))
                 })?;
-            if credits.data.tool.bytes != tool_id || credits.data.cashier.bytes != cashier_id {
+            if credits.data.cashier.bytes != cashier_id || credits.data.beneficiary != beneficiary {
                 return Err(NexusError::Configuration(format!(
                     "Finite credits '{credits_id}' belong to another Tool"
                 )));
@@ -1432,7 +1439,10 @@ async fn resolve_invocation_policy_call(
                 initial_shared_version,
             ))
         }
-        InvocationPolicy::TimePass { pass_id } => {
+        InvocationPolicy::TimePass => {
+            let pass_id =
+                crate::move_bindings::derive_time_pass_id(objects, cashier_id, beneficiary.clone())
+                    .map_err(NexusError::Parsing)?;
             let pass = client
                 .crawler()
                 .get_object::<TimePass>(pass_id)
@@ -1442,17 +1452,21 @@ async fn resolve_invocation_policy_call(
                         "Time pass '{pass_id}' could not be resolved: {error}"
                     ))
                 })?;
-            if pass.data.tool.bytes != tool_id || pass.data.cashier.bytes != cashier_id {
+            if pass.data.cashier.bytes != cashier_id || pass.data.beneficiary != beneficiary {
                 return Err(NexusError::Configuration(format!(
                     "Time pass '{pass_id}' belongs to another Tool"
                 )));
             }
-            if pass.owner != sui::types::Owner::Immutable {
+            let sui::types::Owner::Shared(initial_shared_version) = pass.owner else {
                 return Err(NexusError::Configuration(format!(
-                    "Time pass '{pass_id}' must be immutable"
+                    "Time pass '{pass_id}' must be a shared object"
                 )));
-            }
-            Ok(InvocationPolicyCall::time_pass(objects, pass.object_ref()))
+            };
+            Ok(InvocationPolicyCall::time_pass(
+                objects,
+                pass_id,
+                initial_shared_version,
+            ))
         }
         InvocationPolicy::Custom(call) => Ok(call),
     }
@@ -1520,13 +1534,14 @@ impl WorkflowActions {
 
     /// Authorizes one active runtime vertex through an owner accepted policy.
     ///
-    /// The resulting [`InvocationLockedEvent`] is the exact admission proof
-    /// observed by the executor. Canonical entitlement object metadata is
-    /// resolved by ID; custom policy calls retain their supplied argument
-    /// order and object access modes.
+    /// Authorization records the exact accounting lock and emits the executable
+    /// walk request in the same transaction. Canonical entitlement IDs are
+    /// derived from the execution beneficiary. Custom policy calls retain their
+    /// supplied argument order and object access modes.
     pub async fn authorize_invocation(
         &self,
         dag_execution_id: sui::types::Address,
+        walk_index: u64,
         vertex: RuntimeVertex,
         policy: InvocationPolicy,
     ) -> Result<AuthorizeInvocationResult, NexusError> {
@@ -1536,12 +1551,16 @@ impl WorkflowActions {
             .get_object::<DAGExecution>(dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?;
-        let is_active = execution.data.walks.iter().any(|walk| {
-            matches!(
-                walk,
-                DAGWalk::Active { next_vertex, .. } if next_vertex == &vertex
-            )
-        });
+        let is_active = execution
+            .data
+            .walks
+            .get(walk_index as usize)
+            .is_some_and(|walk| {
+                matches!(
+                    walk,
+                    DAGWalk::Active { next_vertex, .. } if next_vertex == &vertex
+                )
+            });
         if !is_active {
             return Err(NexusError::Configuration(format!(
                 "Runtime vertex '{vertex}' is not active in execution '{dag_execution_id}'"
@@ -1564,20 +1583,28 @@ impl WorkflowActions {
                     ))
                 })?;
         let tool_fqn = vertex_info.kind.tool_fqn().map_err(NexusError::Parsing)?;
-        let tool_id = crate::move_bindings::derive_tool_id(
-            *client.nexus_objects.tool_registry.object_id(),
-            &tool_fqn,
-        )
-        .map_err(NexusError::Parsing)?;
         let cashier = client.fetch_tool_cashier(&tool_fqn).await?;
         let cashier_id = *cashier.object_id();
-        let policy = resolve_invocation_policy_call(&client, tool_id, cashier_id, policy).await?;
+        let payment = tap::fetch_execution_payment_for_execution(
+            crawler,
+            &client.nexus_objects,
+            dag_execution_id,
+        )
+        .await
+        .map_err(NexusError::Rpc)?;
+        let policy =
+            resolve_invocation_policy_call(&client, cashier_id, payment.data.source_kind, policy)
+                .await?;
         let transaction = invocation::authorize_ptb(
             &client.nexus_objects,
             &cashier,
             &dag.object_ref(),
             &execution.object_ref(),
-            &vertex,
+            &client.nexus_objects.leader_registry,
+            invocation::InvocationTarget {
+                walk_index,
+                vertex: &vertex,
+            },
             &policy,
         )
         .map_err(NexusError::TransactionBuilding)?;

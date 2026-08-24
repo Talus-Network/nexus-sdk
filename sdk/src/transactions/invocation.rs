@@ -29,6 +29,13 @@ pub struct InvocationPolicyCall {
     pub arguments: Vec<OnchainToolArgument>,
 }
 
+/// Exact active walk position whose Tool Invocation is being authorized.
+#[derive(Clone, Copy, Debug)]
+pub struct InvocationTarget<'a> {
+    pub walk_index: u64,
+    pub vertex: &'a RuntimeVertex,
+}
+
 impl InvocationPolicyCall {
     /// Creates an arbitrary policy call from its witness [TypeName].
     pub fn new(policy: TypeName, arguments: Vec<OnchainToolArgument>) -> Self {
@@ -56,8 +63,7 @@ impl InvocationPolicyCall {
         )
     }
 
-    /// Selects the canonical finite credits policy with one mutable shared
-    /// [`crate::move_bindings::tool::finite_credits::Credits`] object.
+    /// Selects the canonical finite credit policy with one mutable account.
     pub fn finite_credits(
         objects: &NexusObjects,
         credits: sui::types::Address,
@@ -82,13 +88,20 @@ impl InvocationPolicyCall {
         TypeName::new(&format!("{origin}::finite_credits::Policy"))
     }
 
-    /// Selects the canonical time pass policy with one immutable
-    /// [`crate::move_bindings::tool::time_pass::TimePass`] object.
-    pub fn time_pass(objects: &NexusObjects, pass: sui::types::ObjectReference) -> Self {
+    /// Selects the canonical time pass policy with one read only shared account.
+    pub fn time_pass(
+        objects: &NexusObjects,
+        pass: sui::types::Address,
+        initial_shared_version: sui::types::Version,
+    ) -> Self {
         let origin = objects.packages.tool.type_origin("time_pass", "Policy");
         Self::new(
             TypeName::new(&format!("{origin}::time_pass::Policy")),
-            vec![OnchainToolArgument::Object(pass)],
+            vec![OnchainToolArgument::SharedObject {
+                object_id: pass,
+                initial_shared_version,
+                mutable: false,
+            }],
         )
     }
 }
@@ -128,10 +141,11 @@ pub fn authorize(
     cashier: sui::types::Argument,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
-    vertex: &RuntimeVertex,
+    leader_registry: sui::types::Argument,
+    target: InvocationTarget<'_>,
     policy: &InvocationPolicyCall,
 ) -> anyhow::Result<sui::types::Argument> {
-    let vertex = super::dag::runtime_vertex_arg(transaction, vertex)?;
+    let vertex = super::dag::runtime_vertex_arg(transaction, target.vertex)?;
     let clock = transaction.clock()?;
     let request = transaction.call_target(
         invocation_adapter_binding::new_request_target,
@@ -156,9 +170,18 @@ pub fn authorize(
     let (package, module) = policy_target(transaction.objects(), &policy.policy)?;
     let authorized =
         transaction.call_function(package, module, "get_invocation", policy_arguments)?;
+    let walk_index = transaction.arg(&target.walk_index)?;
     transaction.call_target(
-        invocation_adapter_binding::lock_target,
-        vec![dag, execution, vertex, authorized],
+        invocation_adapter_binding::lock_and_request_target,
+        vec![
+            dag,
+            execution,
+            leader_registry,
+            walk_index,
+            vertex,
+            authorized,
+            clock,
+        ],
     )
 }
 
@@ -168,14 +191,24 @@ pub fn authorize_ptb(
     cashier: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
-    vertex: &RuntimeVertex,
+    leader_registry: &sui::types::ObjectReference,
+    target: InvocationTarget<'_>,
     policy: &InvocationPolicyCall,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
         let cashier = transaction.shared_object(cashier, false)?;
         let dag = transaction.shared_object(dag, false)?;
         let execution = transaction.shared_object(execution, true)?;
-        authorize(transaction, cashier, dag, execution, vertex, policy)?;
+        let leader_registry = transaction.shared_object(leader_registry, false)?;
+        authorize(
+            transaction,
+            cashier,
+            dag,
+            execution,
+            leader_registry,
+            target,
+            policy,
+        )?;
         Ok(())
     })
 }
@@ -248,17 +281,22 @@ mod tests {
     }
 
     #[test]
-    fn fixed_price_authorization_reads_cashier_and_calls_policy_before_lock() {
+    fn fixed_price_authorization_calls_policy_before_lock_and_request() {
         let objects = mock_nexus_objects();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0x81"));
         let dag = object_ref_for_id(sui::types::Address::from_static("0x82"));
         let execution = object_ref_for_id(sui::types::Address::from_static("0x83"));
+        let leader_registry = object_ref_for_id(sui::types::Address::from_static("0x84"));
         let ptb = authorize_ptb(
             &objects,
             &cashier,
             &dag,
             &execution,
-            &vertex(),
+            &leader_registry,
+            InvocationTarget {
+                walk_index: 0,
+                vertex: &vertex(),
+            },
             &InvocationPolicyCall::fixed_price(&objects),
         )
         .unwrap();
@@ -286,11 +324,11 @@ mod tests {
             .iter()
             .position(|call| *call == ("fixed_price", "get_invocation"))
             .unwrap();
-        let lock = calls
+        let lock_and_request = calls
             .iter()
-            .position(|call| *call == ("invocation_adapter", "lock"))
+            .position(|call| *call == ("invocation_adapter", "lock_and_request"))
             .unwrap();
-        assert!(request < policy && policy < lock);
+        assert!(request < policy && policy < lock_and_request);
     }
 
     #[test]
@@ -327,14 +365,21 @@ mod tests {
     }
 
     #[test]
-    fn time_pass_selects_one_immutable_object() {
+    fn time_pass_selects_one_read_only_shared_object() {
         let objects = mock_nexus_objects();
-        let pass = object_ref_for_id(sui::types::Address::from_static("0x92"));
+        let pass = sui::types::Address::from_static("0x92");
 
-        let policy = InvocationPolicyCall::time_pass(&objects, pass.clone());
+        let policy = InvocationPolicyCall::time_pass(&objects, pass, 7);
 
         assert!(policy.policy.as_str().ends_with("::time_pass::Policy"));
-        assert_eq!(policy.arguments, vec![OnchainToolArgument::Object(pass)]);
+        assert_eq!(
+            policy.arguments,
+            vec![OnchainToolArgument::SharedObject {
+                object_id: pass,
+                initial_shared_version: 7,
+                mutable: false,
+            }]
+        );
     }
 
     #[test]

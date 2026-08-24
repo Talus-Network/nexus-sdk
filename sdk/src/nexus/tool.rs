@@ -15,6 +15,8 @@ use {
                 time_pass,
                 tool_cashier::{CashierDeposit, PolicyKey, ToolCashier, ToolCashierStateV1},
             },
+            FiniteCredits,
+            TimePass,
         },
         nexus::{
             client::NexusClient,
@@ -56,25 +58,11 @@ pub struct EntitlementPurchaseResult {
     pub deposit_id: sui::types::Address,
 }
 
-/// Confirmed owner issuance of one discoverable entitlement object.
+/// Confirmed entitlement state change with its canonical object ID.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EntitlementIssueResult {
     pub tx_digest: sui::types::Digest,
     pub entitlement_id: sui::types::Address,
-}
-
-/// Result of creating one independently usable finite credit object.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FiniteCreditsResult {
-    pub tx_digest: sui::types::Digest,
-    pub credits_id: sui::types::Address,
-}
-
-/// One refunded finite credit Invocation waiting to be claimed.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct FiniteCreditRefund {
-    pub object_ref: sui::types::ObjectReference,
-    pub sources: Vec<sui::types::Address>,
 }
 
 /// Current sale terms for canonical finite Tool invocation credits.
@@ -558,7 +546,7 @@ impl ToolActions {
         })
     }
 
-    /// Buys and freezes a time pass for a [`Tool`].
+    /// Buys time access for the signer beneficiary.
     pub async fn buy_time_pass(
         &self,
         tool_fqn: &ToolFqn,
@@ -571,7 +559,7 @@ impl ToolActions {
             .await
     }
 
-    /// Buys and freezes a time pass for an explicit user or Agent beneficiary.
+    /// Buys time access for an explicit user or Agent beneficiary.
     pub async fn buy_time_pass_for(
         &self,
         tool_fqn: &ToolFqn,
@@ -598,9 +586,18 @@ impl ToolActions {
             ));
         }
         let address = client.owner()?;
-        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
-            .map_err(NexusError::Parsing)?;
         let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let entitlement_id = crate::move_bindings::derive_time_pass_id(
+            &client.nexus_objects,
+            *tool_cashier.object_id(),
+            beneficiary.clone(),
+        )
+        .map_err(NexusError::Parsing)?;
+        let pass = client
+            .crawler()
+            .get_optional_object::<TimePass>(entitlement_id)
+            .await
+            .map_err(NexusError::Rpc)?;
         let pay_with = client
             .crawler()
             .get_object_metadata(pay_with)
@@ -611,33 +608,34 @@ impl ToolActions {
                 ))
             })?
             .object_ref();
-        let transaction = tool_cashier::buy_time_pass_ptb(
-            &client.nexus_objects,
-            &tool_cashier,
-            &pay_with,
-            beneficiary,
-            duration_ms,
-        )
+        let transaction = match pass {
+            Some(pass) => {
+                if pass.data.cashier.bytes != *tool_cashier.object_id()
+                    || pass.data.beneficiary != beneficiary
+                    || !pass.is_shared()
+                {
+                    return Err(NexusError::Configuration(format!(
+                        "Time pass '{entitlement_id}' does not match its canonical account"
+                    )));
+                }
+                tool_cashier::buy_more_time_pass_ptb(
+                    &client.nexus_objects,
+                    &tool_cashier,
+                    &pass.object_ref(),
+                    &pay_with,
+                    duration_ms,
+                )
+            }
+            None => tool_cashier::buy_time_pass_ptb(
+                &client.nexus_objects,
+                &tool_cashier,
+                &pay_with,
+                beneficiary,
+                duration_ms,
+            ),
+        }
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
-        let entitlement_id = response
-            .events
-            .iter()
-            .find_map(|event| match &event.data {
-                NexusEventKind::TimePassCreated(created)
-                    if created.tool.bytes == tool_id
-                        && created.cashier.bytes == *tool_cashier.object_id() =>
-                {
-                    Some(created.pass.bytes)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "Time pass purchase '{}' emitted no TimePassCreatedEvent",
-                    response.digest
-                ))
-            })?;
         let deposit_id = response
             .events
             .iter()
@@ -662,7 +660,7 @@ impl ToolActions {
         })
     }
 
-    /// Issues and freezes a time pass under Tool owner authority.
+    /// Sets the canonical time pass window under Tool owner authority.
     pub async fn issue_time_pass(
         &self,
         tool_fqn: &ToolFqn,
@@ -678,38 +676,49 @@ impl ToolActions {
         }
         let client = self.client.operation_client().await?;
         let address = client.owner()?;
-        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
-            .map_err(NexusError::Parsing)?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction = tool_cashier::issue_time_pass_ptb(
+        let entitlement_id = crate::move_bindings::derive_time_pass_id(
             &client.nexus_objects,
-            &tool_cashier,
-            &cashier_admin,
-            beneficiary,
-            valid_from_ms,
-            valid_until_ms,
+            *tool_cashier.object_id(),
+            beneficiary.clone(),
         )
+        .map_err(NexusError::Parsing)?;
+        let pass = client
+            .crawler()
+            .get_optional_object::<TimePass>(entitlement_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let transaction = match pass {
+            Some(pass) => {
+                if pass.data.cashier.bytes != *tool_cashier.object_id()
+                    || pass.data.beneficiary != beneficiary
+                    || !pass.is_shared()
+                {
+                    return Err(NexusError::Configuration(format!(
+                        "Time pass '{entitlement_id}' does not match its canonical account"
+                    )));
+                }
+                tool_cashier::update_time_pass_window_ptb(
+                    &client.nexus_objects,
+                    &tool_cashier,
+                    &pass.object_ref(),
+                    &cashier_admin,
+                    valid_from_ms,
+                    valid_until_ms,
+                )
+            }
+            None => tool_cashier::issue_time_pass_ptb(
+                &client.nexus_objects,
+                &tool_cashier,
+                &cashier_admin,
+                beneficiary,
+                valid_from_ms,
+                valid_until_ms,
+            ),
+        }
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
-        let entitlement_id = response
-            .events
-            .iter()
-            .find_map(|event| match &event.data {
-                NexusEventKind::TimePassCreated(created)
-                    if created.tool.bytes == tool_id
-                        && created.cashier.bytes == *tool_cashier.object_id() =>
-                {
-                    Some(created.pass.bytes)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "Time pass issuance '{}' emitted no TimePassCreatedEvent",
-                    response.digest
-                ))
-            })?;
         Ok(EntitlementIssueResult {
             tx_digest: response.digest,
             entitlement_id,
@@ -851,22 +860,20 @@ impl ToolActions {
             credits,
             pay_with,
             PaymentSourceKind::user_funded(address),
-            address,
         )
         .await
     }
 
-    /// Buys finite credits for an explicit beneficiary and refund recipient.
+    /// Buys finite credits for an explicit user or Agent beneficiary.
     pub async fn buy_finite_credits_for(
         &self,
         tool_fqn: &ToolFqn,
         credits: u64,
         pay_with: sui::types::Address,
         beneficiary: PaymentSourceKind,
-        refund_to: sui::types::Address,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = self.client.operation_client().await?;
-        self.buy_finite_credits_with(&client, tool_fqn, credits, pay_with, beneficiary, refund_to)
+        self.buy_finite_credits_with(&client, tool_fqn, credits, pay_with, beneficiary)
             .await
     }
 
@@ -877,7 +884,6 @@ impl ToolActions {
         credits: u64,
         pay_with: sui::types::Address,
         beneficiary: PaymentSourceKind,
-        refund_to: sui::types::Address,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         if credits == 0 {
             return Err(NexusError::Configuration(
@@ -885,9 +891,18 @@ impl ToolActions {
             ));
         }
         let address = client.owner()?;
-        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
-            .map_err(NexusError::Parsing)?;
         let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let entitlement_id = crate::move_bindings::derive_finite_credits_id(
+            &client.nexus_objects,
+            *tool_cashier.object_id(),
+            beneficiary.clone(),
+        )
+        .map_err(NexusError::Parsing)?;
+        let credit_account = client
+            .crawler()
+            .get_optional_object::<FiniteCredits>(entitlement_id)
+            .await
+            .map_err(NexusError::Rpc)?;
         let pay_with = client
             .crawler()
             .get_object_metadata(pay_with)
@@ -898,34 +913,34 @@ impl ToolActions {
                 ))
             })?
             .object_ref();
-        let transaction = tool_cashier::buy_finite_credits_ptb(
-            &client.nexus_objects,
-            &tool_cashier,
-            &pay_with,
-            beneficiary,
-            refund_to,
-            credits,
-        )
+        let transaction = match credit_account {
+            Some(account) => {
+                if account.data.cashier.bytes != *tool_cashier.object_id()
+                    || account.data.beneficiary != beneficiary
+                    || !account.is_shared()
+                {
+                    return Err(NexusError::Configuration(format!(
+                        "Finite credit account '{entitlement_id}' does not match its canonical account"
+                    )));
+                }
+                tool_cashier::buy_more_finite_credits_ptb(
+                    &client.nexus_objects,
+                    &tool_cashier,
+                    &account.object_ref(),
+                    &pay_with,
+                    credits,
+                )
+            }
+            None => tool_cashier::buy_finite_credits_ptb(
+                &client.nexus_objects,
+                &tool_cashier,
+                &pay_with,
+                beneficiary,
+                credits,
+            ),
+        }
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
-        let entitlement_id = response
-            .events
-            .iter()
-            .find_map(|event| match &event.data {
-                NexusEventKind::CreditsCreated(created)
-                    if created.tool.bytes == tool_id
-                        && created.cashier.bytes == *tool_cashier.object_id() =>
-                {
-                    Some(created.credits.bytes)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "Finite credit purchase '{}' emitted no CreditsCreatedEvent",
-                    response.digest
-                ))
-            })?;
         let deposit_id = response
             .events
             .iter()
@@ -956,7 +971,6 @@ impl ToolActions {
         tool_fqn: &ToolFqn,
         cashier_admin: sui::types::Address,
         beneficiary: PaymentSourceKind,
-        refund_to: sui::types::Address,
         credits: u64,
     ) -> Result<EntitlementIssueResult, NexusError> {
         if credits == 0 {
@@ -966,188 +980,59 @@ impl ToolActions {
         }
         let client = self.client.operation_client().await?;
         let address = client.owner()?;
-        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
-            .map_err(NexusError::Parsing)?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction = tool_cashier::issue_finite_credits_ptb(
+        let entitlement_id = crate::move_bindings::derive_finite_credits_id(
             &client.nexus_objects,
-            &tool_cashier,
-            &cashier_admin,
-            beneficiary,
-            refund_to,
-            credits,
+            *tool_cashier.object_id(),
+            beneficiary.clone(),
         )
+        .map_err(NexusError::Parsing)?;
+        let credit_account = client
+            .crawler()
+            .get_optional_object::<FiniteCredits>(entitlement_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let transaction = match credit_account {
+            Some(account) => {
+                if account.data.cashier.bytes != *tool_cashier.object_id()
+                    || account.data.beneficiary != beneficiary
+                    || !account.is_shared()
+                {
+                    return Err(NexusError::Configuration(format!(
+                        "Finite credit account '{entitlement_id}' does not match its canonical account"
+                    )));
+                }
+                tool_cashier::issue_more_finite_credits_ptb(
+                    &client.nexus_objects,
+                    &tool_cashier,
+                    &account.object_ref(),
+                    &cashier_admin,
+                    credits,
+                )
+            }
+            None => tool_cashier::issue_finite_credits_ptb(
+                &client.nexus_objects,
+                &tool_cashier,
+                &cashier_admin,
+                beneficiary,
+                credits,
+            ),
+        }
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
-        let entitlement_id = response
-            .events
-            .iter()
-            .find_map(|event| match &event.data {
-                NexusEventKind::CreditsCreated(created)
-                    if created.tool.bytes == tool_id
-                        && created.cashier.bytes == *tool_cashier.object_id() =>
-                {
-                    Some(created.credits.bytes)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "Finite credit issuance '{}' emitted no CreditsCreatedEvent",
-                    response.digest
-                ))
-            })?;
         Ok(EntitlementIssueResult {
             tx_digest: response.digest,
             entitlement_id,
         })
     }
 
-    /// Splits shared finite credits into a second independently usable object.
-    pub async fn split_finite_credits(
-        &self,
-        tool_fqn: &ToolFqn,
-        credits_id: sui::types::Address,
-        amount: u64,
-    ) -> Result<FiniteCreditsResult, NexusError> {
-        if amount == 0 {
-            return Err(NexusError::Configuration(
-                "Split credits must be at least one".to_owned(),
-            ));
-        }
-        let client = self.client.operation_client().await?;
-        let sender = client.owner()?;
-        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
-        let credits = client
-            .crawler()
-            .get_object::<finite_credits::Credits>(credits_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-        if credits.data.cashier.bytes != *cashier.object_id() {
-            return Err(NexusError::Configuration(format!(
-                "Finite credits '{credits_id}' belong to another Tool"
-            )));
-        }
-        if credits.data.refund_to != sender {
-            return Err(NexusError::Configuration(format!(
-                "Signer '{sender}' does not manage finite credits '{credits_id}'"
-            )));
-        }
-        if amount > credits.data.remaining {
-            return Err(NexusError::Configuration(format!(
-                "Cannot split '{amount}' from '{}' remaining credits",
-                credits.data.remaining
-            )));
-        }
-        if !credits.is_shared() {
-            return Err(NexusError::Configuration(format!(
-                "Finite credits '{credits_id}' must be shared"
-            )));
-        }
-        let transaction = tool_cashier::split_finite_credits_ptb(
-            &client.nexus_objects,
-            &credits.object_ref(),
-            amount,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-        let response = client.submit_transaction(transaction, sender).await?;
-        let created = response
-            .events
-            .iter()
-            .find_map(|event| match &event.data {
-                NexusEventKind::CreditsCreated(created)
-                    if created.cashier.bytes == *cashier.object_id()
-                        && created.credits.bytes != credits_id =>
-                {
-                    Some(created.credits.bytes)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "Finite credit split '{}' emitted no new Credits object",
-                    response.digest
-                ))
-            })?;
-        Ok(FiniteCreditsResult {
-            tx_digest: response.digest,
-            credits_id: created,
-        })
-    }
-
-    /// Joins one compatible shared finite credit object into another.
-    pub async fn join_finite_credits(
-        &self,
-        tool_fqn: &ToolFqn,
-        credits_id: sui::types::Address,
-        other_credits_id: sui::types::Address,
-    ) -> Result<ToolCashierActionResult, NexusError> {
-        if credits_id == other_credits_id {
-            return Err(NexusError::Configuration(
-                "Finite credit objects to join must be distinct".to_owned(),
-            ));
-        }
-        let client = self.client.operation_client().await?;
-        let sender = client.owner()?;
-        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
-        let mut credits = client
-            .crawler()
-            .get_objects::<finite_credits::Credits>(&[credits_id, other_credits_id])
-            .await
-            .map_err(NexusError::Rpc)?;
-        let other = credits.pop().ok_or_else(|| {
-            NexusError::Configuration(format!(
-                "Finite credits '{other_credits_id}' could not be resolved"
-            ))
-        })?;
-        let credits = credits.pop().ok_or_else(|| {
-            NexusError::Configuration(format!(
-                "Finite credits '{credits_id}' could not be resolved"
-            ))
-        })?;
-        if credits.object_id != credits_id || other.object_id != other_credits_id {
-            return Err(NexusError::Configuration(
-                "Finite credit object response order did not match the request".to_owned(),
-            ));
-        }
-        let compatible = credits.data.tool == other.data.tool
-            && credits.data.cashier == other.data.cashier
-            && credits.data.beneficiary == other.data.beneficiary
-            && credits.data.refund_to == other.data.refund_to;
-        if credits.data.cashier.bytes != *cashier.object_id() || !compatible {
-            return Err(NexusError::Configuration(
-                "Finite credit objects are not compatible with this Tool".to_owned(),
-            ));
-        }
-        if credits.data.refund_to != sender {
-            return Err(NexusError::Configuration(format!(
-                "Signer '{sender}' does not manage these finite credits"
-            )));
-        }
-        if !credits.is_shared() || !other.is_shared() {
-            return Err(NexusError::Configuration(
-                "Finite credit objects to join must be shared".to_owned(),
-            ));
-        }
-        let transaction = tool_cashier::join_finite_credits_ptb(
-            &client.nexus_objects,
-            &credits.object_ref(),
-            &other.object_ref(),
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-        let response = client.submit_transaction(transaction, sender).await?;
-        Ok(ToolCashierActionResult {
-            tx_digest: response.digest,
-        })
-    }
-
-    /// Restores one refunded finite credit Invocation as a shared credit object.
-    pub async fn claim_finite_credit_refund(
+    /// Restores one refunded Invocation to its exact finite credit account.
+    pub async fn restore_finite_credit_refund(
         &self,
         tool_fqn: &ToolFqn,
         invocation_id: sui::types::Address,
-    ) -> Result<FiniteCreditsResult, NexusError> {
+    ) -> Result<EntitlementIssueResult, NexusError> {
         let client = self.client.operation_client().await?;
         let sender = client.owner()?;
         let cashier = client.fetch_tool_cashier(tool_fqn).await?;
@@ -1167,76 +1052,40 @@ impl ToolActions {
                 "Invocation '{invocation_id}' is not a finite credit refund for this Tool"
             )));
         }
-        if refunded.owner != sui::types::Owner::Address(sender) {
+        let [credits_source] = refunded.data.sources.as_slice() else {
             return Err(NexusError::Configuration(format!(
-                "Invocation '{invocation_id}' is not owned by signer '{sender}'"
+                "Invocation '{invocation_id}' does not name one finite credit account"
+            )));
+        };
+        let credits_id = credits_source.bytes;
+        if refunded.owner != sui::types::Owner::Object(credits_id)
+            || refunded.data.refund_to.copied_option() != Some(credits_id)
+        {
+            return Err(NexusError::Configuration(format!(
+                "Invocation '{invocation_id}' was not refunded to credit account '{credits_id}'"
             )));
         }
-        let transaction = tool_cashier::claim_finite_credit_refund_ptb(
+        let credits = client
+            .crawler()
+            .get_object::<FiniteCredits>(credits_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        if credits.data.cashier.bytes != *cashier.object_id() || !credits.is_shared() {
+            return Err(NexusError::Configuration(format!(
+                "Finite credit account '{credits_id}' does not match this Tool"
+            )));
+        }
+        let transaction = tool_cashier::restore_finite_credit_refund_ptb(
             &client.nexus_objects,
+            &credits.object_ref(),
             &refunded.object_ref(),
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, sender).await?;
-        let credits_id = response
-            .events
-            .iter()
-            .find_map(|event| match &event.data {
-                NexusEventKind::CreditsCreated(created)
-                    if created.cashier.bytes == *cashier.object_id() =>
-                {
-                    Some(created.credits.bytes)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "Finite credit refund claim '{}' emitted no Credits object",
-                    response.digest
-                ))
-            })?;
-        Ok(FiniteCreditsResult {
+        Ok(EntitlementIssueResult {
             tx_digest: response.digest,
-            credits_id,
+            entitlement_id: credits_id,
         })
-    }
-
-    /// Lists finite credit refunds owned by `owner` for one [`Tool`].
-    pub async fn inspect_finite_credit_refunds(
-        &self,
-        tool_fqn: &ToolFqn,
-        owner: sui::types::Address,
-    ) -> Result<Vec<FiniteCreditRefund>, NexusError> {
-        let client = self.client.operation_client().await?;
-        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
-        let expected_policy =
-            crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(
-                &client.nexus_objects,
-            );
-        let refunds = client
-            .crawler()
-            .get_owned_objects::<Invocation>(
-                owner,
-                crate::move_bindings::struct_tag::<Invocation>(&client.nexus_objects),
-            )
-            .await
-            .map_err(NexusError::Rpc)?
-            .into_iter()
-            .filter(|invocation| {
-                invocation.data.cashier_id.bytes == *cashier.object_id()
-                    && invocation.data.policy == expected_policy
-            })
-            .map(|invocation| FiniteCreditRefund {
-                object_ref: invocation.object_ref(),
-                sources: invocation
-                    .data
-                    .sources
-                    .into_iter()
-                    .map(|source| source.bytes)
-                    .collect(),
-            })
-            .collect();
-        Ok(refunds)
     }
 
     /// Reads every accepted policy and the canonical offers for one [`Tool`].
@@ -1629,8 +1478,6 @@ mod tests {
                 },
                 tool::{
                     external_verifier::ExternalVerifier,
-                    finite_credits::CreditsCreatedEvent,
-                    time_pass::TimePassCreatedEvent,
                     tool_cashier::CashierDepositCreatedEvent,
                     tool_registry::{ToolRegistry, ToolRegistryState},
                 },
@@ -2191,6 +2038,8 @@ mod tests {
 
     async fn assert_payment_action_succeeds(action: PaymentAction) {
         let nexus_objects = sui_mocks::mock_nexus_objects();
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let sender = private_key.public_key().derive_address();
         let tool_fqn = fqn!("xyz.taluslabs.payment@1");
         let tool_id = crate::move_bindings::derive_tool_id(
             *nexus_objects.tool_registry.object_id(),
@@ -2210,6 +2059,9 @@ mod tests {
         let auxiliary_id = sui::types::Address::from_static("0x402");
         let auxiliary_ref = sui_mocks::object_ref_for_id(auxiliary_id);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let beneficiary = crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+            sui::types::Address::from_static("0x3"),
+        );
 
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
         let mut transaction_service = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -2227,76 +2079,60 @@ mod tests {
             sui::types::Owner::Address(sui::types::Address::from_static("0x403")),
             None,
         );
-        let entitlement_id = sui::types::Address::from_static("0x501");
-        let deposit_id = sui::types::Address::from_static("0x502");
-        let beneficiary = crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
-            sui::types::Address::from_static("0x3"),
-        );
-        let events = match action {
-            PaymentAction::BuyTimePass | PaymentAction::BuyTimePassFor => vec![
-                wrapped_tool_event(
+        let entitlement_id = match action {
+            PaymentAction::BuyTimePass => Some(
+                crate::move_bindings::derive_time_pass_id(
                     &nexus_objects,
-                    TimePassCreatedEvent::new(
-                        ID::new(tool_id),
-                        ID::new(tool_cashier_id),
-                        ID::new(entitlement_id),
-                        beneficiary.clone(),
-                        1,
-                        4,
-                    ),
-                ),
-                wrapped_tool_event(
+                    tool_cashier_id,
+                    PaymentSourceKind::user_funded(sender),
+                )
+                .expect("time pass ID derives"),
+            ),
+            PaymentAction::BuyTimePassFor | PaymentAction::IssueTimePass => Some(
+                crate::move_bindings::derive_time_pass_id(
                     &nexus_objects,
-                    CashierDepositCreatedEvent::new(
-                        ID::new(tool_cashier_id),
-                        ID::new(deposit_id),
-                        21,
-                    ),
-                ),
-            ],
-            PaymentAction::IssueTimePass => vec![wrapped_tool_event(
-                &nexus_objects,
-                TimePassCreatedEvent::new(
-                    ID::new(tool_id),
-                    ID::new(tool_cashier_id),
-                    ID::new(entitlement_id),
+                    tool_cashier_id,
                     beneficiary.clone(),
-                    1,
-                    4,
-                ),
-            )],
-            PaymentAction::BuyFiniteCredits | PaymentAction::BuyFiniteCreditsFor => vec![
-                wrapped_tool_event(
+                )
+                .expect("time pass ID derives"),
+            ),
+            PaymentAction::BuyFiniteCredits => Some(
+                crate::move_bindings::derive_finite_credits_id(
                     &nexus_objects,
-                    CreditsCreatedEvent::new(
-                        ID::new(tool_id),
-                        ID::new(tool_cashier_id),
-                        ID::new(entitlement_id),
-                        beneficiary.clone(),
-                        sui::types::Address::from_static("0x3"),
-                        4,
-                    ),
-                ),
-                wrapped_tool_event(
+                    tool_cashier_id,
+                    PaymentSourceKind::user_funded(sender),
+                )
+                .expect("finite credit account ID derives"),
+            ),
+            PaymentAction::BuyFiniteCreditsFor | PaymentAction::IssueFiniteCredits => Some(
+                crate::move_bindings::derive_finite_credits_id(
+                    &nexus_objects,
+                    tool_cashier_id,
+                    beneficiary.clone(),
+                )
+                .expect("finite credit account ID derives"),
+            ),
+            _ => None,
+        };
+        if let Some(entitlement_id) = entitlement_id {
+            sui_mocks::grpc::mock_get_object_not_found(&mut ledger_service, entitlement_id);
+        }
+        let deposit_id = sui::types::Address::from_static("0x502");
+        let events = match action {
+            PaymentAction::BuyTimePass | PaymentAction::BuyTimePassFor => vec![wrapped_tool_event(
+                &nexus_objects,
+                CashierDepositCreatedEvent::new(ID::new(tool_cashier_id), ID::new(deposit_id), 21),
+            )],
+            PaymentAction::BuyFiniteCredits | PaymentAction::BuyFiniteCreditsFor => {
+                vec![wrapped_tool_event(
                     &nexus_objects,
                     CashierDepositCreatedEvent::new(
                         ID::new(tool_cashier_id),
                         ID::new(deposit_id),
                         52,
                     ),
-                ),
-            ],
-            PaymentAction::IssueFiniteCredits => vec![wrapped_tool_event(
-                &nexus_objects,
-                CreditsCreatedEvent::new(
-                    ID::new(tool_id),
-                    ID::new(tool_cashier_id),
-                    ID::new(entitlement_id),
-                    beneficiary.clone(),
-                    sui::types::Address::from_static("0x3"),
-                    4,
-                ),
-            )],
+                )]
+            }
             _ => vec![],
         };
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
@@ -2314,7 +2150,7 @@ mod tests {
             subscription_service_mock: Some(subscription_service),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = client_with_private_key(&nexus_objects, &rpc_url, private_key).await;
         let actions = client.tool();
 
         let tx_digest = match action {
@@ -2387,23 +2223,11 @@ mod tests {
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::BuyFiniteCreditsFor => actions
-                .buy_finite_credits_for(
-                    &tool_fqn,
-                    4,
-                    auxiliary_id,
-                    beneficiary,
-                    sui::types::Address::from_static("0x3"),
-                )
+                .buy_finite_credits_for(&tool_fqn, 4, auxiliary_id, beneficiary)
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::IssueFiniteCredits => actions
-                .issue_finite_credits(
-                    &tool_fqn,
-                    auxiliary_id,
-                    beneficiary,
-                    sui::types::Address::from_static("0x3"),
-                    4,
-                )
+                .issue_finite_credits(&tool_fqn, auxiliary_id, beneficiary, 4)
                 .await
                 .map(|result| result.tx_digest),
         }
@@ -2440,11 +2264,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finite_credit_split_validates_and_submits_exact_credit() {
+    async fn finite_credit_purchase_updates_the_canonical_account() {
         let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let sender = private_key.public_key().derive_address();
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.taluslabs.split@1");
+        let tool_fqn = fqn!("xyz.taluslabs.credits@1");
         let tool_id =
             crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)
                 .expect("tool id derives");
@@ -2453,17 +2277,21 @@ mod tests {
             tool_id,
         )
         .expect("cashier id derives");
-        let credits_id = sui::types::Address::from_static("0x601");
-        let created_id = sui::types::Address::from_static("0x602");
         let beneficiary = PaymentSourceKind::user_funded(sender);
-        let credits = finite_credits::Credits::new(
+        let credits_id = crate::move_bindings::derive_finite_credits_id(
+            &objects,
+            cashier_id,
+            beneficiary.clone(),
+        )
+        .expect("credit account id derives");
+        let credits = FiniteCredits::new(
             UID::new(credits_id),
-            ID::new(tool_id),
             ID::new(cashier_id),
             beneficiary.clone(),
-            sender,
-            5,
+            finite_credits::State::new(5),
         );
+        let payment_coin = sui::types::Address::from_static("0x602");
+        let deposit_id = sui::types::Address::from_static("0x603");
 
         let mut ledger = sui_mocks::grpc::MockLedgerService::new();
         let mut transactions = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -2481,6 +2309,12 @@ mod tests {
             sui::types::Owner::Shared(7),
             bcs::to_bytes(&credits).expect("credits serialize"),
         );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(payment_coin),
+            sui::types::Owner::Address(sender),
+            None,
+        );
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut transactions,
             &mut subscriptions,
@@ -2490,14 +2324,7 @@ mod tests {
             vec![],
             vec![wrapped_tool_event(
                 &objects,
-                CreditsCreatedEvent::new(
-                    ID::new(tool_id),
-                    ID::new(cashier_id),
-                    ID::new(created_id),
-                    beneficiary,
-                    sender,
-                    2,
-                ),
+                CashierDepositCreatedEvent::new(ID::new(cashier_id), ID::new(deposit_id), 6),
             )],
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -2510,20 +2337,21 @@ mod tests {
 
         let result = client
             .tool()
-            .split_finite_credits(&tool_fqn, credits_id, 2)
+            .buy_finite_credits_for(&tool_fqn, 2, payment_coin, beneficiary)
             .await
-            .expect("finite credit split succeeds");
+            .expect("finite credit purchase succeeds");
 
         assert_eq!(result.tx_digest, submitted.digest());
-        assert_eq!(result.credits_id, created_id);
+        assert_eq!(result.entitlement_id, credits_id);
+        assert_eq!(result.deposit_id, deposit_id);
     }
 
     #[tokio::test]
-    async fn finite_credit_join_validates_both_exact_credits() {
+    async fn owner_grant_updates_the_canonical_time_pass() {
         let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let sender = private_key.public_key().derive_address();
         let objects = sui_mocks::mock_nexus_objects();
-        let tool_fqn = fqn!("xyz.taluslabs.join@1");
+        let tool_fqn = fqn!("xyz.taluslabs.pass@1");
         let tool_id =
             crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)
                 .expect("tool id derives");
@@ -2532,20 +2360,17 @@ mod tests {
             tool_id,
         )
         .expect("cashier id derives");
-        let first_id = sui::types::Address::from_static("0x611");
-        let second_id = sui::types::Address::from_static("0x612");
         let beneficiary = PaymentSourceKind::user_funded(sender);
-        let credit = |id, remaining| {
-            finite_credits::Credits::new(
-                UID::new(id),
-                ID::new(tool_id),
-                ID::new(cashier_id),
-                beneficiary.clone(),
-                sender,
-                remaining,
-            )
-        };
-        let credit_type = crate::move_bindings::struct_tag::<finite_credits::Credits>(&objects);
+        let pass_id =
+            crate::move_bindings::derive_time_pass_id(&objects, cashier_id, beneficiary.clone())
+                .expect("time pass id derives");
+        let pass = TimePass::new(
+            UID::new(pass_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            time_pass::State::new(1, 4),
+        );
+        let cashier_admin = sui::types::Address::from_static("0x612");
 
         let mut ledger = sui_mocks::grpc::MockLedgerService::new();
         let mut transactions = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -2557,22 +2382,17 @@ mod tests {
             sui::types::Owner::Shared(1),
             None,
         );
-        sui_mocks::grpc::mock_get_objects_bcs(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger,
-            vec![
-                (
-                    sui_mocks::object_ref_for_id(first_id),
-                    sui::types::Owner::Shared(7),
-                    bcs::to_bytes(&credit(first_id, 2)).expect("first credits serialize"),
-                    credit_type.clone(),
-                ),
-                (
-                    sui_mocks::object_ref_for_id(second_id),
-                    sui::types::Owner::Shared(8),
-                    bcs::to_bytes(&credit(second_id, 3)).expect("second credits serialize"),
-                    credit_type,
-                ),
-            ],
+            sui_mocks::object_ref_for_id(pass_id),
+            sui::types::Owner::Shared(7),
+            bcs::to_bytes(&pass).expect("time pass serializes"),
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(cashier_admin),
+            sui::types::Owner::Address(sender),
+            None,
         );
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut transactions,
@@ -2593,15 +2413,16 @@ mod tests {
 
         let result = client
             .tool()
-            .join_finite_credits(&tool_fqn, first_id, second_id)
+            .issue_time_pass(&tool_fqn, cashier_admin, beneficiary, 10, 20)
             .await
-            .expect("finite credit join succeeds");
+            .expect("time pass grant succeeds");
 
         assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(result.entitlement_id, pass_id);
     }
 
     #[tokio::test]
-    async fn finite_credit_refund_claim_validates_exact_invocation() {
+    async fn finite_credit_refund_restores_the_exact_account() {
         let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let sender = private_key.public_key().derive_address();
         let objects = sui_mocks::mock_nexus_objects();
@@ -2615,9 +2436,19 @@ mod tests {
         )
         .expect("cashier id derives");
         let invocation_id = sui::types::Address::from_static("0x621");
-        let credits_id = sui::types::Address::from_static("0x622");
-        let source_id = sui::types::Address::from_static("0x623");
         let beneficiary = PaymentSourceKind::user_funded(sender);
+        let credits_id = crate::move_bindings::derive_finite_credits_id(
+            &objects,
+            cashier_id,
+            beneficiary.clone(),
+        )
+        .expect("credit account id derives");
+        let credits = FiniteCredits::new(
+            UID::new(credits_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            finite_credits::State::new(0),
+        );
         let policy =
             crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(&objects);
         let invocation = Invocation::new(
@@ -2628,9 +2459,9 @@ mod tests {
             ID::new(cashier_id),
             beneficiary.clone(),
             policy,
-            vec![ID::new(source_id)],
+            vec![ID::new(credits_id)],
             0,
-            MoveOption::from(Some(sender)),
+            MoveOption::from(Some(credits_id)),
             sui_framework::balance::Balance::<sui_framework::sui::SUI> {
                 value: 0,
                 phantom_t0: std::marker::PhantomData,
@@ -2650,8 +2481,14 @@ mod tests {
         sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger,
             sui_mocks::object_ref_for_id(invocation_id),
-            sui::types::Owner::Address(sender),
+            sui::types::Owner::Object(credits_id),
             bcs::to_bytes(&invocation).expect("invocation serializes"),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(credits_id),
+            sui::types::Owner::Shared(7),
+            bcs::to_bytes(&credits).expect("credits serialize"),
         );
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut transactions,
@@ -2660,17 +2497,7 @@ mod tests {
             sui_mocks::mock_sui_object_ref(),
             vec![],
             vec![],
-            vec![wrapped_tool_event(
-                &objects,
-                CreditsCreatedEvent::new(
-                    ID::new(tool_id),
-                    ID::new(cashier_id),
-                    ID::new(credits_id),
-                    beneficiary,
-                    sender,
-                    1,
-                ),
-            )],
+            vec![],
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger),
@@ -2682,12 +2509,12 @@ mod tests {
 
         let result = client
             .tool()
-            .claim_finite_credit_refund(&tool_fqn, invocation_id)
+            .restore_finite_credit_refund(&tool_fqn, invocation_id)
             .await
-            .expect("finite credit refund claim succeeds");
+            .expect("finite credit refund restore succeeds");
 
         assert_eq!(result.tx_digest, submitted.digest());
-        assert_eq!(result.credits_id, credits_id);
+        assert_eq!(result.entitlement_id, credits_id);
     }
 
     #[tokio::test]

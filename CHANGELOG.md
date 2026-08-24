@@ -10,7 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Added dynamic Invocation policy composition, policy discovery, finite credits, time passes, owner grants, receipt collection, and exact Invocation timeout refunds.
+- Added dynamic Invocation policy composition, policy discovery, canonical finite credit and time pass accounts, owner grants, receipt collection, and exact Invocation timeout refunds.
+- Added deterministic entitlement ID derivation from the Tool cashier, payment beneficiary, and policy type.
 
 #### Fixed
 
@@ -21,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
+- Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
+- Invocation authorization now emits the executable walk request with its exact Invocation in the same transaction.
 - Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
 - Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
@@ -29,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Removed
 
 - Removed ticket lookup and cashier based settlement APIs in favor of exact Invocation objects.
+- Removed finite credit split, join, and object selection APIs because canonical account IDs are derived automatically.
 - Removed migration-only transaction builders, coexistence-suffixed generated targets and state names, duplicate Nexus value witnesses, and the Walrus storage-key API in favor of the fresh canonical package graph and Blob IDs.
 - Removed generated Move call targets for `NexusData::is_one` and `NexusData::is_valid`; generated `is_many` now represents the variant-only discriminator while SDK-native cardinality discriminants remain unchanged.
 
@@ -36,7 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Added Tool economy inspection, finite credit and time pass purchase and issuance, credit split and join, refund recovery, and explicit Invocation authorization commands.
+- Added Tool economy inspection, canonical finite credit and time pass purchase and issuance, exact refund recovery, and explicit Invocation authorization commands.
+- Invocation authorization now derives canonical entitlement objects without requiring users to supply their IDs.
 - Added onchain Tool validation.
 
 #### Fixed

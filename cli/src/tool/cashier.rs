@@ -176,7 +176,7 @@ pub(crate) enum FiniteCreditCommand {
         #[command(flatten)]
         terms: FiniteCreditTerms,
     },
-    #[command(about = "Buy a shared finite credit object")]
+    #[command(about = "Buy units for the beneficiary finite credit account")]
     Buy {
         #[command(flatten)]
         tool: ToolArgs,
@@ -191,16 +191,10 @@ pub(crate) enum FiniteCreditCommand {
         payment_coin: sui::types::Address,
         #[command(flatten)]
         beneficiary: BeneficiaryArgs,
-        #[arg(
-            long,
-            value_name = "ADDRESS",
-            help = "Address that manages splits and receives refunded credit units"
-        )]
-        refund_to: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Issue shared finite credits under Tool owner authority")]
+    #[command(about = "Add units under Tool owner authority")]
     Issue {
         #[command(flatten)]
         admin: AdminArgs,
@@ -208,56 +202,19 @@ pub(crate) enum FiniteCreditCommand {
         beneficiary: BeneficiaryArgs,
         #[arg(long, value_name = "COUNT", help = "Number of credits to issue")]
         credits: NonZeroU64,
-        #[arg(
-            long,
-            value_name = "ADDRESS",
-            help = "Address that manages splits and receives refunded credit units"
-        )]
-        refund_to: Option<sui::types::Address>,
     },
-    #[command(about = "Split credits into an independent shared object")]
-    Split {
-        #[command(flatten)]
-        tool: ToolArgs,
-        #[arg(long, value_name = "OBJECT_ID", help = "Shared Credits object ID")]
-        credits_id: sui::types::Address,
-        #[arg(long, value_name = "COUNT", help = "Credits placed in the new object")]
-        credits: NonZeroU64,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-    #[command(about = "Join one compatible shared Credits object into another")]
-    Join {
-        #[command(flatten)]
-        tool: ToolArgs,
-        #[arg(long, value_name = "OBJECT_ID", help = "Credits object that remains")]
-        credits_id: sui::types::Address,
-        #[arg(
-            long,
-            value_name = "OBJECT_ID",
-            help = "Credits object consumed by the join"
-        )]
-        other_credits_id: sui::types::Address,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-    #[command(about = "Restore one refunded Invocation as a shared credit object")]
-    ClaimRefund {
+    #[command(about = "Restore one refunded Invocation to its credit account")]
+    RestoreRefund {
         #[command(flatten)]
         tool: ToolArgs,
         #[arg(
             long,
             value_name = "OBJECT_ID",
-            help = "Refunded Invocation owned by the active signer"
+            help = "Refunded Invocation held by the credit account"
         )]
         invocation_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
-    },
-    #[command(about = "List refunded credit Invocations owned by the active signer")]
-    Refunds {
-        #[command(flatten)]
-        tool: ToolArgs,
     },
 }
 
@@ -303,7 +260,7 @@ pub(crate) enum TimePassCommand {
         #[command(flatten)]
         terms: TimePassTerms,
     },
-    #[command(about = "Buy an immutable time pass")]
+    #[command(about = "Buy duration for the beneficiary time pass account")]
     Buy {
         #[command(flatten)]
         tool: ToolArgs,
@@ -325,7 +282,7 @@ pub(crate) enum TimePassCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Issue an immutable time pass under Tool owner authority")]
+    #[command(about = "Set a time pass window under Tool owner authority")]
     Issue {
         #[command(flatten)]
         admin: AdminArgs,
@@ -441,23 +398,6 @@ fn emit_issuance(
         "tool_fqn": tool_fqn,
         "digest": result.tx_digest,
         "entitlement_id": result.entitlement_id,
-    }))
-}
-
-fn emit_credits(
-    action: &str,
-    tool_fqn: &ToolFqn,
-    result: &nexus_sdk::nexus::tool::FiniteCreditsResult,
-) -> AnyResult<(), NexusCliError> {
-    notify_success!(
-        "Credits object: {id}",
-        id = result.credits_id.to_string().truecolor(100, 100, 100)
-    );
-    json_output(&json!({
-        "action": action,
-        "tool_fqn": tool_fqn,
-        "digest": result.tx_digest,
-        "credits_id": result.credits_id,
     }))
 }
 
@@ -707,7 +647,6 @@ async fn buy_finite_credits(
     credits: NonZeroU64,
     payment_coin: sui::types::Address,
     beneficiary: BeneficiaryArgs,
-    refund_to: Option<sui::types::Address>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     validate_payment_coin(payment_coin, gas.sui_gas_coin)?;
@@ -720,7 +659,6 @@ async fn buy_finite_credits(
             credits.get(),
             payment_coin,
             beneficiary.resolve(owner),
-            refund_to.unwrap_or(owner),
         )
         .await
         .map_err(NexusCliError::Nexus)?;
@@ -754,7 +692,6 @@ async fn issue_finite_credits(
     admin: AdminArgs,
     beneficiary: BeneficiaryArgs,
     credits: NonZeroU64,
-    refund_to: Option<sui::types::Address>,
 ) -> AnyResult<(), NexusCliError> {
     let ToolArgs { tool_fqn } = admin.tool;
     let cashier_admin = resolve_cashier_admin(&tool_fqn, admin.cashier_admin).await?;
@@ -766,7 +703,6 @@ async fn issue_finite_credits(
             &tool_fqn,
             cashier_admin,
             beneficiary.resolve(owner),
-            refund_to.unwrap_or(owner),
             credits.get(),
         )
         .await
@@ -803,37 +739,7 @@ async fn issue_time_pass(
     emit_issuance("issue_time_pass", &tool_fqn, &result)
 }
 
-async fn split_finite_credits(
-    tool_fqn: ToolFqn,
-    credits_id: sui::types::Address,
-    credits: NonZeroU64,
-    gas: GasArgs,
-) -> AnyResult<(), NexusCliError> {
-    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let result = client
-        .tool()
-        .split_finite_credits(&tool_fqn, credits_id, credits.get())
-        .await
-        .map_err(NexusCliError::Nexus)?;
-    emit_credits("split_finite_credits", &tool_fqn, &result)
-}
-
-async fn join_finite_credits(
-    tool_fqn: ToolFqn,
-    credits_id: sui::types::Address,
-    other_credits_id: sui::types::Address,
-    gas: GasArgs,
-) -> AnyResult<(), NexusCliError> {
-    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let result = client
-        .tool()
-        .join_finite_credits(&tool_fqn, credits_id, other_credits_id)
-        .await
-        .map_err(NexusCliError::Nexus)?;
-    emit_result("join_finite_credits", &tool_fqn, &result.tx_digest)
-}
-
-async fn claim_finite_credit_refund(
+async fn restore_finite_credit_refund(
     tool_fqn: ToolFqn,
     invocation_id: sui::types::Address,
     gas: GasArgs,
@@ -841,26 +747,10 @@ async fn claim_finite_credit_refund(
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let result = client
         .tool()
-        .claim_finite_credit_refund(&tool_fqn, invocation_id)
+        .restore_finite_credit_refund(&tool_fqn, invocation_id)
         .await
         .map_err(NexusCliError::Nexus)?;
-    emit_credits("claim_finite_credit_refund", &tool_fqn, &result)
-}
-
-async fn inspect_finite_credit_refunds(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
-    let client = get_owner_nexus_client().await?;
-    let owner = client.owner().map_err(NexusCliError::Nexus)?;
-    let refunds = client
-        .tool()
-        .inspect_finite_credit_refunds(&tool_fqn, owner)
-        .await
-        .map_err(NexusCliError::Nexus)?;
-    notify_success!("Refunded credit Invocations: {}", refunds.len());
-    json_output(&json!({
-        "tool_fqn": tool_fqn,
-        "owner": owner,
-        "refunds": refunds,
-    }))
+    emit_issuance("restore_finite_credit_refund", &tool_fqn, &result)
 }
 
 async fn collect_invocations(
@@ -943,45 +833,18 @@ pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), Nex
                 credits,
                 payment_coin,
                 beneficiary,
-                refund_to,
                 gas,
-            } => {
-                buy_finite_credits(
-                    tool.tool_fqn,
-                    credits,
-                    payment_coin,
-                    beneficiary,
-                    refund_to,
-                    gas,
-                )
-                .await
-            }
+            } => buy_finite_credits(tool.tool_fqn, credits, payment_coin, beneficiary, gas).await,
             FiniteCreditCommand::Issue {
                 admin,
                 beneficiary,
                 credits,
-                refund_to,
-            } => issue_finite_credits(admin, beneficiary, credits, refund_to).await,
-            FiniteCreditCommand::Split {
-                tool,
-                credits_id,
-                credits,
-                gas,
-            } => split_finite_credits(tool.tool_fqn, credits_id, credits, gas).await,
-            FiniteCreditCommand::Join {
-                tool,
-                credits_id,
-                other_credits_id,
-                gas,
-            } => join_finite_credits(tool.tool_fqn, credits_id, other_credits_id, gas).await,
-            FiniteCreditCommand::ClaimRefund {
+            } => issue_finite_credits(admin, beneficiary, credits).await,
+            FiniteCreditCommand::RestoreRefund {
                 tool,
                 invocation_id,
                 gas,
-            } => claim_finite_credit_refund(tool.tool_fqn, invocation_id, gas).await,
-            FiniteCreditCommand::Refunds { tool } => {
-                inspect_finite_credit_refunds(tool.tool_fqn).await
-            }
+            } => restore_finite_credit_refund(tool.tool_fqn, invocation_id, gas).await,
         },
         CashierCommand::TimePass(command) => match command {
             TimePassCommand::Enable { terms } => set_time_pass_terms(terms, true).await,
@@ -1107,22 +970,22 @@ mod tests {
 
     #[test]
     fn finite_credit_refund_and_collection_need_no_policy_witness() {
-        let claim = crate::Cli::try_parse_from([
+        let restore = crate::Cli::try_parse_from([
             "nexus",
             "tool",
             "cashier",
             "finite-credits",
-            "claim-refund",
+            "restore-refund",
             "--tool-fqn",
             "com.example.tool@1",
             "--invocation-id",
             "0x7",
         ])
-        .expect("finite credit refund claim should parse");
+        .expect("finite credit refund restore should parse");
         assert!(matches!(
-            claim.command,
+            restore.command,
             crate::Command::Tool(super::super::ToolCommand::Cashier(
-                CashierCommand::FiniteCredits(FiniteCreditCommand::ClaimRefund { .. })
+                CashierCommand::FiniteCredits(FiniteCreditCommand::RestoreRefund { .. })
             ))
         ));
 

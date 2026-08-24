@@ -81,6 +81,7 @@ async fn resolve_custom_argument(
 
 pub(super) async fn run(
     execution_id: sui::types::Address,
+    walk_index: u64,
     vertex_name: String,
     iterator: Option<(u64, u64)>,
     policy: InvocationPolicyCommand,
@@ -101,10 +102,8 @@ pub(super) async fn run(
     let policy = match policy {
         InvocationPolicyCommand::FixedPrice => InvocationPolicy::FixedPrice,
         InvocationPolicyCommand::Free => InvocationPolicy::Free,
-        InvocationPolicyCommand::FiniteCredits { credits_id } => {
-            InvocationPolicy::FiniteCredits { credits_id }
-        }
-        InvocationPolicyCommand::TimePass { pass_id } => InvocationPolicy::TimePass { pass_id },
+        InvocationPolicyCommand::FiniteCredits => InvocationPolicy::FiniteCredits,
+        InvocationPolicyCommand::TimePass => InvocationPolicy::TimePass,
         InvocationPolicyCommand::Custom { policy, arguments } => {
             let mut resolved = Vec::with_capacity(arguments.len());
             for argument in arguments {
@@ -123,7 +122,7 @@ pub(super) async fn run(
     let progress = loading!("Submitting Invocation policy transaction...");
     let result = match client
         .workflow()
-        .authorize_invocation(execution_id, vertex, policy)
+        .authorize_invocation(execution_id, walk_index, vertex, policy)
         .await
     {
         Ok(result) => {
@@ -149,6 +148,7 @@ pub(super) async fn run(
         "digest": result.tx_digest,
         "checkpoint": result.tx_checkpoint,
         "execution_id": result.lock.execution.bytes,
+        "walk_index": walk_index,
         "vertex": result.lock.vertex.to_string(),
         "tool_id": result.lock.tool.bytes,
         "tool_fqn": result.lock.tool_fqn.as_str(),

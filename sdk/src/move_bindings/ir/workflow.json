@@ -5359,6 +5359,108 @@
           ]
         },
         {
+          "name": "emit_invocation_authorization_required",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "execution",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "walk_index",
+              "ty": "U64"
+            },
+            {
+              "name": "vertex",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "RuntimeVertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "current_time",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "emit_terminal_err_eval_recorded",
           "visibility": "Private",
           "is_entry": false,
@@ -7288,6 +7390,86 @@
           "return_types": [
             {
               "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "locked_invocation_for_vertex",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "execution",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "vertex",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "RuntimeVertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
             }
           ]
         },
@@ -9436,6 +9618,19 @@
             {
               "name": "walk_index",
               "ty": "U64"
+            },
+            {
+              "name": "invocation",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             }
           ],
           "return_types": [
@@ -9644,6 +9839,52 @@
           "return_types": [
             {
               "Vector": "U64"
+            }
+          ]
+        },
+        {
+          "name": "runtime_vertex_task_id",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "execution",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "vertex",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "RuntimeVertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
             }
           ]
         },
@@ -12882,6 +13123,73 @@
           "type_name": {
             "address": "0xa4",
             "module": "execution_events",
+            "name": "InvocationAuthorizationRequiredEvent"
+          },
+          "module": "execution_events",
+          "name": "InvocationAuthorizationRequiredEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dag",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "execution",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "walk_index",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "vertex",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "graph",
+                        "name": "RuntimeVertex"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa4",
+            "module": "execution_events",
             "name": "RequestWalkExecutionEvent"
           },
           "module": "execution_events",
@@ -12923,18 +13231,32 @@
                   }
                 },
                 {
-                  "name": "invoker",
+                  "name": "invocation",
                   "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "invoker",
+                  "position": 3,
                   "ty": "Address"
                 },
                 {
                   "name": "walk_index",
-                  "position": 3,
+                  "position": 4,
                   "ty": "U64"
                 },
                 {
                   "name": "next_vertex",
-                  "position": 4,
+                  "position": 5,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -12948,20 +13270,6 @@
                 },
                 {
                   "name": "evaluations",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "agent_id",
                   "position": 6,
                   "ty": {
                     "Datatype": {
@@ -12975,13 +13283,27 @@
                   }
                 },
                 {
-                  "name": "skill_id",
+                  "name": "agent_id",
                   "position": 7,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "skill_id",
+                  "position": 8,
                   "ty": "U64"
                 },
                 {
                   "name": "interface_version",
-                  "position": 8,
+                  "position": 9,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -12995,7 +13317,7 @@
                 },
                 {
                   "name": "task_id",
-                  "position": 9,
+                  "position": 10,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -13009,7 +13331,7 @@
                 },
                 {
                   "name": "occurrence_id",
-                  "position": 10,
+                  "position": 11,
                   "ty": "U64"
                 }
               ]
@@ -14890,6 +15212,69 @@
           "return_types": []
         },
         {
+          "name": "invocation_authorization_required_event",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "execution",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "walk_index",
+              "ty": "U64"
+            },
+            {
+              "name": "vertex",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "RuntimeVertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa4",
+                  "module": "execution_events",
+                  "name": "InvocationAuthorizationRequiredEvent"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "request_walk_execution_event",
           "visibility": "Friend",
           "is_entry": false,
@@ -14910,6 +15295,19 @@
             },
             {
               "name": "execution",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "invocation",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -15018,6 +15416,44 @@
         },
         {
           "name": "request_walk_execution_event_dag_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution_events",
+                        "name": "RequestWalkExecutionEvent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "request_walk_execution_event_invocation",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -19659,7 +20095,7 @@
         },
         {
           "name": "lock",
-          "visibility": "Public",
+          "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -19722,6 +20158,135 @@
                     "name": "Invocation"
                   },
                   "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "lock_and_request",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "execution",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "walk_index",
+              "ty": "U64"
+            },
+            {
+              "name": "vertex",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "RuntimeVertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "authorized",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "invocation",
+                    "name": "Invocation"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }

@@ -4,17 +4,13 @@ use crate::{
     move_bindings::{
         interface::payment::PaymentSourceKind,
         move_std::type_name::TypeName,
-        sui_framework::{
-            coin as coin_binding,
-            sui::SUI,
-            transfer::{self as transfer_binding, Receiving},
-        },
+        sui_framework::{coin as coin_binding, sui::SUI, transfer::Receiving},
         tool::{
             finite_credits as finite_credits_binding,
             fixed_price as fixed_price_binding,
             free_invocation as free_invocation_binding,
             invocation::Invocation,
-            time_pass::{self as time_pass_binding, TimePass},
+            time_pass as time_pass_binding,
             tool_cashier::{self as tool_cashier_binding, CashierDeposit},
         },
     },
@@ -122,7 +118,7 @@ pub fn enable_finite_credits_ptb(
     })
 }
 
-/// Closes finite credit issuance without invalidating existing [`Credits`](crate::move_bindings::tool::finite_credits::Credits).
+/// Closes finite credit issuance without invalidating existing accounts.
 pub fn close_finite_credit_issuance_ptb(
     objects: &NexusObjects,
     tool_cashier: &sui::types::ObjectReference,
@@ -169,24 +165,22 @@ pub fn update_finite_credit_terms_ptb(
     })
 }
 
-/// Purchases and shares independently consumable finite credits.
+/// Purchases and shares the first canonical finite credit account.
 pub fn buy_finite_credits_ptb(
     objects: &NexusObjects,
     tool_cashier: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
     beneficiary: PaymentSourceKind,
-    refund_to: sui::types::Address,
     credits: u64,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
-        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let cashier = transaction.shared_object(tool_cashier, true)?;
         let coin = transaction.owned_object(pay_with)?;
         let beneficiary = transaction.arg(&beneficiary)?;
-        let refund_to = transaction.arg(&refund_to)?;
         let credits_count = transaction.arg(&credits)?;
         let result = transaction.call_target(
             finite_credits_binding::buy_target,
-            vec![cashier, coin, beneficiary, refund_to, credits_count],
+            vec![cashier, coin, beneficiary, credits_count],
         )?;
         let credits = transaction.nested_result(result, 0)?;
         transaction.call_target(finite_credits_binding::share_target, vec![credits])?;
@@ -194,26 +188,66 @@ pub fn buy_finite_credits_ptb(
     })
 }
 
-/// Issues and shares finite credits under Tool owner authority.
+/// Purchases units for an existing canonical finite credit account.
+pub fn buy_more_finite_credits_ptb(
+    objects: &NexusObjects,
+    tool_cashier: &sui::types::ObjectReference,
+    credits: &sui::types::ObjectReference,
+    pay_with: &sui::types::ObjectReference,
+    additional_credits: u64,
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    move_boundary::ptb(objects, |transaction| {
+        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let credits = transaction.shared_object(credits, true)?;
+        let coin = transaction.owned_object(pay_with)?;
+        let additional_credits = transaction.arg(&additional_credits)?;
+        transaction.call_target(
+            finite_credits_binding::buy_more_target,
+            vec![cashier, credits, coin, additional_credits],
+        )?;
+        Ok(())
+    })
+}
+
+/// Issues and shares the first canonical finite credit account.
 pub fn issue_finite_credits_ptb(
     objects: &NexusObjects,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     beneficiary: PaymentSourceKind,
-    refund_to: sui::types::Address,
     credits: u64,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
-        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let cashier = transaction.shared_object(tool_cashier, true)?;
         let admin = transaction.owned_object(cashier_admin)?;
         let beneficiary = transaction.arg(&beneficiary)?;
-        let refund_to = transaction.arg(&refund_to)?;
         let credits = transaction.arg(&credits)?;
         let issued = transaction.call_target(
             finite_credits_binding::issue_target,
-            vec![cashier, admin, beneficiary, refund_to, credits],
+            vec![cashier, admin, beneficiary, credits],
         )?;
         transaction.call_target(finite_credits_binding::share_target, vec![issued])?;
+        Ok(())
+    })
+}
+
+/// Adds an owner grant to an existing canonical finite credit account.
+pub fn issue_more_finite_credits_ptb(
+    objects: &NexusObjects,
+    tool_cashier: &sui::types::ObjectReference,
+    credits: &sui::types::ObjectReference,
+    cashier_admin: &sui::types::ObjectReference,
+    additional_credits: u64,
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    move_boundary::ptb(objects, |transaction| {
+        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let credits = transaction.shared_object(credits, true)?;
+        let admin = transaction.owned_object(cashier_admin)?;
+        let additional_credits = transaction.arg(&additional_credits)?;
+        transaction.call_target(
+            finite_credits_binding::issue_more_target,
+            vec![cashier, credits, admin, additional_credits],
+        )?;
         Ok(())
     })
 }
@@ -237,7 +271,7 @@ pub fn enable_time_pass_ptb(
     })
 }
 
-/// Closes time pass issuance without invalidating existing [`TimePass`].
+/// Closes time pass issuance without invalidating existing accounts.
 pub fn close_time_pass_issuance_ptb(
     objects: &NexusObjects,
     tool_cashier: &sui::types::ObjectReference,
@@ -284,7 +318,7 @@ pub fn update_time_pass_terms_ptb(
     })
 }
 
-/// Purchases and freezes a time pass for parallel admission.
+/// Purchases and shares the first canonical time pass account.
 pub fn buy_time_pass_ptb(
     objects: &NexusObjects,
     tool_cashier: &sui::types::ObjectReference,
@@ -293,25 +327,44 @@ pub fn buy_time_pass_ptb(
     duration_ms: u64,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
-        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let cashier = transaction.shared_object(tool_cashier, true)?;
         let coin = transaction.owned_object(pay_with)?;
-        let clock = transaction.clock()?;
         let beneficiary = transaction.arg(&beneficiary)?;
         let duration = transaction.arg(&duration_ms)?;
+        let clock = transaction.clock()?;
         let result = transaction.call_target(
             time_pass_binding::buy_target,
-            vec![cashier, coin, clock, beneficiary, duration],
+            vec![cashier, coin, beneficiary, duration, clock],
         )?;
         let pass = transaction.nested_result(result, 0)?;
+        transaction.call_target(time_pass_binding::share_target, vec![pass])?;
+        Ok(())
+    })
+}
+
+/// Purchases duration for an existing canonical time pass account.
+pub fn buy_more_time_pass_ptb(
+    objects: &NexusObjects,
+    tool_cashier: &sui::types::ObjectReference,
+    pass: &sui::types::ObjectReference,
+    pay_with: &sui::types::ObjectReference,
+    duration_ms: u64,
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    move_boundary::ptb(objects, |transaction| {
+        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let pass = transaction.shared_object(pass, true)?;
+        let coin = transaction.owned_object(pay_with)?;
+        let duration = transaction.arg(&duration_ms)?;
+        let clock = transaction.clock()?;
         transaction.call_target(
-            transfer_binding::public_freeze_object_target::<TimePass>,
-            vec![pass],
+            time_pass_binding::buy_more_target,
+            vec![cashier, pass, coin, duration, clock],
         )?;
         Ok(())
     })
 }
 
-/// Issues and freezes a time pass under Tool owner authority.
+/// Issues and shares the first canonical time pass account.
 pub fn issue_time_pass_ptb(
     objects: &NexusObjects,
     tool_cashier: &sui::types::ObjectReference,
@@ -321,7 +374,7 @@ pub fn issue_time_pass_ptb(
     valid_until_ms: u64,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
-        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let cashier = transaction.shared_object(tool_cashier, true)?;
         let admin = transaction.owned_object(cashier_admin)?;
         let beneficiary = transaction.arg(&beneficiary)?;
         let valid_from_ms = transaction.arg(&valid_from_ms)?;
@@ -330,54 +383,47 @@ pub fn issue_time_pass_ptb(
             time_pass_binding::issue_target,
             vec![cashier, admin, beneficiary, valid_from_ms, valid_until_ms],
         )?;
+        transaction.call_target(time_pass_binding::share_target, vec![pass])?;
+        Ok(())
+    })
+}
+
+/// Replaces an existing canonical time pass window under owner authority.
+pub fn update_time_pass_window_ptb(
+    objects: &NexusObjects,
+    tool_cashier: &sui::types::ObjectReference,
+    pass: &sui::types::ObjectReference,
+    cashier_admin: &sui::types::ObjectReference,
+    valid_from_ms: u64,
+    valid_until_ms: u64,
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    move_boundary::ptb(objects, |transaction| {
+        let cashier = transaction.shared_object(tool_cashier, false)?;
+        let pass = transaction.shared_object(pass, true)?;
+        let admin = transaction.owned_object(cashier_admin)?;
+        let valid_from_ms = transaction.arg(&valid_from_ms)?;
+        let valid_until_ms = transaction.arg(&valid_until_ms)?;
         transaction.call_target(
-            transfer_binding::public_freeze_object_target::<TimePass>,
-            vec![pass],
+            time_pass_binding::update_window_target,
+            vec![cashier, pass, admin, valid_from_ms, valid_until_ms],
         )?;
         Ok(())
     })
 }
 
-/// Splits shared finite credits and shares the independent result.
-pub fn split_finite_credits_ptb(
+/// Restores a refunded Invocation to its exact finite credit account.
+pub fn restore_finite_credit_refund_ptb(
     objects: &NexusObjects,
     credits: &sui::types::ObjectReference,
-    amount: u64,
-) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(objects, |transaction| {
-        let credits = transaction.shared_object(credits, true)?;
-        let amount = transaction.arg(&amount)?;
-        let split =
-            transaction.call_target(finite_credits_binding::split_target, vec![credits, amount])?;
-        transaction.call_target(finite_credits_binding::share_target, vec![split])?;
-        Ok(())
-    })
-}
-
-/// Joins one shared finite credit object into another.
-pub fn join_finite_credits_ptb(
-    objects: &NexusObjects,
-    credits: &sui::types::ObjectReference,
-    other: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(objects, |transaction| {
-        let credits = transaction.shared_object(credits, true)?;
-        let other = transaction.shared_object(other, true)?;
-        transaction.call_target(finite_credits_binding::join_target, vec![credits, other])?;
-        Ok(())
-    })
-}
-
-/// Claims one refunded Invocation as a shared one unit credit object.
-pub fn claim_finite_credit_refund_ptb(
-    objects: &NexusObjects,
     refunded: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
-        let refunded = transaction.owned_object(refunded)?;
-        let credits =
-            transaction.call_target(finite_credits_binding::claim_refund_target, vec![refunded])?;
-        transaction.call_target(finite_credits_binding::share_target, vec![credits])?;
+        let credits = transaction.shared_object(credits, true)?;
+        let refunded = transaction.receiving_object::<Invocation>(refunded)?;
+        transaction.call_target(
+            finite_credits_binding::restore_refund_target,
+            vec![credits, refunded],
+        )?;
         Ok(())
     })
 }
@@ -519,15 +565,8 @@ mod tests {
         let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
         let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xc3"));
 
-        let credits = issue_finite_credits_ptb(
-            &objects,
-            &cashier,
-            &admin,
-            beneficiary.clone(),
-            sui::types::Address::from_static("0xc3"),
-            5,
-        )
-        .unwrap();
+        let credits =
+            issue_finite_credits_ptb(&objects, &cashier, &admin, beneficiary.clone(), 5).unwrap();
         assert!(credits.commands.iter().any(|command| matches!(
             command,
             Command::MoveCall(call)
@@ -550,26 +589,50 @@ mod tests {
         )));
         assert!(pass.commands.iter().any(|command| matches!(
             command,
-            Command::MoveCall(call) if call.function.as_str() == "public_freeze_object"
+            Command::MoveCall(call)
+                if call.module.as_str() == "time_pass" && call.function.as_str() == "share"
         )));
     }
 
     #[test]
-    fn split_and_refund_claim_share_the_resulting_credits() {
+    fn existing_accounts_are_updated_without_creating_another_account() {
+        let objects = mock_nexus_objects();
+        let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
+        let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
+        let credits = object_ref_for_id(sui::types::Address::from_static("0xc5"));
+        let pass = object_ref_for_id(sui::types::Address::from_static("0xc6"));
+        let coin = object_ref_for_id(sui::types::Address::from_static("0xc7"));
+
+        let credits_tx =
+            issue_more_finite_credits_ptb(&objects, &cashier, &credits, &admin, 2).unwrap();
+        assert!(credits_tx.commands.iter().any(|command| matches!(
+            command,
+            Command::MoveCall(call)
+                if call.module.as_str() == "finite_credits"
+                    && call.function.as_str() == "issue_more"
+        )));
+
+        let pass_tx = buy_more_time_pass_ptb(&objects, &cashier, &pass, &coin, 10).unwrap();
+        assert!(pass_tx.commands.iter().any(|command| matches!(
+            command,
+            Command::MoveCall(call)
+                if call.module.as_str() == "time_pass" && call.function.as_str() == "buy_more"
+        )));
+    }
+
+    #[test]
+    fn refunded_invocation_is_restored_into_the_exact_account() {
         let objects = mock_nexus_objects();
         let credits = object_ref_for_id(sui::types::Address::from_static("0xc5"));
         let refunded = object_ref_for_id(sui::types::Address::from_static("0xc6"));
 
-        for transaction in [
-            split_finite_credits_ptb(&objects, &credits, 1).unwrap(),
-            claim_finite_credit_refund_ptb(&objects, &refunded).unwrap(),
-        ] {
-            assert!(transaction.commands.iter().any(|command| matches!(
-                command,
-                Command::MoveCall(call)
-                    if call.module.as_str() == "finite_credits"
-                        && call.function.as_str() == "share"
-            )));
-        }
+        let transaction = restore_finite_credit_refund_ptb(&objects, &credits, &refunded).unwrap();
+
+        assert!(transaction.commands.iter().any(|command| matches!(
+            command,
+            Command::MoveCall(call)
+                if call.module.as_str() == "finite_credits"
+                    && call.function.as_str() == "restore_refund"
+        )));
     }
 }

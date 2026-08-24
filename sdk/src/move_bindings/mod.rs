@@ -22,6 +22,14 @@ use {
     },
 };
 
+/// Canonical finite credit account for one Tool and payment beneficiary.
+pub type FiniteCredits =
+    tool::tool_cashier::PolicyAccount<tool::finite_credits::Policy, tool::finite_credits::State>;
+
+/// Canonical time pass account for one Tool and payment beneficiary.
+pub type TimePass =
+    tool::tool_cashier::PolicyAccount<tool::time_pass::Policy, tool::time_pass::State>;
+
 fn derive_object_id<T: sui::traits::ToBcs>(
     parent: sui::types::Address,
     tag: &sui::types::TypeTag,
@@ -216,6 +224,26 @@ pub fn derive_tool_cashier_id(
     derive_object_id(tool, &key, &tool::tool_cashier::ToolCashierKey::new(false))
 }
 
+/// Derive the canonical finite credit account for [beneficiary].
+pub fn derive_finite_credits_id(
+    objects: &NexusObjects,
+    cashier: sui::types::Address,
+    beneficiary: interface::payment::PaymentSourceKind,
+) -> anyhow::Result<sui::types::Address> {
+    type Key = tool::tool_cashier::PolicyAccountKey<tool::finite_credits::Policy>;
+    derive_object_id(cashier, &type_tag::<Key>(objects), &Key::new(beneficiary))
+}
+
+/// Derive the canonical time pass account for [beneficiary].
+pub fn derive_time_pass_id(
+    objects: &NexusObjects,
+    cashier: sui::types::Address,
+    beneficiary: interface::payment::PaymentSourceKind,
+) -> anyhow::Result<sui::types::Address> {
+    type Key = tool::tool_cashier::PolicyAccountKey<tool::time_pass::Policy>;
+    derive_object_id(cashier, &type_tag::<Key>(objects), &Key::new(beneficiary))
+}
+
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 pub(crate) fn derive_network_auth_binding_id(
     registry_type_origin_pkg_id: sui::types::Address,
@@ -371,13 +399,19 @@ pub mod workflow {
 mod tests {
     use {
         super::{
+            derive_finite_credits_id,
             derive_task_execution_id,
+            derive_time_pass_id,
             derive_tool_cashier_id,
             derive_walk_execution_event_task_id,
             interface::graph::RuntimeVertex,
             registry,
         },
-        crate::sui,
+        crate::{
+            move_bindings::interface::payment::PaymentSourceKind,
+            sui,
+            test_utils::sui_mocks::mock_nexus_objects,
+        },
         sui_move::MoveType,
     };
     #[test]
@@ -434,5 +468,19 @@ mod tests {
         );
 
         assert_eq!(derive_tool_cashier_id(package, tool).unwrap(), expected);
+    }
+
+    #[test]
+    fn policy_account_ids_are_deterministic_and_policy_scoped() {
+        let objects = mock_nexus_objects();
+        let cashier = sui::types::Address::from_static("0x71");
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0x72"));
+
+        let credits = derive_finite_credits_id(&objects, cashier, beneficiary.clone()).unwrap();
+        let repeated = derive_finite_credits_id(&objects, cashier, beneficiary.clone()).unwrap();
+        let pass = derive_time_pass_id(&objects, cashier, beneficiary).unwrap();
+
+        assert_eq!(credits, repeated);
+        assert_ne!(credits, pass);
     }
 }

@@ -20,8 +20,8 @@ Identify an Execution directly, or let the CLI resolve it from its occurrence:
   nexus execution inspect --task-id 0x21 --occurrence-id 7
 
 Authorize one exact active Tool Invocation through an accepted policy:
-  nexus execution authorize --execution-id 0x42 --vertex worker fixed-price
-  nexus execution authorize --execution-id 0x42 --vertex worker finite-credits --credits-id 0x99
+  nexus execution authorize --execution-id 0x42 --walk-index 0 --vertex worker fixed-price
+  nexus execution authorize --execution-id 0x42 --walk-index 0 --vertex worker finite-credits
 
 After runtime inspection, return to the occurrence to settle or verify it:
   nexus task occurrence inspect --task-id 0x21 --occurrence-id 7
@@ -76,6 +76,12 @@ pub(crate) enum ExecutionCommand {
             help = "Execution object ID"
         )]
         execution_id: nexus_sdk::sui::types::Address,
+        #[arg(
+            long,
+            value_name = "U64",
+            help = "Active walk position in the Execution"
+        )]
+        walk_index: u64,
         #[arg(long, value_name = "NAME", help = "DAG vertex name")]
         vertex: String,
         #[arg(
@@ -106,16 +112,10 @@ pub(crate) enum InvocationPolicyCommand {
     FixedPrice,
     #[command(about = "Use owner enabled sponsored free access")]
     Free,
-    #[command(about = "Consume one unit from a finite Credits object")]
-    FiniteCredits {
-        #[arg(long, value_name = "OBJECT_ID", help = "Shared Credits object ID")]
-        credits_id: nexus_sdk::sui::types::Address,
-    },
-    #[command(about = "Use an immutable TimePass object")]
-    TimePass {
-        #[arg(long, value_name = "OBJECT_ID", help = "Immutable TimePass object ID")]
-        pass_id: nexus_sdk::sui::types::Address,
-    },
+    #[command(about = "Consume one unit from the beneficiary finite credit account")]
+    FiniteCredits,
+    #[command(about = "Use the beneficiary time pass account")]
+    TimePass,
     #[command(
         about = "Call an arbitrary accepted policy",
         long_about = "Call an arbitrary accepted policy. Every policy exposes get_invocation. Arguments preserve command order and use object:<ID>, mutable:<ID>, id:<ID>, or pure:<BCS_HEX>."
@@ -185,12 +185,23 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
         }
         ExecutionCommand::Authorize {
             execution_id,
+            walk_index,
             vertex,
             iteration,
             out_of,
             policy,
             gas,
-        } => authorize::run(execution_id, vertex, iteration.zip(out_of), policy, gas).await,
+        } => {
+            authorize::run(
+                execution_id,
+                walk_index,
+                vertex,
+                iteration.zip(out_of),
+                policy,
+                gas,
+            )
+            .await
+        }
     }
 }
 
@@ -217,6 +228,8 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
+            "--walk-index",
+            "3",
             "--vertex",
             "worker",
             "--iteration",
@@ -224,8 +237,6 @@ mod tests {
             "--out-of",
             "5",
             "finite-credits",
-            "--credits-id",
-            "0x99",
         ])
         .expect("Invocation authorization should parse");
 
@@ -240,6 +251,8 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
+            "--walk-index",
+            "3",
             "--vertex",
             "worker",
             "--iteration",
