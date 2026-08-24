@@ -18,7 +18,7 @@ use {
         },
         types::{NexusContext, PackageRole},
     },
-    std::{collections::HashSet, sync::Arc},
+    std::sync::Arc,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -168,7 +168,6 @@ impl SchedulerTransaction<'_> {
         dag: &sui::types::ObjectReference,
         leader_cap: &sui::types::ObjectReference,
         gas_charge: u64,
-        tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
     ) -> Result<(), SchedulerError> {
         self.require_task_source(task)?;
         if offer.occurrence().task_id() != *task.object_id() {
@@ -187,7 +186,6 @@ impl SchedulerTransaction<'_> {
             leader_cap,
             offer.occurrence().occurrence_id(),
             gas_charge,
-            tool_cashiers,
         )
     }
 

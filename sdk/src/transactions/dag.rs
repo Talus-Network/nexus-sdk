@@ -3,12 +3,7 @@ use {
         move_bindings::{
             interface::{
                 dag as dag_binding,
-                graph::{
-                    self as graph_binding,
-                    PostFailureAction,
-                    RuntimeVertex,
-                    Vertex as GraphVertex,
-                },
+                graph::{self as graph_binding, PostFailureAction, RuntimeVertex},
                 meta_schema::MetaSchema,
                 verifier::{self as verifier_binding, RegisteredKeyAuxiliary, ToolVerifierMode},
             },
@@ -18,7 +13,6 @@ use {
             scheduler::{
                 execution_settlement as execution_settlement_binding,
                 execution_submission as execution_submission_binding,
-                tool_cashier_adapter as tool_cashier_adapter_binding,
             },
             tool::tool_registry as tool_registry_binding,
         },
@@ -40,7 +34,7 @@ use {
             DEFAULT_ENTRY_GROUP,
         },
     },
-    std::collections::{HashMap, HashSet},
+    std::collections::HashMap,
     sui::types::ProgrammableTransaction,
 };
 
@@ -56,7 +50,7 @@ fn vertex_kind_arg(
     }
 }
 
-fn runtime_vertex_arg(
+pub(crate) fn runtime_vertex_arg(
     tx: &mut move_boundary::NexusPtbBuilder,
     runtime_vertex: &RuntimeVertex,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -106,13 +100,6 @@ struct RuntimeToolResultWorksheetInputs {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RuntimeToolCashierRef {
-    pub vertex: GraphVertex,
-    pub object_id: sui::types::Address,
-    pub version: sui::types::Version,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OffchainVerifierKeyBindings {
     pub leader_key_binding: sui::types::ObjectReference,
     pub tool_key_binding: sui::types::ObjectReference,
@@ -148,7 +135,7 @@ pub enum OnchainToolArgument {
         initial_shared_version: sui::types::Version,
         mutable: bool,
     },
-    ImmutableObject(sui::types::ObjectReference),
+    Object(sui::types::ObjectReference),
     Vector {
         type_tag: Option<sui::types::TypeTag>,
         elements: Vec<OnchainToolArgument>,
@@ -472,70 +459,7 @@ fn offchain_verifier_ptb_objects(
     })
 }
 
-fn ordered_runtime_tool_cashier_refs(
-    tool_cashiers: &[RuntimeToolCashierRef],
-) -> Vec<&RuntimeToolCashierRef> {
-    let mut ordered = tool_cashiers.iter().collect::<Vec<_>>();
-    ordered.sort_by(|left, right| {
-        left.object_id
-            .to_string()
-            .cmp(&right.object_id.to_string())
-            .then_with(|| left.version.cmp(&right.version))
-            .then_with(|| left.vertex.name.as_str().cmp(right.vertex.name.as_str()))
-    });
-    ordered
-}
-
-fn runtime_tool_cashier_args(
-    tx: &mut move_boundary::NexusPtbBuilder,
-    tool_cashiers: &[RuntimeToolCashierRef],
-    next_vertex: &RuntimeVertex,
-    settle_current_vertex_payment: bool,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    expected_vertex_arg: Option<sui::types::Argument>,
-) -> anyhow::Result<Vec<sui::types::Argument>> {
-    let mut tool_cashier_args = HashMap::new();
-    let mut lock_tool_cashier_args = Vec::new();
-    let mut current_tool_cashier = None;
-
-    for cashier_ref in ordered_runtime_tool_cashier_refs(tool_cashiers) {
-        let key = (cashier_ref.object_id, cashier_ref.version);
-        let tool_cashier = match tool_cashier_args.entry(key) {
-            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                let arg =
-                    tx.shared_object_by_id(cashier_ref.object_id, cashier_ref.version, true)?;
-                lock_tool_cashier_args.push(arg);
-                *entry.insert(arg)
-            }
-        };
-
-        if &cashier_ref.vertex == next_vertex.vertex() {
-            current_tool_cashier = Some(tool_cashier);
-        }
-    }
-
-    if settle_current_vertex_payment {
-        if let Some(tool_cashier) = current_tool_cashier {
-            let expected_vertex = match expected_vertex_arg {
-                Some(expected_vertex) => expected_vertex,
-                None => runtime_vertex_arg(tx, next_vertex)?,
-            };
-            crate::transactions::tool_cashier::settle_payment_state_for_vertex(
-                tx,
-                tool_cashier,
-                dag,
-                execution,
-                expected_vertex,
-            )?;
-        }
-    }
-
-    Ok(lock_tool_cashier_args)
-}
-
-fn prepare_onchain_tool_argument(
+pub(crate) fn prepare_onchain_tool_argument(
     tx: &mut move_boundary::NexusPtbBuilder,
     argument: &OnchainToolArgument,
     pre_allocated: &HashMap<sui::types::Address, sui::types::Argument>,
@@ -558,7 +482,7 @@ fn prepare_onchain_tool_argument(
                 Ok(tx.shared_object_by_id(*object_id, *initial_shared_version, *mutable)?)
             }
         }
-        OnchainToolArgument::ImmutableObject(object) => Ok(tx.owned_object(object)?),
+        OnchainToolArgument::Object(object) => Ok(tx.owned_object(object)?),
         OnchainToolArgument::Vector { type_tag, elements } => {
             let elements = elements
                 .iter()
@@ -659,10 +583,8 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
     dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &[RuntimeToolCashierRef],
     walk_index: u64,
     next_vertex: &RuntimeVertex,
-    settle_current_vertex_payment: bool,
     submission: &PreparedOffchainToolResultSubmission,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
@@ -686,16 +608,6 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
                 leader_cap,
                 walk_index,
             },
-        )?;
-
-        let lock_tool_cashier_args = runtime_tool_cashier_args(
-            tx,
-            tool_cashiers,
-            next_vertex,
-            settle_current_vertex_payment,
-            dag,
-            execution,
-            None,
         )?;
 
         let verdict = match submission {
@@ -757,8 +669,6 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
             next_vertex,
         )?;
 
-        lock_payment_state_for_tools(tx, lock_tool_cashier_args, dag, execution)?;
-
         Ok(())
     })
 }
@@ -769,10 +679,8 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
     dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &[RuntimeToolCashierRef],
     walk_index: u64,
     next_vertex: &RuntimeVertex,
-    settle_current_vertex_payment: bool,
     submission: &PreparedOnchainToolResultSubmission,
 ) -> anyhow::Result<ProgrammableTransaction> {
     let dag_ref = dag;
@@ -802,16 +710,6 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
             },
         )?;
 
-        let lock_tool_cashier_args = runtime_tool_cashier_args(
-            tx,
-            tool_cashiers,
-            next_vertex,
-            settle_current_vertex_payment,
-            dag_arg,
-            execution_arg,
-            Some(expected_vertex),
-        )?;
-
         let PreparedOnchainToolResultSubmission::Execute(execution_plan) = submission;
         let pre_allocated = runtime_pre_allocated_objects(
             objects,
@@ -824,7 +722,6 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
             tool_registry,
             leader_registry,
         );
-        lock_payment_state_for_tools(tx, lock_tool_cashier_args, dag_arg, execution_arg)?;
         commit_prepared_onchain_tool_execution(
             tx,
             execution_plan,
@@ -850,7 +747,7 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
     dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &[RuntimeToolCashierRef],
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
     next_vertex: &RuntimeVertex,
     result: (sui::types::Address, sui::types::Version),
@@ -886,9 +783,8 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
             clock,
         )?;
 
-        let tool_cashiers =
-            runtime_tool_cashier_args(tx, tool_cashiers, next_vertex, false, dag, execution, None)?;
-        lock_payment_state_for_tools(tx, tool_cashiers, dag, execution)?;
+        super::invocation::settle(tx, dag, execution, next_vertex, invocation)?;
+
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
         if let Some(task) = task_settlement {
@@ -1363,7 +1259,7 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
     dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     failed_onchain_tool_reason: Option<Vec<u8>>,
@@ -1398,11 +1294,7 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
             clock,
         )?;
 
-        let mut tool_cashiers_args = Vec::with_capacity(tool_cashiers.len());
-        for (addr, ver) in tool_cashiers {
-            tool_cashiers_args.push(tx.shared_object_by_id(*addr, *ver, true)?);
-        }
-        lock_payment_state_for_tools(tx, tool_cashiers_args, dag, execution)?;
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
         if let Some(task) = task_settlement {
@@ -1413,21 +1305,25 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
     })
 }
 
-/// Build a PTB that aborts an expired DAG execution.
+/// Builds a PTB that aborts an expired DAG execution.
+///
+/// When `task_settlement` is supplied, the owning Task is settled after the
+/// execution transition has removed every accounting lock.
 pub fn abort_expired_execution_for_self_ptb(
     objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     broken_onchain_result_cleanups: &[BrokenOnchainToolResultCleanupInput],
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
 
         if !broken_onchain_result_cleanups.is_empty() {
             let tool_registry = tx.shared_root(&objects.tool_registry, false)?;
-            let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
 
             for cleanup in broken_onchain_result_cleanups {
                 let result = tx.shared_object(&cleanup.result_ref, true)?;
@@ -1450,16 +1346,24 @@ pub fn abort_expired_execution_for_self_ptb(
             execution_settlement_binding::abort_expired_execution_target,
             vec![runtime_authority, dag, execution, clock],
         )?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
+        }
         Ok(())
     })
 }
 
-/// Build a PTB that settles a committed tool result for one walk.
+/// Builds a PTB that settles a committed Tool result for one [RuntimeVertex].
+///
+/// The exact Invocation is settled before the optional owning Task settlement.
 pub fn settle_committed_tool_result_for_walk_for_self_ptb(
     objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let dag = tx.immutable_object(dag)?;
@@ -1484,6 +1388,10 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
                 clock,
             ],
         )?;
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
+        }
         Ok(())
     })
 }
@@ -1527,16 +1435,20 @@ pub fn settle_onchain_tool_result_for_walk(
     Ok(())
 }
 
-/// Build a PTB that settles a finalized on chain tool result for one walk.
+/// Builds a PTB that settles a finalized on chain Tool result for one [RuntimeVertex].
+///
+/// The exact Invocation is settled before the optional owning Task settlement.
 #[allow(clippy::too_many_arguments)]
 pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
     objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
+    invocation: &sui::types::ObjectReference,
     result: &sui::types::ObjectReference,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     tool_witness_id: sui::types::Address,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let dag = tx.immutable_object(dag)?;
@@ -1560,6 +1472,11 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
             tool_witness_id,
             clock,
         )?;
+
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
+        }
 
         Ok(())
     })
@@ -1608,6 +1525,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
     execution_owner: &sui::types::Owner,
     leader_cap: &sui::types::ObjectReference,
     leader_cap_owner: &sui::types::Owner,
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     failed_onchain_tool_reason: Option<Vec<u8>>,
@@ -1623,7 +1541,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
         let priority_fee_vault = tx.shared_root(&objects.priority_fee_vault, false)?;
         let leader_cap = tx.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let walk_index = tx.arg(&walk_index)?;
-        let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+        let expected_vertex_arg = runtime_vertex_arg(tx, expected_vertex)?;
         let failed_onchain_tool_reason =
             tx.arg(&MoveOption::from_option(failed_onchain_tool_reason))?;
         let commit_tx_digest = tx.arg(&commit_tx_digest)?;
@@ -1643,7 +1561,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
                 priority_fee_vault,
                 leader_cap,
                 walk_index,
-                expected_vertex,
+                expected_vertex_arg,
                 failed_onchain_tool_reason,
                 commit_tx_digest,
                 commit_gas_charge,
@@ -1651,6 +1569,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
                 clock,
             ],
         )?;
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
         Ok(())
     })
 }
@@ -1721,7 +1640,7 @@ fn emit_payment_ready_walk_requests(
         execution_settlement_binding::emit_payment_ready_walk_requests_target,
         vec![runtime_authority, dag, execution, leader_registry, clock],
     )
-    .expect("generated execution_settlement::emit_payment_ready_walk_requests target is valid");
+    .expect("generated execution settlement target is valid");
 }
 
 /// PTB template for creating a new DAG default value.
@@ -1820,24 +1739,6 @@ fn mark_entry_input_port(
         dag_binding::with_entry_port_in_group_target,
         vec![dag, vertex, entry_port, entry_group],
     )
-}
-
-/// PTB template to lock execution payment state for the given tools.
-#[allow(clippy::too_many_arguments)]
-fn lock_payment_state_for_tools(
-    tx: &mut move_boundary::NexusPtbBuilder,
-    tool_cashiers: Vec<sui::types::Argument>,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-) -> anyhow::Result<()> {
-    for tool_cashier in tool_cashiers {
-        let runtime_authority = tx.runtime_authority(false)?;
-        tx.call_target(
-            tool_cashier_adapter_binding::lock_payment_state_for_tool_target,
-            vec![runtime_authority, tool_cashier, dag, execution],
-        )?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1942,6 +1843,18 @@ mod tests {
         assert_eq!(shared.mutability().is_mutable(), expected_mutable);
     }
 
+    fn expect_task_settlement_uses_clock(ptb: &ProgrammableTransaction) {
+        let settle = move_call_index(ptb, None, "scheduler", "settle");
+        let Command::MoveCall(call) = &ptb.commands[settle] else {
+            panic!("expected task settlement call");
+        };
+        let Input::Shared(clock) = input_for_argument(ptb, &call.arguments[3]) else {
+            panic!("expected Clock shared object argument");
+        };
+        assert_eq!(clock.object_id(), move_boundary::CLOCK_OBJECT_ID);
+        assert!(!clock.mutability().is_mutable());
+    }
+
     fn expect_u64_arg(
         ptb: &ProgrammableTransaction,
         argument: &sui::types::Argument,
@@ -2010,10 +1923,8 @@ mod tests {
             &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
             0,
             &RuntimeVertex::plain("offchain"),
-            false,
             submission,
         )
         .unwrap()
@@ -2221,7 +2132,7 @@ mod tests {
     }
 
     #[test]
-    fn onchain_tool_execution_locks_payment_before_execute() {
+    fn onchain_tool_execution_keeps_invocation_locked_until_outcome() {
         let objects = nexus_objects();
         let next_vertex = RuntimeVertex::plain("counter_increment");
         let tool_package = addr("0x40");
@@ -2239,27 +2150,22 @@ mod tests {
             &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[RuntimeToolCashierRef {
-                vertex: next_vertex.vertex().clone(),
-                object_id: addr("0x30"),
-                version: 9,
-            }],
             0,
             &next_vertex,
-            true,
             &submission,
         )
         .unwrap();
 
-        let lock_payment = move_call_index(
-            &ptb,
-            None,
-            "tool_cashier_adapter",
-            "lock_payment_state_for_tool",
-        );
         let execute = move_call_index(&ptb, Some(tool_package), "tool", "execute");
 
-        assert!(lock_payment < execute);
+        assert!(!ptb.commands.iter().any(|command| {
+            matches!(
+                command,
+                Command::MoveCall(call)
+                    if call.module.as_str() == "invocation_adapter"
+                        && call.function.as_str() == "settle"
+            )
+        }));
         assert_eq!(execute, ptb.commands.len() - 1);
     }
 
@@ -2286,10 +2192,8 @@ mod tests {
             &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
             0,
             &next_vertex,
-            false,
             &submission,
         )
         .unwrap();
@@ -2340,10 +2244,8 @@ mod tests {
             &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
             0,
             &next_vertex,
-            false,
             &submission,
         )
         .unwrap();
@@ -2401,7 +2303,7 @@ mod tests {
             &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
+            &object_ref("0x30", 9, 30),
             9,
             &next_vertex,
             (addr("0x70"), 10),
@@ -2429,6 +2331,7 @@ mod tests {
         expect_u64_arg(&ptb, &call.arguments[8], 9);
         expect_u64_arg(&ptb, &call.arguments[11], 123);
         expect_u64_arg(&ptb, &call.arguments[12], 45);
+        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
     }
 
     #[test]
@@ -2440,7 +2343,7 @@ mod tests {
             &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &HashSet::new(),
+            &object_ref("0x30", 9, 30),
             11,
             &RuntimeVertex::plain(""),
             None,
@@ -2468,10 +2371,11 @@ mod tests {
         expect_u64_arg(&ptb, &call.arguments[7], 11);
         expect_u64_arg(&ptb, &call.arguments[11], 123);
         expect_u64_arg(&ptb, &call.arguments[12], 45);
+        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
     }
 
     #[test]
-    fn failed_onchain_tool_payment_record_stays_state_only() {
+    fn failed_onchain_tool_payment_record_does_not_settle_invocation() {
         let objects = nexus_objects();
         let expected_vertex = RuntimeVertex::with_iterator("counter_increment", 2, 3);
         let ptb = record_committed_tool_result_gas_charge_by_leader_ptb(
@@ -2508,8 +2412,8 @@ mod tests {
             matches!(
                 command,
                 Command::MoveCall(call)
-                    if call.module.as_str() == "tool_cashier_adapter"
-                        && call.function.as_str() == "lock_payment_state_for_tool"
+                    if call.module.as_str() == "invocation_adapter"
+                        && call.function.as_str() == "settle"
             )
         }));
         assert!(!ptb.commands.iter().any(|command| {
@@ -2523,7 +2427,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_onchain_tool_secondary_uses_settlement_boundary() {
+    fn failed_onchain_tool_secondary_settles_exact_invocation() {
         let objects = nexus_objects();
         let expected_vertex = RuntimeVertex::with_iterator("counter_increment", 2, 3);
         let ptb = settle_committed_tool_result_for_walk_by_leader_ptb(
@@ -2531,7 +2435,7 @@ mod tests {
             &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &HashSet::from([(addr("0x30"), 9)]),
+            &object_ref("0x30", 9, 30),
             11,
             &expected_vertex,
             Some(b"tool failed".to_vec()),
@@ -2557,14 +2461,7 @@ mod tests {
         expect_u64_arg(&ptb, &call.arguments[7], 11);
         expect_u64_arg(&ptb, &call.arguments[11], 123);
         expect_u64_arg(&ptb, &call.arguments[12], 45);
-        assert!(
-            move_call_index(
-                &ptb,
-                None,
-                "tool_cashier_adapter",
-                "lock_payment_state_for_tool",
-            ) > call_index
-        );
+        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
         assert!(
             move_call_index(
                 &ptb,
@@ -2578,12 +2475,16 @@ mod tests {
     #[test]
     fn permissionless_settle_committed_tool_result_uses_priority_fee_vault_argument() {
         let objects = nexus_objects();
+        let task = object_ref("0x80", 10, 80);
 
         let ptb = settle_committed_tool_result_for_walk_for_self_ptb(
             &objects,
             &object_ref("0x50", 7, 50),
             &object_ref("0x60", 8, 60),
+            &object_ref("0x30", 9, 30),
             13,
+            &RuntimeVertex::plain("counter_increment"),
+            Some(&task),
         )
         .expect("ptb should build");
 
@@ -2602,21 +2503,28 @@ mod tests {
         expect_shared_root_arg(&ptb, &call.arguments[4], &objects.leader_registry, false);
         expect_shared_root_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[6], 13);
+        let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(call_index < invocation && invocation < task);
+        expect_task_settlement_uses_clock(&ptb);
     }
 
     #[test]
     fn settle_onchain_tool_result_uses_priority_fee_vault_argument() {
         let objects = nexus_objects();
         let next_vertex = RuntimeVertex::plain("counter_increment");
+        let task = object_ref("0x80", 10, 80);
 
         let ptb = settle_onchain_tool_result_for_walk_for_self_ptb(
             &objects,
             &object_ref("0x50", 7, 50),
             &object_ref("0x60", 8, 60),
+            &object_ref("0x30", 9, 30),
             &object_ref("0x70", 9, 70),
             15,
             &next_vertex,
             addr("0x71"),
+            Some(&task),
         )
         .expect("ptb should build");
 
@@ -2629,12 +2537,40 @@ mod tests {
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected on-chain settlement call");
         };
+        let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(call_index < invocation && invocation < task);
+        expect_task_settlement_uses_clock(&ptb);
 
         assert_eq!(call.arguments.len(), 11);
         expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
         expect_shared_root_arg(&ptb, &call.arguments[5], &objects.leader_registry, false);
         expect_shared_root_arg(&ptb, &call.arguments[6], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[7], 15);
+    }
+
+    #[test]
+    fn permissionless_abort_settles_the_task_after_the_execution() {
+        let objects = nexus_objects();
+        let task = object_ref("0x80", 10, 80);
+        let ptb = abort_expired_execution_for_self_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            &[],
+            Some(&task),
+        )
+        .expect("ptb should build");
+
+        let abort = move_call_index(
+            &ptb,
+            None,
+            "execution_settlement",
+            "abort_expired_execution",
+        );
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(abort < task);
+        expect_task_settlement_uses_clock(&ptb);
     }
 
     #[test]

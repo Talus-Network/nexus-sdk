@@ -368,9 +368,9 @@ pub(crate) enum OccurrenceCommand {
         #[arg(
             long,
             value_name = "OBJECT_ID",
-            help = "Select the ToolCashier assisted abort path"
+            help = "Refund this exact Invocation before aborting"
         )]
-        tool_cashier_id: Option<sui::types::Address>,
+        invocation_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },

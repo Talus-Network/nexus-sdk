@@ -371,6 +371,7 @@ fn request_walk_event() -> RequestWalkExecutionEvent {
     RequestWalkExecutionEvent {
         dag: object_id(addr("0x51")),
         execution: object_id(addr("0x52")),
+        invocation: object_id(addr("0x56")),
         invoker: addr("0x53"),
         walk_index: 0,
         next_vertex: RuntimeVertex::plain("entry"),

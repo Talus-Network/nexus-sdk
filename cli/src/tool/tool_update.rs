@@ -78,30 +78,6 @@ pub(crate) async fn update_on_chain_package(
     }))
 }
 
-pub(crate) async fn drain_cashier(
-    tool_fqn: ToolFqn,
-    owner_cap: Option<sui::types::Address>,
-    sui_gas_coin: Option<sui::types::Address>,
-    sui_gas_budget: u64,
-) -> AnyResult<(), NexusCliError> {
-    let owner_cap = resolve_owner_cap(&tool_fqn, owner_cap).await?;
-    let client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    command_title!("Draining cashier for Tool '{tool_fqn}'");
-    let progress = loading!("Draining settled funds...");
-    let result = client
-        .tool()
-        .drain_cashier(&tool_fqn, owner_cap)
-        .await
-        .map_err(NexusCliError::Nexus)?;
-    progress.success();
-    notify_success!("Transaction digest: {digest}", digest = result.tx_digest);
-    json_output(&json!({
-        "action": "drain_cashier",
-        "tool_fqn": tool_fqn,
-        "digest": result.tx_digest,
-    }))
-}
-
 async fn resolve_owner_cap(
     tool_fqn: &ToolFqn,
     owner_cap: Option<sui::types::Address>,

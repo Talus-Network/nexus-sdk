@@ -12,6 +12,8 @@ mod history;
 
 #[cfg(test)]
 use self::history::MAX_TRANSACTION_NOT_FOUND_RETRIES;
+#[cfg(test)]
+use crate::move_bindings::tool::era::V1 as ToolWitnessV1;
 #[cfg(feature = "walrus")]
 use crate::walrus::StorageConf;
 use {
@@ -30,10 +32,6 @@ use {
             },
             move_std::type_name::TypeName,
             sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
-            tool::{
-                era::V1 as ToolWitnessV1,
-                tool_cashier::{ToolCashier, ToolCashierInnerV1},
-            },
             workflow::{
                 era::V1 as WorkflowWitnessV1,
                 execution::{self as execution_move, DAGExecution, DAGExecutionInnerV1, DAGWalk},
@@ -43,12 +41,18 @@ use {
                     TerminalErrEvalRecordedEvent,
                 },
                 execution_failure::WorkflowFailureClass,
+                invocation_adapter::InvocationLockedEvent,
             },
+            FiniteCredits,
+            TimePass,
         },
         move_boundary,
         nexus::{client::NexusClient, crawler::Crawler, error::NexusError, tap},
         sui,
-        transactions::{dag, tool_cashier},
+        transactions::{
+            dag,
+            invocation::{self, InvocationPolicyCall},
+        },
         types::{DagSpec, NexusContext, NexusData, PackageRole, SharedRoot, ToolRef},
     },
     anyhow::{anyhow, bail},
@@ -77,6 +81,29 @@ pub struct PublishResult {
     pub dag_object_id: sui::types::Address,
 }
 
+/// One Tool owner accepted policy selected for Invocation authorization.
+///
+/// Canonical policy variants need only their economic object IDs. Use
+/// [`InvocationPolicy::Custom`] for an owner policy whose `get_invocation`
+/// function accepts arbitrary [`crate::transactions::dag::OnchainToolArgument`]
+/// values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InvocationPolicy {
+    FixedPrice,
+    FiniteCredits,
+    TimePass,
+    Custom(InvocationPolicyCall),
+}
+
+/// Confirmed result of authorizing one exact Tool Invocation.
+#[derive(Clone, Debug)]
+pub struct AuthorizeInvocationResult {
+    pub tx_digest: sui::types::Digest,
+    pub tx_checkpoint: u64,
+    /// Complete accounting identity emitted by the successful lock.
+    pub lock: InvocationLockedEvent,
+}
+
 /// Published DAG interface needed to author one execution.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct DagSnapshot {
@@ -86,18 +113,16 @@ pub struct DagSnapshot {
     pub vertex_meta_schemas: BTreeMap<String, MetaSchema>,
 }
 
+/// One expired lock with the current object reference needed for exact refund.
+///
+/// [`ExecutionPaymentVertexLock`] stores identity but not the version and digest
+/// required by a receiving PTB input, so it cannot replace this resolved value.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct ToolCashierAbortCandidate {
-    pub tool_fqn: crate::ToolFqn,
-    pub tool_cashier_ref: sui::types::ObjectReference,
-    pub matching_walks: Vec<ToolCashierAbortCandidateWalk>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct ToolCashierAbortCandidateWalk {
+pub struct InvocationAbortCandidate {
     pub walk_index: usize,
     pub vertex: RuntimeVertex,
     pub payment_vertex_key: Vec<u8>,
+    pub invocation_ref: sui::types::ObjectReference,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -106,7 +131,7 @@ pub struct AbortExpiredExecutionResult {
     pub tx_checkpoint: u64,
     pub dag_id: sui::types::Address,
     pub dag_execution_id: sui::types::Address,
-    pub selected_candidate: ToolCashierAbortCandidate,
+    pub selected_candidate: InvocationAbortCandidate,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -128,22 +153,26 @@ pub struct SettleCommittedToolResultParams {
 pub struct ResolveExpiredWalkParams {
     pub dag_execution_id: sui::types::Address,
     pub walk_index: u64,
-    pub tool_cashier_id: Option<sui::types::Address>,
+    pub invocation_id: Option<sui::types::Address>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExpiredWalkResolutionKind {
-    Settled,
+    Settled {
+        expected_vertex: RuntimeVertex,
+        invocation_ref: sui::types::ObjectReference,
+    },
     SettledOnchainResult {
         result_ref: sui::types::ObjectReference,
         expected_vertex: RuntimeVertex,
+        invocation_ref: sui::types::ObjectReference,
         tool_witness_id: sui::types::Address,
         finalize_tx_digest: Vec<u8>,
     },
     Aborted,
-    AbortedWithToolCashier {
-        selected_candidate: ToolCashierAbortCandidate,
+    AbortedWithInvocation {
+        selected_candidate: InvocationAbortCandidate,
     },
     Skipped {
         reason: String,
@@ -153,17 +182,17 @@ pub enum ExpiredWalkResolutionKind {
 impl ExpiredWalkResolutionKind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Settled => "settled",
+            Self::Settled { .. } => "settled",
             Self::SettledOnchainResult { .. } => "settled_onchain_result",
             Self::Aborted => "aborted",
-            Self::AbortedWithToolCashier { .. } => "aborted_with_tool_cashier",
+            Self::AbortedWithInvocation { .. } => "aborted_with_invocation",
             Self::Skipped { .. } => "skipped",
         }
     }
 
-    pub fn selected_candidate(&self) -> Option<&ToolCashierAbortCandidate> {
+    pub fn selected_candidate(&self) -> Option<&InvocationAbortCandidate> {
         match self {
-            Self::AbortedWithToolCashier { selected_candidate } => Some(selected_candidate),
+            Self::AbortedWithInvocation { selected_candidate } => Some(selected_candidate),
             _ => None,
         }
     }
@@ -465,8 +494,11 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
         NexusEventKind::OccurrenceDispatched(e) => Some(e.execution_id.into()),
         NexusEventKind::ExecutionPaymentFeesRecorded(e) => Some(e.execution_id),
         NexusEventKind::ExecutionPaymentToolCostSnapshotted(e) => Some(e.execution_id),
-        NexusEventKind::ExecutionPaymentVertexLocked(e) => Some(e.execution_id),
-        NexusEventKind::ExecutionPaymentVertexSettled(e) => Some(e.execution_id),
+        NexusEventKind::InvocationAuthorizationRequired(e) => Some(e.execution.into()),
+        NexusEventKind::InvocationLocked(e) => Some(e.execution.bytes),
+        NexusEventKind::InvocationSettled(e) => Some(e.execution.bytes),
+        NexusEventKind::RequestWalkExecution(e) => Some(e.execution.into()),
+        NexusEventKind::CommittedToolResult(e) => Some(e.execution.into()),
         NexusEventKind::WalkAdvanced(e) => Some(e.execution.into()),
         NexusEventKind::WalkFailed(e) => Some(e.execution.into()),
         NexusEventKind::SubmissionFailureEvidenceRecorded(e) => Some(e.execution.into()),
@@ -842,11 +874,22 @@ pub async fn inspect_expired_walk_resolution_at(
     .await?
     {
         OnchainToolResultState::Committed { .. } => {
+            let invocation_ref = fetch_invocation_for_vertex(
+                client,
+                context,
+                params.dag_execution_id,
+                execution.dag_id(),
+                timeout_vertex,
+            )
+            .await?;
             return Ok(ExpiredWalkResolutionPlan {
                 dag_id: execution.dag_id(),
                 dag_execution_id: params.dag_execution_id,
                 walk_index: params.walk_index,
-                kind: ExpiredWalkResolutionKind::Settled,
+                kind: ExpiredWalkResolutionKind::Settled {
+                    expected_vertex: timeout_vertex.clone(),
+                    invocation_ref,
+                },
             });
         }
         OnchainToolResultState::Finalized { result, object_ref } => {
@@ -864,6 +907,14 @@ pub async fn inspect_expired_walk_resolution_at(
                 client,
                 &vertex_info,
                 timeout_vertex.clone(),
+                fetch_invocation_for_vertex(
+                    client,
+                    context,
+                    params.dag_execution_id,
+                    execution.dag_id(),
+                    timeout_vertex,
+                )
+                .await?,
                 &result,
                 object_ref,
             )
@@ -933,43 +984,44 @@ pub async fn inspect_expired_walk_resolution_at(
         })?;
     let tool_fqn = vertex_info.kind.tool_fqn()?;
     let vertex_key = payment_vertex_key(params.dag_execution_id, abort_vertex, &tool_fqn)?;
-    let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
     let locked = payment
         .locked_vertices
         .iter()
-        .any(|lock| lock.vertex_key == vertex_key && lock.tool_fqn == tool_fqn_bytes);
+        .find(|lock| lock.vertex_key == vertex_key);
 
-    if !locked {
+    let Some(locked) = locked else {
         return Ok(ExpiredWalkResolutionPlan {
             dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
             kind: ExpiredWalkResolutionKind::Aborted,
         });
-    }
+    };
 
-    let candidate_walk = ToolCashierAbortCandidateWalk {
+    let invocation_ref = crawler
+        .get_object_metadata(locked.invocation_id.bytes)
+        .await?
+        .object_ref();
+    let selected_candidate = InvocationAbortCandidate {
         walk_index: usize::try_from(params.walk_index)?,
         vertex: abort_vertex.clone(),
         payment_vertex_key: vertex_key,
+        invocation_ref,
     };
-    let candidates = fetch_tool_cashier_refs_for_abort_candidates(
-        crawler,
-        context.tool_registry.object_id(),
-        context
-            .require_package(PackageRole::Tool)?
-            .type_origin("tool_cashier", "ToolCashierKey")?,
-        HashMap::from([(tool_fqn, vec![candidate_walk])]),
-    )
-    .await?;
-    let selected_candidate =
-        select_tool_cashier_abort_candidate(candidates, params.tool_cashier_id)?;
+    if params
+        .invocation_id
+        .is_some_and(|expected| expected != *selected_candidate.invocation_ref.object_id())
+    {
+        return Err(anyhow!(
+            "Requested Invocation does not match the expired walk"
+        ));
+    }
 
     Ok(ExpiredWalkResolutionPlan {
         dag_id: execution.dag_id(),
         dag_execution_id: params.dag_execution_id,
         walk_index: params.walk_index,
-        kind: ExpiredWalkResolutionKind::AbortedWithToolCashier { selected_candidate },
+        kind: ExpiredWalkResolutionKind::AbortedWithInvocation { selected_candidate },
     })
 }
 
@@ -986,6 +1038,7 @@ async fn finalized_onchain_result_resolution_kind(
     client: &NexusClient,
     vertex_info: &graph_move::VertexInfo,
     timeout_vertex: RuntimeVertex,
+    invocation_ref: sui::types::ObjectReference,
     result: &OnchainToolResultInnerV1,
     object_ref: sui::types::ObjectReference,
 ) -> anyhow::Result<ExpiredWalkResolutionKind> {
@@ -1020,6 +1073,7 @@ async fn finalized_onchain_result_resolution_kind(
     Ok(ExpiredWalkResolutionKind::SettledOnchainResult {
         result_ref: object_ref,
         expected_vertex: timeout_vertex,
+        invocation_ref,
         tool_witness_id: tool_witness_id.bytes,
         finalize_tx_digest,
     })
@@ -1068,6 +1122,14 @@ async fn broken_onchain_result_cleanups_for_abort(
                     client,
                     vertex_info,
                     timeout_vertex.clone(),
+                    fetch_invocation_for_vertex(
+                        client,
+                        context,
+                        execution_id,
+                        execution.dag_id(),
+                        timeout_vertex,
+                    )
+                    .await?,
                     &result,
                     object_ref.clone(),
                 )
@@ -1345,6 +1407,76 @@ pub async fn should_settle_tool_err_eval_gas(
     ))
 }
 
+async fn resolve_invocation_policy_call(
+    client: &NexusClient,
+    context: &NexusContext,
+    cashier_id: sui::types::Address,
+    beneficiary: crate::move_bindings::interface::payment::PaymentSourceKind,
+    policy: InvocationPolicy,
+) -> Result<InvocationPolicyCall, NexusError> {
+    match policy {
+        InvocationPolicy::FixedPrice => {
+            InvocationPolicyCall::fixed_price(context).map_err(NexusError::Parsing)
+        }
+        InvocationPolicy::FiniteCredits => {
+            let credits_id = crate::move_bindings::derive_finite_credits_id(
+                context,
+                cashier_id,
+                beneficiary.clone(),
+            )
+            .map_err(NexusError::Parsing)?;
+            let credits = client
+                .crawler()
+                .get_object::<FiniteCredits>(credits_id)
+                .await
+                .map_err(|error| {
+                    NexusError::Configuration(format!(
+                        "Finite credits '{credits_id}' could not be resolved: {error}"
+                    ))
+                })?;
+            if credits.data.cashier.bytes != cashier_id || credits.data.beneficiary != beneficiary {
+                return Err(NexusError::Configuration(format!(
+                    "Finite credits '{credits_id}' belong to another Tool"
+                )));
+            }
+            let sui::types::Owner::Shared(initial_shared_version) = credits.owner else {
+                return Err(NexusError::Configuration(format!(
+                    "Finite credits '{credits_id}' must be a shared object"
+                )));
+            };
+            InvocationPolicyCall::finite_credits(context, credits_id, initial_shared_version)
+                .map_err(NexusError::Parsing)
+        }
+        InvocationPolicy::TimePass => {
+            let pass_id =
+                crate::move_bindings::derive_time_pass_id(context, cashier_id, beneficiary.clone())
+                    .map_err(NexusError::Parsing)?;
+            let pass = client
+                .crawler()
+                .get_object::<TimePass>(pass_id)
+                .await
+                .map_err(|error| {
+                    NexusError::Configuration(format!(
+                        "Time pass '{pass_id}' could not be resolved: {error}"
+                    ))
+                })?;
+            if pass.data.cashier.bytes != cashier_id || pass.data.beneficiary != beneficiary {
+                return Err(NexusError::Configuration(format!(
+                    "Time pass '{pass_id}' belongs to another Tool"
+                )));
+            }
+            let sui::types::Owner::Shared(initial_shared_version) = pass.owner else {
+                return Err(NexusError::Configuration(format!(
+                    "Time pass '{pass_id}' must be a shared object"
+                )));
+            };
+            InvocationPolicyCall::time_pass(context, pass_id, initial_shared_version)
+                .map_err(NexusError::Parsing)
+        }
+        InvocationPolicy::Custom(call) => Ok(call),
+    }
+}
+
 impl WorkflowActions {
     /// Publish the provided [`DagSpec`] specification.
     pub async fn publish(
@@ -1404,6 +1536,113 @@ impl WorkflowActions {
         fetch_dag_snapshot(&self.client, &context, dag_id)
             .await
             .map_err(NexusError::Rpc)
+    }
+
+    /// Authorizes one active runtime vertex through an owner accepted policy.
+    ///
+    /// Authorization records the exact accounting lock and emits the executable
+    /// walk request in the same transaction. Canonical entitlement IDs are
+    /// derived from the execution beneficiary. Custom policy calls retain their
+    /// supplied argument order and object access modes.
+    pub async fn authorize_invocation(
+        &self,
+        dag_execution_id: sui::types::Address,
+        walk_index: u64,
+        vertex: RuntimeVertex,
+        policy: InvocationPolicy,
+    ) -> Result<AuthorizeInvocationResult, NexusError> {
+        let client = &self.client;
+        let objects = client.get_nexus_objects();
+        let required_roots = [objects.tool_registry, objects.leader_registry];
+        let crawler = client.crawler();
+        let execution = fetch_execution(client, dag_execution_id, &[]).await?;
+        let is_active = execution
+            .object
+            .data
+            .walks
+            .get(walk_index as usize)
+            .is_some_and(|walk| {
+                matches!(
+                    walk,
+                    DAGWalk::Active { next_vertex, .. } if next_vertex == &vertex
+                )
+            });
+        if !is_active {
+            return Err(NexusError::Configuration(format!(
+                "Runtime vertex '{vertex}' is not active in execution '{dag_execution_id}'"
+            )));
+        }
+
+        let dag_id = execution.object.data.dag_id();
+        let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
+        let vertex_info =
+            fetch_dag_vertex_bcs(crawler, &execution.context, &dag.data, vertex.vertex())
+                .await
+                .map_err(NexusError::Rpc)?
+                .ok_or_else(|| {
+                    NexusError::Configuration(format!(
+                        "Vertex '{}' is absent from DAG '{}'",
+                        vertex.vertex_name(),
+                        dag_id
+                    ))
+                })?;
+        let tool_fqn = vertex_info.kind.tool_fqn().map_err(NexusError::Parsing)?;
+        let cashier = client.fetch_tool_cashier(&tool_fqn).await?;
+        let cashier_id = *cashier.object_id();
+        let payment = tap::fetch_execution_payment_for_execution(
+            client,
+            &execution.context,
+            dag_execution_id,
+        )
+        .await
+        .map_err(NexusError::Rpc)?;
+        let runtime = client.runtime_context(&required_roots).await?;
+        let policy = resolve_invocation_policy_call(
+            client,
+            &runtime,
+            cashier_id,
+            payment.data.source_kind,
+            policy,
+        )
+        .await?;
+        let transaction = invocation::authorize_ptb(
+            &runtime,
+            &cashier,
+            &dag.object_ref(),
+            &execution.object.object_ref(),
+            invocation::InvocationTarget {
+                walk_index,
+                vertex: &vertex,
+            },
+            &policy,
+            0,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let sender = client.owner()?;
+        let response = client.submit_transaction(transaction, sender).await?;
+        let lock = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::InvocationLocked(lock)
+                    if lock.execution.bytes == dag_execution_id && lock.vertex == vertex =>
+                {
+                    Some(lock.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow!(
+                    "Authorization transaction '{}' emitted no exact Invocation lock",
+                    response.digest
+                ))
+            })?;
+
+        Ok(AuthorizeInvocationResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            lock,
+        })
     }
 
     /// Inspect a DAG execution by following updates to its shared object.
@@ -1589,7 +1828,7 @@ impl WorkflowActions {
     /// Submit the current permissionless expired-execution abort entry.
     ///
     /// This wraps `execution_settlement::abort_expired_execution`; it does not
-    /// discover or submit ToolCashier candidates.
+    /// discover or submit exact Invocation candidates.
     ///
     /// If a double-expired active walk is blocked by a finalized on-chain
     /// result whose required stamps are insufficient, this returns a local
@@ -1662,6 +1901,7 @@ impl WorkflowActions {
                     tool_witness_id: cleanup.tool_witness_id,
                 })
                 .collect::<Vec<_>>(),
+            None,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(tx, address).await?;
@@ -1699,13 +1939,25 @@ impl WorkflowActions {
         let runtime = client.runtime_context(&required_roots).await?;
         let dag_id = execution.object.data.dag_id();
         let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
+        let expected_vertex = pending_settlement_vertex(&execution.object.data, params.walk_index)?;
+        let invocation_ref = fetch_invocation_for_vertex(
+            client,
+            &execution.context,
+            params.dag_execution_id,
+            dag_id,
+            &expected_vertex,
+        )
+        .await?;
 
         let address = client.owner()?;
         let tx = dag::settle_committed_tool_result_for_walk_for_self_ptb(
             &runtime,
             &dag.object_ref(),
             &execution.object.object_ref(),
+            &invocation_ref,
             params.walk_index,
+            &expected_vertex,
+            None,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(tx, address).await?;
@@ -1736,14 +1988,31 @@ impl WorkflowActions {
         let runtime = client.runtime_context(&required_roots).await?;
         let dag_id = execution.object.data.dag_id();
         let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
+        let settlement_vertex =
+            pending_settlement_vertex(&execution.object.data, params.walk_index)?;
+        let invocation_ref = fetch_invocation_for_vertex(
+            client,
+            &execution.context,
+            params.dag_execution_id,
+            dag_id,
+            &settlement_vertex,
+        )
+        .await?;
         let leader_cap_ref = crawler
             .get_object_metadata(params.leader_cap_id)
             .await
             .map_err(NexusError::Rpc)?;
         let (expected_vertex, failed_onchain_tool_reason) =
             match (params.expected_vertex, params.failed_onchain_tool_reason) {
-                (Some(expected_vertex), Some(reason)) => (expected_vertex, Some(reason)),
-                (None, None) => (RuntimeVertex::plain(""), None),
+                (Some(expected_vertex), Some(reason)) => {
+                    if expected_vertex != settlement_vertex {
+                        return Err(NexusError::TransactionBuilding(anyhow::anyhow!(
+                            "expected_vertex does not match the pending settlement vertex"
+                        )));
+                    }
+                    (expected_vertex, Some(reason))
+                }
+                (None, None) => (settlement_vertex, None),
                 _ => {
                     return Err(NexusError::TransactionBuilding(anyhow::anyhow!(
                         "expected_vertex and failed_onchain_tool_reason must be supplied together"
@@ -1758,6 +2027,7 @@ impl WorkflowActions {
             &execution.object.owner,
             &leader_cap_ref.object_ref(),
             &leader_cap_ref.owner,
+            &invocation_ref,
             params.walk_index,
             &expected_vertex,
             failed_onchain_tool_reason,
@@ -1870,7 +2140,10 @@ impl WorkflowActions {
         };
 
         match plan.kind {
-            ExpiredWalkResolutionKind::Settled => {
+            ExpiredWalkResolutionKind::Settled {
+                expected_vertex,
+                invocation_ref,
+            } => {
                 let settled = self
                     .settle_committed_tool_result_for_walk_with(
                         client,
@@ -1883,12 +2156,16 @@ impl WorkflowActions {
                 Ok(ExpiredWalkResolutionResult {
                     tx_digest: Some(settled.tx_digest),
                     tx_checkpoint: Some(settled.tx_checkpoint),
-                    ..base(ExpiredWalkResolutionKind::Settled)
+                    ..base(ExpiredWalkResolutionKind::Settled {
+                        expected_vertex,
+                        invocation_ref,
+                    })
                 })
             }
             ExpiredWalkResolutionKind::SettledOnchainResult {
                 result_ref,
                 expected_vertex,
+                invocation_ref,
                 tool_witness_id,
                 finalize_tx_digest,
             } => {
@@ -1938,7 +2215,15 @@ impl WorkflowActions {
                         &expected_vertex,
                         tool_witness_id,
                         clock,
-                    )
+                    )?;
+                    invocation::settle(
+                        tx,
+                        dag_arg,
+                        execution_arg,
+                        &expected_vertex,
+                        &invocation_ref,
+                    )?;
+                    Ok(())
                 })
                 .map_err(NexusError::TransactionBuilding)?;
                 let response = client.submit_transaction(tx, address).await?;
@@ -1948,6 +2233,7 @@ impl WorkflowActions {
                     ..base(ExpiredWalkResolutionKind::SettledOnchainResult {
                         result_ref: result.object_ref(),
                         expected_vertex,
+                        invocation_ref,
                         tool_witness_id,
                         finalize_tx_digest,
                     })
@@ -1963,19 +2249,19 @@ impl WorkflowActions {
                     ..base(ExpiredWalkResolutionKind::Aborted)
                 })
             }
-            ExpiredWalkResolutionKind::AbortedWithToolCashier { selected_candidate } => {
-                let tool_cashier_id = *selected_candidate.tool_cashier_ref.object_id();
+            ExpiredWalkResolutionKind::AbortedWithInvocation { selected_candidate } => {
+                let invocation_id = *selected_candidate.invocation_ref.object_id();
                 let aborted = self
-                    .abort_expired_execution_with_tool_cashier_with(
+                    .abort_expired_execution_with_invocation_with(
                         client,
                         plan.dag_execution_id,
-                        Some(tool_cashier_id),
+                        Some(invocation_id),
                     )
                     .await?;
                 Ok(ExpiredWalkResolutionResult {
                     tx_digest: Some(aborted.tx_digest),
                     tx_checkpoint: Some(aborted.tx_checkpoint),
-                    ..base(ExpiredWalkResolutionKind::AbortedWithToolCashier { selected_candidate })
+                    ..base(ExpiredWalkResolutionKind::AbortedWithInvocation { selected_candidate })
                 })
             }
             ExpiredWalkResolutionKind::Skipped { reason } => {
@@ -1984,23 +2270,20 @@ impl WorkflowActions {
         }
     }
 
-    /// Return ToolCashier refs that can be passed to
-    /// `tool_cashier_adapter::abort_expired_execution_with_tool_cashier` for the current
-    /// execution state. This is an advisory snapshot; Move still verifies
-    /// timeout and lock state on chain.
-    pub async fn abort_expired_execution_tool_cashier_candidates(
+    /// Returns exact Invocations eligible for permissionless timeout refund.
+    pub async fn abort_expired_execution_invocation_candidates(
         &self,
         dag_execution_id: sui::types::Address,
-    ) -> Result<Vec<ToolCashierAbortCandidate>, NexusError> {
-        self.abort_expired_execution_tool_cashier_candidates_with(&self.client, dag_execution_id)
+    ) -> Result<Vec<InvocationAbortCandidate>, NexusError> {
+        self.abort_expired_execution_invocation_candidates_with(&self.client, dag_execution_id)
             .await
     }
 
-    async fn abort_expired_execution_tool_cashier_candidates_with(
+    async fn abort_expired_execution_invocation_candidates_with(
         &self,
         client: &NexusClient,
         dag_execution_id: sui::types::Address,
-    ) -> Result<Vec<ToolCashierAbortCandidate>, NexusError> {
+    ) -> Result<Vec<InvocationAbortCandidate>, NexusError> {
         let execution = fetch_execution(client, dag_execution_id, &[]).await?;
         let context = &execution.context;
         let execution_state = &execution.object.data;
@@ -2025,15 +2308,9 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
-        let tool_cashier_type_origin = context
-            .require_package(PackageRole::Tool)
-            .and_then(|package| package.type_origin("tool_cashier", "ToolCashierKey"))
-            .map_err(NexusError::Parsing)?;
-        let refs = fetch_tool_cashier_refs_for_abort_candidates(
+        let candidates = fetch_invocation_abort_candidates(
             crawler,
-            context.tool_registry.object_id(),
-            tool_cashier_type_origin,
-            filter_tool_cashier_abort_candidate_walks(
+            filter_invocation_abort_candidate_walks(
                 dag_execution_id,
                 &vertices,
                 &execution_state.walks,
@@ -2044,55 +2321,46 @@ impl WorkflowActions {
         )
         .await?;
 
-        Ok(refs)
+        Ok(candidates)
     }
 
-    /// Submit `tool_cashier_adapter::abort_expired_execution_with_tool_cashier` for one
-    /// eligible ToolCashier candidate. Candidate discovery is advisory; Move still
-    /// verifies timeout and lock state on chain.
-    pub async fn abort_expired_execution_with_tool_cashier(
+    /// Refunds one exact Invocation and aborts its expired runtime vertex.
+    pub async fn abort_expired_execution_with_invocation(
         &self,
         dag_execution_id: sui::types::Address,
-        tool_cashier_id: Option<sui::types::Address>,
+        invocation_id: Option<sui::types::Address>,
     ) -> Result<AbortExpiredExecutionResult, NexusError> {
-        self.abort_expired_execution_with_tool_cashier_with(
+        self.abort_expired_execution_with_invocation_with(
             &self.client,
             dag_execution_id,
-            tool_cashier_id,
+            invocation_id,
         )
         .await
     }
 
-    async fn abort_expired_execution_with_tool_cashier_with(
+    async fn abort_expired_execution_with_invocation_with(
         &self,
         client: &NexusClient,
         dag_execution_id: sui::types::Address,
-        tool_cashier_id: Option<sui::types::Address>,
+        invocation_id: Option<sui::types::Address>,
     ) -> Result<AbortExpiredExecutionResult, NexusError> {
         let candidates = self
-            .abort_expired_execution_tool_cashier_candidates_with(client, dag_execution_id)
+            .abort_expired_execution_invocation_candidates_with(client, dag_execution_id)
             .await?;
-        let mut selected_candidate =
-            select_tool_cashier_abort_candidate(candidates, tool_cashier_id)?;
+        let selected_candidate = select_invocation_abort_candidate(candidates, invocation_id)?;
         let execution = fetch_execution(client, dag_execution_id, &[]).await?;
         let dag_id = execution.object.data.dag_id();
         let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
-        let tool_cashier = client
-            .state_resolver()
-            .load_inner::<ToolCashier, ToolWitnessV1, ToolCashierInnerV1>(
-                *selected_candidate.tool_cashier_ref.object_id(),
-                &execution.context,
-            )
-            .await?;
-        selected_candidate.tool_cashier_ref = tool_cashier.object_ref();
         let runtime = client.runtime_context(&[]).await?;
 
         let address = client.owner()?;
-        let tx = tool_cashier::abort_expired_execution_with_tool_cashier_ptb(
+        let tx = invocation::abort_expired_ptb(
             &runtime,
-            &selected_candidate.tool_cashier_ref,
             &dag.object_ref(),
             &execution.object.object_ref(),
+            &selected_candidate.vertex,
+            &selected_candidate.invocation_ref,
+            None,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(tx, address).await?;
@@ -2107,23 +2375,23 @@ impl WorkflowActions {
     }
 }
 
-fn select_tool_cashier_abort_candidate(
-    candidates: Vec<ToolCashierAbortCandidate>,
-    tool_cashier_id: Option<sui::types::Address>,
-) -> Result<ToolCashierAbortCandidate, NexusError> {
-    if let Some(tool_cashier_id) = tool_cashier_id {
+fn select_invocation_abort_candidate(
+    candidates: Vec<InvocationAbortCandidate>,
+    invocation_id: Option<sui::types::Address>,
+) -> Result<InvocationAbortCandidate, NexusError> {
+    if let Some(invocation_id) = invocation_id {
         candidates
             .into_iter()
-            .find(|candidate| *candidate.tool_cashier_ref.object_id() == tool_cashier_id)
+            .find(|candidate| *candidate.invocation_ref.object_id() == invocation_id)
             .ok_or_else(|| {
                 NexusError::Parsing(anyhow!(
-                    "ToolCashier '{tool_cashier_id}' is not currently eligible to abort this execution"
+                    "Invocation '{invocation_id}' is not currently eligible to abort this execution"
                 ))
             })
     } else {
         candidates.into_iter().next().ok_or_else(|| {
             NexusError::Parsing(anyhow!(
-                "No ToolCashier abort candidates are currently eligible for this execution"
+                "No Invocation abort candidates are currently eligible for this execution"
             ))
         })
     }
@@ -2143,7 +2411,11 @@ impl ExecutionCostResult {
     }
 }
 
-fn payment_vertex_key(
+/// Derives the canonical payment lock key for one runtime Tool invocation.
+///
+/// This matches the key derived by `nexus_workflow::execution` from the exact
+/// execution, [`RuntimeVertex`], and Tool identity.
+pub fn payment_vertex_key(
     execution_id: sui::types::Address,
     vertex: &RuntimeVertex,
     tool_fqn: &crate::ToolFqn,
@@ -2156,14 +2428,75 @@ fn payment_vertex_key(
     Ok(Sha256::digest(bytes).to_vec())
 }
 
-fn filter_tool_cashier_abort_candidate_walks(
+fn pending_settlement_vertex(
+    execution: &DAGExecutionInnerV1,
+    walk_index: u64,
+) -> Result<RuntimeVertex, NexusError> {
+    let walk_index = usize::try_from(walk_index).map_err(|error| {
+        NexusError::Parsing(anyhow!("Walk index does not fit this platform: {error}"))
+    })?;
+    match execution.walks.get(walk_index) {
+        Some(DAGWalk::PendingSettlement { next_vertex, .. }) => Ok(next_vertex.clone()),
+        Some(_) => Err(NexusError::Parsing(anyhow!(
+            "Walk {walk_index} is not pending settlement"
+        ))),
+        None => Err(NexusError::Parsing(anyhow!(
+            "Walk index {walk_index} is outside the execution"
+        ))),
+    }
+}
+
+async fn fetch_invocation_for_vertex(
+    client: &NexusClient,
+    context: &NexusContext,
+    execution_id: sui::types::Address,
+    dag_id: sui::types::Address,
+    vertex: &RuntimeVertex,
+) -> Result<sui::types::ObjectReference, NexusError> {
+    let crawler = client.crawler();
+    let dag = fetch_dag_in_context(client, context, dag_id).await?;
+    let vertex_info = fetch_dag_vertex_bcs(crawler, context, &dag.data, vertex.vertex())
+        .await
+        .map_err(NexusError::Rpc)?
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow!("DAG vertex '{}' is missing", vertex.vertex_name()))
+        })?;
+    let tool_fqn = vertex_info.kind.tool_fqn().map_err(NexusError::Parsing)?;
+    let vertex_key =
+        payment_vertex_key(execution_id, vertex, &tool_fqn).map_err(NexusError::Parsing)?;
+    let payment = tap::fetch_execution_payment_for_execution(client, context, execution_id)
+        .await
+        .map_err(NexusError::Rpc)?
+        .data;
+    let lock = payment
+        .locked_vertices
+        .iter()
+        .find(|lock| lock.vertex_key == vertex_key)
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow!("Pending Tool result has no exact Invocation lock"))
+        })?;
+    crawler
+        .get_object_metadata(lock.invocation_id.bytes)
+        .await
+        .map_err(NexusError::Rpc)
+        .map(|metadata| metadata.object_ref())
+}
+
+struct InvocationAbortCandidateSeed {
+    walk_index: usize,
+    vertex: RuntimeVertex,
+    payment_vertex_key: Vec<u8>,
+    invocation_id: sui::types::Address,
+}
+
+fn filter_invocation_abort_candidate_walks(
     execution_id: sui::types::Address,
     vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfo>,
     walks: &[DAGWalk],
     locks: &[ExecutionPaymentVertexLock],
     clock_ms: u64,
-) -> anyhow::Result<HashMap<crate::ToolFqn, Vec<ToolCashierAbortCandidateWalk>>> {
-    let mut candidates = HashMap::<crate::ToolFqn, Vec<ToolCashierAbortCandidateWalk>>::new();
+) -> anyhow::Result<Vec<InvocationAbortCandidateSeed>> {
+    let mut candidates = Vec::new();
     for (walk_index, walk) in walks.iter().enumerate() {
         let Some(vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
             continue;
@@ -2176,49 +2509,37 @@ fn filter_tool_cashier_abort_candidate_walks(
         })?;
         let tool_fqn = vertex_info.kind.tool_fqn()?;
         let vertex_key = payment_vertex_key(execution_id, vertex, &tool_fqn)?;
-        let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
-        if locks
-            .iter()
-            .any(|lock| lock.vertex_key == vertex_key && lock.tool_fqn == tool_fqn_bytes)
-        {
-            candidates
-                .entry(tool_fqn)
-                .or_default()
-                .push(ToolCashierAbortCandidateWalk {
-                    walk_index,
-                    vertex: vertex.clone(),
-                    payment_vertex_key: vertex_key,
-                });
+        if let Some(lock) = locks.iter().find(|lock| lock.vertex_key == vertex_key) {
+            candidates.push(InvocationAbortCandidateSeed {
+                walk_index,
+                vertex: vertex.clone(),
+                payment_vertex_key: vertex_key,
+                invocation_id: lock.invocation_id.bytes,
+            });
         }
     }
     Ok(candidates)
 }
 
-async fn fetch_tool_cashier_refs_for_abort_candidates(
+async fn fetch_invocation_abort_candidates(
     crawler: &Crawler,
-    tool_registry_id: sui::types::Address,
-    tool_cashier_type_origin: sui::types::Address,
-    candidates: HashMap<crate::ToolFqn, Vec<ToolCashierAbortCandidateWalk>>,
-) -> Result<Vec<ToolCashierAbortCandidate>, NexusError> {
-    let mut result = Vec::new();
-    for (tool_fqn, matching_walks) in candidates {
-        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_id, &tool_fqn)
-            .map_err(NexusError::Parsing)?;
-        let tool_cashier_id =
-            crate::move_bindings::derive_tool_cashier_id(tool_cashier_type_origin, tool_id)
-                .map_err(NexusError::Parsing)?;
-        let tool_cashier_ref = crawler
-            .get_object_metadata(tool_cashier_id)
+    candidates: Vec<InvocationAbortCandidateSeed>,
+) -> Result<Vec<InvocationAbortCandidate>, NexusError> {
+    let mut result = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        let invocation_ref = crawler
+            .get_object_metadata(candidate.invocation_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
-        result.push(ToolCashierAbortCandidate {
-            tool_fqn,
-            tool_cashier_ref,
-            matching_walks,
+        result.push(InvocationAbortCandidate {
+            walk_index: candidate.walk_index,
+            vertex: candidate.vertex,
+            payment_vertex_key: candidate.payment_vertex_key,
+            invocation_ref,
         });
     }
-    result.sort_by_key(|candidate| candidate.tool_fqn.to_string());
+    result.sort_by_key(|candidate| candidate.walk_index);
     Ok(result)
 }
 
@@ -2238,10 +2559,8 @@ mod tests {
                         ExecutionPaymentFeesRecordedEvent,
                         ExecutionPaymentFinalState,
                         ExecutionPaymentToolCostSnapshottedEvent,
-                        ExecutionPaymentVertexLockedEvent,
-                        ExecutionPaymentVertexSettledEvent,
+                        PaymentSourceKind,
                         SkillPaymentPolicy,
-                        VertexExecutionPaymentSettlementKind,
                     },
                     verifier::{ToolVerifierMode, VerifierDecision},
                     version::InterfaceVersion,
@@ -2258,9 +2577,12 @@ mod tests {
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
+                        CommittedToolResultEvent,
                         EndStateReachedEvent,
                         ExecutionFinishedEvent,
                         ExecutionPaymentRefilledEvent,
+                        InvocationAuthorizationRequiredEvent,
+                        RequestWalkExecutionEvent,
                         SubmissionFailureEvidenceRecordedEvent,
                         TerminalErrEvalRecordedEvent,
                         ToolVerificationResolvedEvent,
@@ -2268,6 +2590,7 @@ mod tests {
                         WalkPendingAbortEvent,
                     },
                     execution_failure::WorkflowFailureClass,
+                    invocation_adapter::{InvocationLockedEvent, InvocationSettledEvent},
                 },
             },
             sui::traits::*,
@@ -2366,6 +2689,17 @@ mod tests {
 
     fn object_id(bytes: sui::types::Address) -> crate::move_bindings::sui_framework::object::ID {
         crate::move_bindings::sui_framework::object::ID::new(bytes)
+    }
+
+    fn invocation_lock(
+        vertex_key: Vec<u8>,
+        invocation_id: sui::types::Address,
+    ) -> ExecutionPaymentVertexLock {
+        ExecutionPaymentVertexLock {
+            vertex_key,
+            invocation_id: object_id(invocation_id),
+            amount: 10,
+        }
     }
 
     fn output_variant(name: &str) -> crate::move_bindings::interface::graph::OutputVariant {
@@ -2699,38 +3033,93 @@ mod tests {
         );
     }
 
-    fn mock_tool_cashier_state(
+    fn pending_settlement_walks(
+        walk_index: usize,
+        vertex: RuntimeVertex,
+    ) -> Vec<execution_move::DAGWalk> {
+        let mut walks = vec![execution_move::DAGWalk::Successful; walk_index];
+        walks.push(execution_move::DAGWalk::PendingSettlement {
+            next_vertex: vertex,
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        });
+        walks
+    }
+
+    fn mock_exact_invocation_lock(
         ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
         state_service_mock: &mut sui_mocks::grpc::MockStateService,
         nexus_objects: &NexusContext,
-        cashier_ref: sui::types::ObjectReference,
-        tool_id: sui::types::Address,
+        execution_ref: &sui::types::ObjectReference,
+        dag_ref: &sui::types::ObjectReference,
+        vertex: &RuntimeVertex,
         tool_fqn: &crate::ToolFqn,
-    ) {
-        let cashier_id = *cashier_ref.object_id();
-        sui_mocks::grpc::mock_object_state::<ToolCashier, ToolWitnessV1, ToolCashierInnerV1>(
+    ) -> sui::types::ObjectReference {
+        let dag = dag_bcs(1);
+        let vertices_id = dag.vertices.id();
+        mock_get_dag_bcs(
             ledger_service_mock,
             state_service_mock,
             nexus_objects,
-            cashier_ref,
-            sui::types::Owner::Shared(1),
-            ToolCashier::new(crate::move_bindings::sui_framework::object::UID::new(
-                cashier_id,
-            )),
-            ToolCashierInnerV1 {
-                tool: object_id(tool_id),
-                tool_fqn: MoveString::from(tool_fqn.to_string()),
-                vault: crate::move_bindings::sui_framework::balance::Balance {
-                    value: 0,
+            dag_ref.clone(),
+            dag,
+        );
+        sui_mocks::grpc::mock_get_dynamic_field_by_key(
+            ledger_service_mock,
+            vertices_id,
+            &crate::move_bindings::type_tag::<graph_move::Vertex>(nexus_objects),
+            vertex.vertex().clone(),
+            offchain_vertex_node_bcs(tool_fqn),
+        );
+
+        let payment_ref = sui_mocks::mock_sui_object_ref();
+        let invocation_ref = sui_mocks::mock_sui_object_ref();
+        let vertex_key = payment_vertex_key(*execution_ref.object_id(), vertex, tool_fqn)
+            .expect("payment vertex key serializes");
+        mock_execution_payment_field(
+            ledger_service_mock,
+            state_service_mock,
+            nexus_objects,
+            *execution_ref.object_id(),
+            payment_ref.clone(),
+            ExecutionPaymentInnerV1 {
+                execution_id: *execution_ref.object_id(),
+                agent_id: object_id(sui::types::Address::from_static("0xa")),
+                skill_id: 11,
+                interface_revision: InterfaceVersion::new(7),
+                payment_policy: SkillPaymentPolicy::UserFunded,
+                source_kind: PaymentSourceKind::user_funded(sui::types::Address::from_static(
+                    "0x1",
+                )),
+                max_budget_mist: 100_000,
+                gas_budget_mist: 83_334,
+                priority_fee_reserve_mist: 16_666,
+                locked_budget_mist: 10,
+                funds: crate::move_bindings::sui_framework::balance::Balance {
+                    value: 100_000,
                     phantom_t0: std::marker::PhantomData,
                 },
-                settings: crate::move_bindings::sui_framework::bag::Bag::new(
-                    sui_mocks::mock_sui_address(),
-                    0,
-                ),
-                tickets: MoveTable::new(sui_mocks::mock_sui_address(), 0),
+                consumed: 0,
+                tool_fee_charged: 0,
+                priority_fee_charged: 0,
+                priority_fee_percentage: 20,
+                accomplished: false,
+                refunded: false,
+                final_state: ExecutionPaymentFinalState::Pending,
+                tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
+                    contents: vec![],
+                },
+                locked_vertices: vec![invocation_lock(vertex_key, *invocation_ref.object_id())],
             },
         );
+        sui_mocks::grpc::mock_get_object_metadata_exact(
+            ledger_service_mock,
+            invocation_ref.clone(),
+            sui::types::Owner::Object(*execution_ref.object_id()),
+            None,
+        );
+        invocation_ref
     }
 
     fn offchain_vertex_info(tool_fqn: &crate::ToolFqn) -> graph_move::VertexInfo {
@@ -4007,6 +4396,47 @@ mod tests {
     }
 
     #[test]
+    fn execution_history_includes_the_invocation_boundary() {
+        let execution = sui::types::Address::TWO;
+        let dag = object_id(sui::types::Address::ZERO);
+        let events = [
+            NexusEventKind::InvocationAuthorizationRequired(InvocationAuthorizationRequiredEvent {
+                dag,
+                execution: object_id(execution),
+                walk_index: 0,
+                vertex: RuntimeVertex::plain("tool"),
+            }),
+            NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
+                dag,
+                execution: object_id(execution),
+                invocation: object_id(sui::types::Address::from_static("0x4")),
+                invoker: sui::types::Address::THREE,
+                walk_index: 0,
+                next_vertex: RuntimeVertex::plain("tool"),
+                evaluations: object_id(sui::types::Address::from_static("0x5")),
+                agent_id: object_id(sui::types::Address::from_static("0x6")),
+                skill_id: 7,
+                interface_version: InterfaceVersion::new(1),
+                task_id: object_id(sui::types::Address::from_static("0x7")),
+                occurrence_id: 8,
+            }),
+            NexusEventKind::CommittedToolResult(CommittedToolResultEvent {
+                dag,
+                execution: object_id(execution),
+                walk_index: 0,
+                vertex: RuntimeVertex::plain("tool"),
+                leader: object_id(sui::types::Address::from_static("0x8")),
+                has_primary_failure_evidence: false,
+                has_secondary_failure_evidence: false,
+            }),
+        ];
+
+        for event in events {
+            assert_eq!(event_execution_id(&event), Some(execution));
+        }
+    }
+
+    #[test]
     fn test_event_execution_id_supports_terminal_err_eval_recorded() {
         let execution = sui::types::Address::TWO;
         let event = NexusEventKind::TerminalErrEvalRecorded(TerminalErrEvalRecordedEvent {
@@ -4067,23 +4497,29 @@ mod tests {
                     cost: 6,
                 },
             ),
-            NexusEventKind::ExecutionPaymentVertexLocked(ExecutionPaymentVertexLockedEvent {
-                payment_id: sui::types::Address::ZERO,
-                execution_id: execution,
-                agent_id: object_id(sui::types::Address::THREE),
-                vertex_key: b"vertex".to_vec(),
-                tool_fqn: b"demo::tool".to_vec(),
+            NexusEventKind::InvocationLocked(InvocationLockedEvent {
+                execution: object_id(execution),
+                vertex: RuntimeVertex::plain("tool"),
+                tool: object_id(sui::types::Address::from_static("0x4")),
+                tool_fqn: MoveString::from("demo::tool"),
+                cashier: object_id(sui::types::Address::from_static("0x5")),
+                invocation: object_id(sui::types::Address::from_static("0x6")),
+                beneficiary: PaymentSourceKind::user_funded(sui::types::Address::THREE),
+                policy: TypeName::new("0x7::fixed_price::Policy"),
+                sources: vec![object_id(sui::types::Address::from_static("0x8"))],
                 amount: 7,
-                settlement_kind: VertexExecutionPaymentSettlementKind::Ticket,
             }),
-            NexusEventKind::ExecutionPaymentVertexSettled(ExecutionPaymentVertexSettledEvent {
-                payment_id: sui::types::Address::ZERO,
-                execution_id: execution,
-                agent_id: object_id(sui::types::Address::THREE),
-                vertex_key: b"vertex".to_vec(),
-                tool_fqn: b"demo::tool".to_vec(),
+            NexusEventKind::InvocationSettled(InvocationSettledEvent {
+                execution: object_id(execution),
+                vertex: RuntimeVertex::plain("tool"),
+                tool: object_id(sui::types::Address::from_static("0x4")),
+                tool_fqn: MoveString::from("demo::tool"),
+                cashier: object_id(sui::types::Address::from_static("0x5")),
+                invocation: object_id(sui::types::Address::from_static("0x6")),
+                beneficiary: PaymentSourceKind::user_funded(sui::types::Address::THREE),
+                policy: TypeName::new("0x7::fixed_price::Policy"),
+                sources: vec![object_id(sui::types::Address::from_static("0x8"))],
                 amount: 8,
-                settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
                 was_refunded: false,
             }),
             NexusEventKind::SubmissionFailureEvidenceRecorded(
@@ -4333,7 +4769,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_abort_expired_execution_tool_cashier_candidates_returns_empty_snapshot() {
+    async fn test_abort_expired_execution_invocation_candidates_returns_empty_snapshot() {
         let nexus_objects = sui_mocks::mock_nexus_context();
         let execution_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
@@ -4419,7 +4855,7 @@ mod tests {
 
         let candidates = client
             .workflow()
-            .abort_expired_execution_tool_cashier_candidates(*execution_ref.object_id())
+            .abort_expired_execution_invocation_candidates(*execution_ref.object_id())
             .await
             .expect("empty candidate snapshot should parse");
 
@@ -4427,7 +4863,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_abort_expired_execution_with_tool_cashier_submits_selected_candidate() {
+    async fn test_abort_expired_execution_with_invocation_submits_selected_candidate() {
         let mut rng = rand::thread_rng();
         let nexus_objects = sui_mocks::mock_nexus_context();
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
@@ -4435,20 +4871,8 @@ mod tests {
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let payment_ref = sui_mocks::mock_sui_object_ref();
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
-        let tool_id = crate::move_bindings::derive_tool_id(
-            nexus_objects.tool_registry.object_id(),
-            &tool_fqn,
-        )
-        .unwrap();
-        let tool_cashier_id = crate::move_bindings::derive_tool_cashier_id(
-            nexus_objects
-                .require_package(PackageRole::Tool)
-                .unwrap()
-                .initial_id,
-            tool_id,
-        )
-        .unwrap();
-        let tool_cashier_ref = sui_mocks::object_ref_for_id(tool_cashier_id);
+        let invocation_id = sui::types::Address::from_static("0x404");
+        let invocation_ref = sui_mocks::object_ref_for_id(invocation_id);
         let vertex = RuntimeVertex::plain("payable");
         let dag = dag_bcs(1);
         let vertex_key = graph_move::Vertex::new("payable");
@@ -4467,9 +4891,8 @@ mod tests {
             payment_vertex_key(*execution_ref.object_id(), &vertex, &tool_fqn).unwrap();
         let current_locked_vertices = vec![ExecutionPaymentVertexLock {
             vertex_key: payment_vertex_key.clone(),
-            tool_fqn: tool_fqn.to_string().into_bytes(),
+            invocation_id: object_id(invocation_id),
             amount: 10,
-            settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
         }];
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
@@ -4550,13 +4973,11 @@ mod tests {
                 locked_vertices: current_locked_vertices,
             },
         );
-        mock_tool_cashier_state(
+        sui_mocks::grpc::mock_get_object_metadata_exact(
             &mut ledger_service_mock,
-            &mut state_service_mock,
-            &nexus_objects,
-            tool_cashier_ref.clone(),
-            tool_id,
-            &tool_fqn,
+            invocation_ref.clone(),
+            sui::types::Owner::Object(*execution_ref.object_id()),
+            None,
         );
         sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
@@ -4590,9 +5011,9 @@ mod tests {
 
         let result = client
             .workflow()
-            .abort_expired_execution_with_tool_cashier(
+            .abort_expired_execution_with_invocation(
                 *execution_ref.object_id(),
-                Some(tool_cashier_id),
+                Some(invocation_id),
             )
             .await
             .expect("abort transaction should submit");
@@ -4601,11 +5022,10 @@ mod tests {
         assert_eq!(result.tx_checkpoint, 1);
         assert_eq!(result.dag_id, *dag_ref.object_id());
         assert_eq!(result.dag_execution_id, *execution_ref.object_id());
-        assert_eq!(result.selected_candidate.tool_fqn, tool_fqn);
-        assert_eq!(result.selected_candidate.tool_cashier_ref, tool_cashier_ref);
-        assert_eq!(result.selected_candidate.matching_walks.len(), 1);
+        assert_eq!(result.selected_candidate.invocation_ref, invocation_ref);
+        assert_eq!(result.selected_candidate.vertex, vertex);
         assert_eq!(
-            result.selected_candidate.matching_walks[0].payment_vertex_key,
+            result.selected_candidate.payment_vertex_key,
             payment_vertex_key
         );
     }
@@ -4716,6 +5136,8 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let execution_ref = sui_mocks::mock_sui_object_ref();
+        let vertex = RuntimeVertex::plain("tool");
+        let tool_fqn = fqn!("xyz.taluslabs.fixture@1");
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -4728,14 +5150,16 @@ mod tests {
             &nexus_objects,
             execution_ref.clone(),
             &dag_ref,
-            vec![],
+            pending_settlement_walks(7, vertex.clone()),
         );
-        mock_get_dag_bcs(
+        mock_exact_invocation_lock(
             &mut ledger_service_mock,
             &mut state_service_mock,
             &nexus_objects,
-            dag_ref.clone(),
-            dag_bcs(0),
+            &execution_ref,
+            &dag_ref,
+            &vertex,
+            &tool_fqn,
         );
         mock_tool_registry_observation(
             &mut ledger_service_mock,
@@ -4798,6 +5222,8 @@ mod tests {
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let execution_ref = sui_mocks::mock_sui_object_ref();
         let leader_cap_ref = sui_mocks::mock_sui_object_ref();
+        let vertex = RuntimeVertex::plain("tool");
+        let tool_fqn = fqn!("xyz.taluslabs.fixture@1");
 
         let mut settle_ledger = sui_mocks::grpc::MockLedgerService::new();
         let mut settle_state = sui_mocks::grpc::MockStateService::new();
@@ -4810,14 +5236,16 @@ mod tests {
             &nexus_objects,
             execution_ref.clone(),
             &dag_ref,
-            vec![],
+            pending_settlement_walks(8, vertex.clone()),
         );
-        mock_get_dag_bcs(
+        mock_exact_invocation_lock(
             &mut settle_ledger,
             &mut settle_state,
             &nexus_objects,
-            dag_ref.clone(),
-            dag_bcs(0),
+            &execution_ref,
+            &dag_ref,
+            &vertex,
+            &tool_fqn,
         );
         mock_tool_registry_observation(&mut settle_ledger, &mut settle_state, &nexus_objects);
         mock_leader_registry_observation(&mut settle_ledger, &mut settle_state, &nexus_objects);
@@ -5021,10 +5449,11 @@ mod tests {
     }
 
     #[test]
-    fn tool_cashier_abort_filter_returns_exact_expired_locked_tool_vertices() {
+    fn invocation_abort_filter_returns_exact_expired_locked_vertex() {
         let execution_id = sui::types::Address::from_static("0xabc");
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
         let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
+        let invocation_id = sui::types::Address::from_static("0x704");
         let payable_vertex = RuntimeVertex::plain("payable");
         let idle_vertex = RuntimeVertex::plain("idle");
         let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
@@ -5054,14 +5483,9 @@ mod tests {
                 at_vertex: RuntimeVertex::plain("already_pending"),
             },
         ];
-        let locks = vec![ExecutionPaymentVertexLock {
-            vertex_key: matching_key.clone(),
-            tool_fqn: tool_fqn.to_string().into_bytes(),
-            amount: 10,
-            settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
-        }];
+        let locks = vec![invocation_lock(matching_key.clone(), invocation_id)];
 
-        let candidates = filter_tool_cashier_abort_candidate_walks(
+        let candidates = filter_invocation_abort_candidate_walks(
             execution_id,
             &vertices,
             &walks,
@@ -5069,24 +5493,22 @@ mod tests {
             61_000,
         )
         .unwrap();
-        let matching = candidates
-            .get(&tool_fqn)
-            .expect("candidate for locked tool");
 
         assert_eq!(candidates.len(), 1);
-        assert_eq!(matching.len(), 1);
-        assert_eq!(matching[0].walk_index, 0);
-        assert_eq!(matching[0].vertex, payable_vertex);
-        assert_eq!(matching[0].payment_vertex_key, matching_key);
+        assert_eq!(candidates[0].walk_index, 0);
+        assert_eq!(candidates[0].vertex, payable_vertex);
+        assert_eq!(candidates[0].payment_vertex_key, matching_key);
+        assert_eq!(candidates[0].invocation_id, invocation_id);
     }
 
     #[test]
-    fn tool_cashier_abort_filter_ignores_nonmatching_payment_locks() {
+    fn invocation_abort_filter_ignores_nonmatching_payment_locks() {
         let execution_id = sui::types::Address::from_static("0xabc");
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
         let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
         let payable_vertex = RuntimeVertex::plain("payable");
-        let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
+        let other_tool_key =
+            payment_vertex_key(execution_id, &payable_vertex, &other_tool_fqn).unwrap();
         let mut vertices = HashMap::new();
         vertices.insert(
             graph_move::Vertex::new("payable"),
@@ -5099,21 +5521,11 @@ mod tests {
             created_at: 1_000,
         }];
         let locks = vec![
-            ExecutionPaymentVertexLock {
-                vertex_key: matching_key,
-                tool_fqn: other_tool_fqn.to_string().into_bytes(),
-                amount: 10,
-                settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
-            },
-            ExecutionPaymentVertexLock {
-                vertex_key: vec![1, 2, 3],
-                tool_fqn: tool_fqn.to_string().into_bytes(),
-                amount: 10,
-                settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
-            },
+            invocation_lock(other_tool_key, sui::types::Address::from_static("0x705")),
+            invocation_lock(vec![1, 2, 3], sui::types::Address::from_static("0x706")),
         ];
 
-        let candidates = filter_tool_cashier_abort_candidate_walks(
+        let candidates = filter_invocation_abort_candidate_walks(
             execution_id,
             &vertices,
             &walks,
@@ -5126,7 +5538,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_cashier_abort_filter_errors_when_expired_vertex_is_missing_from_dag() {
+    fn invocation_abort_filter_errors_when_expired_vertex_is_missing_from_dag() {
         let execution_id = sui::types::Address::from_static("0xabc");
         let walks = vec![DAGWalk::Active {
             next_vertex: RuntimeVertex::plain("missing"),
@@ -5135,14 +5547,15 @@ mod tests {
             created_at: 1_000,
         }];
 
-        let error = filter_tool_cashier_abort_candidate_walks(
+        let error = filter_invocation_abort_candidate_walks(
             execution_id,
             &HashMap::new(),
             &walks,
             &[],
             61_000,
         )
-        .expect_err("expired walk should require a fetched DAG vertex");
+        .err()
+        .expect("expired walk should require a fetched DAG vertex");
 
         assert!(error
             .to_string()
@@ -5150,26 +5563,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_tool_cashier_refs_for_abort_candidates_derives_metadata_refs() {
-        let tool_registry_id = sui::types::Address::from_static("0xabc");
-        let tool_cashier_type_origin = sui::types::Address::from_static("0xdef");
-        let tool_fqn = fqn!("xyz.taluslabs.payable@1");
-        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_id, &tool_fqn).unwrap();
-        let tool_cashier_id =
-            crate::move_bindings::derive_tool_cashier_id(tool_cashier_type_origin, tool_id)
-                .unwrap();
-        let tool_cashier_ref = sui_mocks::object_ref_for_id(tool_cashier_id);
-        let candidate_walk = ToolCashierAbortCandidateWalk {
+    async fn fetch_invocation_abort_candidates_resolves_exact_invocation_refs() {
+        let invocation_id = sui::types::Address::from_static("0x707");
+        let invocation_ref = sui_mocks::object_ref_for_id(invocation_id);
+        let candidate = InvocationAbortCandidateSeed {
             walk_index: 2,
             vertex: RuntimeVertex::plain("payable"),
             payment_vertex_key: vec![1, 2, 3],
+            invocation_id,
         };
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
 
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_cashier_ref.clone(),
-            sui::types::Owner::Shared(tool_cashier_ref.version()),
+            invocation_ref.clone(),
+            sui::types::Owner::Object(sui::types::Address::from_static("0x708")),
             None,
         );
 
@@ -5179,62 +5587,60 @@ mod tests {
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(Arc::new(client));
-        let candidates = fetch_tool_cashier_refs_for_abort_candidates(
-            &crawler,
-            tool_registry_id,
-            tool_cashier_type_origin,
-            HashMap::from([(tool_fqn.clone(), vec![candidate_walk.clone()])]),
-        )
-        .await
-        .expect("candidate refs should be fetched");
+        let candidates = fetch_invocation_abort_candidates(&crawler, vec![candidate])
+            .await
+            .expect("candidate refs should be fetched");
 
         assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].tool_fqn, tool_fqn);
-        assert_eq!(candidates[0].tool_cashier_ref, tool_cashier_ref);
-        assert_eq!(candidates[0].matching_walks, vec![candidate_walk]);
+        assert_eq!(candidates[0].walk_index, 2);
+        assert_eq!(candidates[0].vertex, RuntimeVertex::plain("payable"));
+        assert_eq!(candidates[0].payment_vertex_key, vec![1, 2, 3]);
+        assert_eq!(candidates[0].invocation_ref, invocation_ref);
     }
 
     #[test]
-    fn select_tool_cashier_abort_candidate_uses_first_or_required_candidate() {
+    fn select_invocation_abort_candidate_uses_first_or_required_invocation() {
         let first_id = sui::types::Address::from_static("0x111");
         let second_id = sui::types::Address::from_static("0x222");
         let candidates = vec![
-            ToolCashierAbortCandidate {
-                tool_fqn: fqn!("xyz.taluslabs.first@1"),
-                tool_cashier_ref: sui::types::ObjectReference::new(
+            InvocationAbortCandidate {
+                walk_index: 0,
+                vertex: RuntimeVertex::plain("first"),
+                payment_vertex_key: vec![1],
+                invocation_ref: sui::types::ObjectReference::new(
                     first_id,
                     1,
                     sui::types::Digest::default(),
                 ),
-                matching_walks: Vec::new(),
             },
-            ToolCashierAbortCandidate {
-                tool_fqn: fqn!("xyz.taluslabs.second@1"),
-                tool_cashier_ref: sui::types::ObjectReference::new(
+            InvocationAbortCandidate {
+                walk_index: 1,
+                vertex: RuntimeVertex::plain("second"),
+                payment_vertex_key: vec![2],
+                invocation_ref: sui::types::ObjectReference::new(
                     second_id,
                     1,
                     sui::types::Digest::default(),
                 ),
-                matching_walks: Vec::new(),
             },
         ];
 
-        let selected = select_tool_cashier_abort_candidate(candidates.clone(), None).unwrap();
-        assert_eq!(*selected.tool_cashier_ref.object_id(), first_id);
+        let selected = select_invocation_abort_candidate(candidates.clone(), None).unwrap();
+        assert_eq!(*selected.invocation_ref.object_id(), first_id);
 
         let selected =
-            select_tool_cashier_abort_candidate(candidates.clone(), Some(second_id)).unwrap();
-        assert_eq!(*selected.tool_cashier_ref.object_id(), second_id);
+            select_invocation_abort_candidate(candidates.clone(), Some(second_id)).unwrap();
+        assert_eq!(*selected.invocation_ref.object_id(), second_id);
 
         let missing = sui::types::Address::from_static("0x333");
-        let error = select_tool_cashier_abort_candidate(candidates, Some(missing)).unwrap_err();
+        let error = select_invocation_abort_candidate(candidates, Some(missing)).unwrap_err();
         assert!(error
             .to_string()
             .contains("is not currently eligible to abort this execution"));
 
-        let error = select_tool_cashier_abort_candidate(Vec::new(), None).unwrap_err();
+        let error = select_invocation_abort_candidate(Vec::new(), None).unwrap_err();
         assert!(error
             .to_string()
-            .contains("No ToolCashier abort candidates are currently eligible"));
+            .contains("No Invocation abort candidates are currently eligible"));
     }
 }

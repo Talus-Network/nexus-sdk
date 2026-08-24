@@ -158,6 +158,9 @@ pub fn mock_nexus_packages() -> NexusPackages {
                 ("tool_cashier", "ToolCashier"),
                 ("tool_cashier", "ToolCashierInnerV1"),
                 ("tool_cashier", "ToolCashierKey"),
+                ("finite_credits", "Policy"),
+                ("fixed_price", "Policy"),
+                ("time_pass", "Policy"),
             ],
             &["0xa1", "0xa2"],
         )),
@@ -972,6 +975,37 @@ pub mod grpc {
                 let mut grpc_object = sui::grpc::Object::default();
                 grpc_object.set_owner(sui::grpc::Owner::from(owner));
                 grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_version(object_ref.version());
+                grpc_object.set_balance(balance.unwrap_or(0));
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_object_metadata_exact(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        balance: Option<u64>,
+    ) {
+        let expected_id = object_ref.object_id().to_string();
+        ledger_service
+            .expect_get_object()
+            .withf(move |request| {
+                let request = request.get_ref();
+                request.object_id.as_deref() == Some(expected_id.as_str())
+                    && request
+                        .read_mask
+                        .as_ref()
+                        .is_none_or(|mask| !mask.paths.iter().any(|path| path == "contents"))
+            })
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_object_id(*object_ref.object_id());
                 grpc_object.set_version(object_ref.version());
                 grpc_object.set_balance(balance.unwrap_or(0));
                 response.set_object(grpc_object);

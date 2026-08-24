@@ -301,6 +301,15 @@ mod tests {
             boundary_test_signature: "async fn cli_transaction_setup_attaches_explicit_coin_gas(",
             boundary_test_marker: "configure_nexus_client_gas",
         },
+        CoinFreeClientCallSite {
+            command: "nexus tool cashier access",
+            source: include_str!("tool/cashier.rs"),
+            function_signature: "async fn inspect_access(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tool.rs"),
+            boundary_test_signature:
+                "async fn access_inspection_derives_and_reads_canonical_accounts(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
     ];
 
     const READ_ONLY_NEXUS_COMMANDS: &[CoinFreeClientCallSite] = &[
@@ -448,6 +457,24 @@ mod tests {
             boundary_test_signature:
                 "async fn mixed_tool_versions_are_classified_without_aborting_the_inventory(",
             boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool cashier inspect",
+            source: include_str!("tool/cashier.rs"),
+            function_signature: "async fn inspect(",
+            boundary_test_source: include_str!("sui.rs"),
+            boundary_test_signature:
+                "async fn cli_client_without_explicit_gas_coin_supports_reads(",
+            boundary_test_marker: "assert_coin_free_client_supports_read",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool cashier inbox",
+            source: include_str!("tool/cashier.rs"),
+            function_signature: "async fn inspect_inbox(",
+            boundary_test_source: include_str!("sui.rs"),
+            boundary_test_signature:
+                "async fn cli_client_without_explicit_gas_coin_supports_reads(",
+            boundary_test_marker: "assert_coin_free_client_supports_read",
         },
         CoinFreeClientCallSite {
             command: "nexus tool validate onchain",

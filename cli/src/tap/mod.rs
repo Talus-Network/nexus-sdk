@@ -411,13 +411,13 @@ pub(crate) enum ExecutionCommand {
         execution_id: sui::types::Address,
         #[arg(long = "walk-index", help = "Expired walk index to resolve.")]
         walk_index: u64,
-        /// Optional Tool cashier object ID required by the selected abort branch.
+        /// Optional exact Invocation selected when the expired vertex is locked.
         #[arg(
-            long = "tool-cashier-id",
-            help = "ToolCashier object ID to use when the walk requires a ToolCashier abort.",
+            long = "invocation-id",
+            help = "Invocation object ID to refund when more than one candidate exists.",
             value_name = "OBJECT_ID"
         )]
-        tool_cashier_id: Option<sui::types::Address>,
+        invocation_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -784,7 +784,7 @@ mod tests {
             ExecutionCommand::ResolveExpiredWalk {
                 execution_id: sui::types::Address::from_static("0xee"),
                 walk_index: 0,
-                tool_cashier_id: None,
+                invocation_id: None,
                 gas: gas_args(),
             },
         ))

@@ -66,8 +66,11 @@ pub(super) fn classify_nexus_event(
             },
         )));
     }
-    let (data, distribution) =
-        parse_bcs(event_type.name, contents).map_err(NexusEventDecodeError::Contents)?;
+    let (data, distribution) = parse_bcs(event_type.name, contents).map_err(|error| {
+        NexusEventDecodeError::Contents(
+            error.context(format!("Could not decode {}", event_type.name)),
+        )
+    })?;
 
     Ok(Some(NexusEventCandidate::Supported(Box::new(NexusEvent {
         id: (digest, index),

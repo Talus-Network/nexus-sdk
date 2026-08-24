@@ -347,7 +347,7 @@ pub(crate) enum ToolCommand {
         tool_type: RegisterCommand,
     },
 
-    #[command(subcommand, about = "Manage payment tickets through a tool cashier")]
+    #[command(subcommand, about = "Manage Tool economic policies and entitlements")]
     Cashier(CashierCommand),
 
     #[command(about = "Unregister a Tool from live protocol lookup")]
@@ -434,16 +434,6 @@ pub(crate) enum ToolCommand {
 
     #[command(subcommand, about = "Configure Tool response verification")]
     ConfigureVerifier(VerifierCommand),
-
-    #[command(about = "Drain settled SUI from a Tool cashier")]
-    DrainCashier {
-        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
-        tool_fqn: ToolFqn,
-        #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
-        owner_cap: Option<sui::types::Address>,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
 
     #[command(about = "Claim collateral for a tool identified by its FQN.")]
     ClaimCollateral {
@@ -665,15 +655,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         }
 
         ToolCommand::ConfigureVerifier(command) => configure_verifier(command).await,
-
-        ToolCommand::DrainCashier {
-            tool_fqn,
-            owner_cap,
-            gas,
-        } => {
-            tool_update::drain_cashier(tool_fqn, owner_cap, gas.sui_gas_coin, gas.sui_gas_budget)
-                .await
-        }
 
         // == `$ nexus tool claim-collateral` ==
         ToolCommand::ClaimCollateral {

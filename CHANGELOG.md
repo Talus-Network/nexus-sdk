@@ -8,8 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Added dynamic Invocation policy composition, policy discovery, canonical finite credit and time pass accounts, owner grants, receipt collection, and exact Invocation timeout refunds.
+- Added deterministic entitlement ID derivation from the Tool cashier, payment beneficiary, and policy type.
+- Added beneficiary access inspection with canonical account state, pass activity from the onchain clock, and exact finite credit refunds ready for restoration.
+- Added canonical runtime vertex payment key derivation for exact Invocation lock validation.
+
 #### Fixed
 
+- Execution inspection now includes Invocation authorization, walk request, and committed result events from the execution object history.
+- Finite credit and time pass transactions now construct payment beneficiaries through the canonical Move API instead of submitting unforgeable package values as pure PTB inputs.
+- Tool cashier inbox discovery, collection, and finite credit refund restoration now use the address owner representation produced by Transfer to Object.
+- Permissionless timeout builders now append owning Task settlement after Invocation resolution when the Task is supplied.
 - State observation now retries incomplete dynamic field metadata so concurrent object mutations cannot turn a recoverable RPC snapshot race into a read failure.
 - Tool inventory and inspection now isolate unsupported state to the affected Tool, and unregistration builds from stable object metadata plus current Registry authority without decoding the Tool inner value.
 - Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
@@ -17,6 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
+- Tool economy inspection now exposes one mandatory fixed price, where zero represents public access, alongside optional finite credit and time pass products.
+- Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
+- Finite credit and time pass purchases now withdraw their exact SUI price from the signer address balance inside the purchase PTB.
+- Invocation authorization now emits the executable walk request with its exact Invocation in the same transaction.
+- Automatic Invocation authorization can reimburse its measured submission gas from the execution payment, while user submitted authorization uses zero reimbursement.
 - Scheduler builders now pass the fixed runtime authority to standalone and recurring scheduling, decode allocation and advertisement as distinct events, and resolve proposal routing while runtime effects are paused.
 - Onchain Tool validation now requires the public composable `execute` ABI, and registration builders can configure the initial key and verifier support before sharing the binding.
 - Default address balance clients now share one process nonce authority, preventing independently constructed clients from rebuilding the same transaction digest.
@@ -27,19 +44,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Removed
 
+- Removed ticket lookup and cashier based settlement APIs in favor of exact Invocation objects.
+- Removed the separate free policy and fixed price policy toggle APIs because every Tool uses its fixed price baseline.
+- Removed finite credit split, join, and object selection APIs because canonical account IDs are derived automatically.
 - Removed migration-only transaction builders, coexistence-suffixed generated targets and state names, duplicate Nexus value witnesses, and the Walrus storage-key API in favor of the fresh canonical package graph and Blob IDs.
 - Removed generated Move call targets for `NexusData::is_one` and `NexusData::is_valid`; generated `is_many` now represents the variant-only discriminator while SDK-native cardinality discriminants remain unchanged.
 
 ### `nexus-cli`
+
+#### Added
+
+- Added Tool economy inspection, canonical finite credit and time pass purchase and issuance, exact refund recovery, and explicit Invocation authorization commands.
+- Invocation authorization now derives canonical entitlement objects without requiring users to supply their IDs.
+- Added beneficiary access inspection for remaining credits, pass validity, and refundable Invocations.
+- Added onchain Tool validation.
 
 #### Fixed
 
 - Off-chain batch registration now saves each committed Tool's owner capabilities immediately and recovers still-owned capabilities for already-registered Tools, allowing retained or partially completed environments to resume key configuration.
 - Task `--input-json` now preserves explicitly tagged canonical One/Many object values instead of converting every JSON value to inline data.
 
-#### Added
+#### Changed
 
-- Implement onchain tool validation.
+- Finite credit and time pass purchases now use the active signer address balance without requiring a payment coin object ID.
+- Public access authorization now uses the fixed price command with a zero Tool price; separate free and fixed price toggle commands were removed.
 
 #### Changed
 

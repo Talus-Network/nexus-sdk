@@ -255,8 +255,8 @@ impl OccurrenceHandle {
 
     /// Aborts expired runtime work.
     ///
-    /// Supplying `tool_cashier_id` selects the ToolCashier abort path. Without one,
-    /// the permissionless workflow abort path is used.
+    /// Supplying `invocation_id` refunds that exact Invocation before abort.
+    /// Without one, the unlocked workflow abort path is used.
     ///
     /// # Errors
     ///
@@ -265,20 +265,19 @@ impl OccurrenceHandle {
     /// fails.
     pub async fn abort_expired(
         &self,
-        tool_cashier_id: Option<sui::types::Address>,
+        invocation_id: Option<sui::types::Address>,
     ) -> Result<AbortReceipt, SchedulerError> {
-        let execution_id = dispatched_execution_id(&self.snapshot_with(&self.client).await?)?;
-        let transaction = if let Some(tool_cashier_id) = tool_cashier_id {
-            let result = self
-                .client
+        let client = &self.client;
+        let execution_id = dispatched_execution_id(&self.snapshot_with(&client).await?)?;
+        let transaction = if let Some(invocation_id) = invocation_id {
+            let result = client
                 .workflow()
-                .abort_expired_execution_with_tool_cashier(execution_id, Some(tool_cashier_id))
+                .abort_expired_execution_with_invocation(execution_id, Some(invocation_id))
                 .await
                 .map_err(SchedulerError::from)?;
             TransactionReference::new(result.tx_digest, result.tx_checkpoint)
         } else {
-            let result = self
-                .client
+            let result = client
                 .workflow()
                 .abort_expired_execution(execution_id)
                 .await
