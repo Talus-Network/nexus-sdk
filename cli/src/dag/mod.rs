@@ -46,7 +46,7 @@ pub(crate) enum DagCommand {
             value_name = "PACKAGE_ID",
             help = "Workflow package used to create the DAG"
         )]
-        workflow_package: sui::types::Address,
+        workflow_package: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -85,6 +85,20 @@ mod tests {
         assert!(matches!(
             cli.command,
             crate::Command::Dag(DagCommand::Inspect { .. })
+        ));
+    }
+
+    #[test]
+    fn publish_uses_live_routing_when_package_override_is_absent() {
+        let cli = crate::Cli::try_parse_from(["nexus", "dag", "publish", "--path", "dag.json"])
+            .expect("DAG publication should route through live package state");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Dag(DagCommand::Publish {
+                workflow_package: None,
+                ..
+            })
         ));
     }
 }

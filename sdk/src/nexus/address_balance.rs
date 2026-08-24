@@ -6,10 +6,31 @@ use {
         sui::{self, traits::*},
     },
     std::sync::{
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicU64, Ordering},
         Arc,
+        LazyLock,
     },
 };
+
+const NONCE_SPACE_SIZE: u64 = u32::MAX as u64 + 1;
+
+#[derive(Debug)]
+struct NonceSequence {
+    initial: u32,
+    issued: AtomicU64,
+}
+
+impl NonceSequence {
+    const fn new(initial: u32) -> Self {
+        Self {
+            initial,
+            issued: AtomicU64::new(0),
+        }
+    }
+}
+
+static PROCESS_NONCES: LazyLock<Arc<NonceSequence>> =
+    LazyLock::new(|| Arc::new(NonceSequence::new(rand::random())));
 
 /// Network context required by an address balance gas payment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,17 +43,24 @@ pub struct SubmissionContext {
     pub chain: sui::types::Digest,
 }
 
-/// Nonce authority for one address balance sender.
+/// Nonce authority for address balance transactions.
 ///
-/// Every clone allocates from the same lock free sequence.
+/// Default allocators share one process sequence whose initial position is
+/// random. Sharing prevents independently constructed clients in one process
+/// from repeating a nonce. The random position prevents separate CLI
+/// processes from deterministically rebuilding the same transaction digest.
+/// Explicitly constructed allocators remain useful for controlled runtimes and
+/// deterministic tests.
 #[derive(Clone, Debug)]
 pub struct NonceAllocator {
-    next: Arc<AtomicU32>,
+    sequence: Arc<NonceSequence>,
 }
 
 impl Default for NonceAllocator {
     fn default() -> Self {
-        Self::new(0)
+        Self {
+            sequence: Arc::clone(&PROCESS_NONCES),
+        }
     }
 }
 
@@ -40,7 +68,17 @@ impl NonceAllocator {
     /// Creates an allocator whose first result is `initial`.
     pub fn new(initial: u32) -> Self {
         Self {
-            next: Arc::new(AtomicU32::new(initial)),
+            sequence: Arc::new(NonceSequence::new(initial)),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_issued(initial: u32, issued: u64) -> Self {
+        Self {
+            sequence: Arc::new(NonceSequence {
+                initial,
+                issued: AtomicU64::new(issued),
+            }),
         }
     }
 
@@ -50,15 +88,19 @@ impl NonceAllocator {
     ///
     /// Returns [`NexusError::Configuration`] when the sequence is exhausted.
     pub fn allocate(&self) -> Result<u32, NexusError> {
-        self.next
+        let offset = self
+            .sequence
+            .issued
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                current.checked_add(1)
+                (current < NONCE_SPACE_SIZE).then_some(current + 1)
             })
             .map_err(|_| {
                 NexusError::Configuration(
                     "address balance transaction nonce space is exhausted".into(),
                 )
-            })
+            })?;
+
+        Ok(self.sequence.initial.wrapping_add(offset as u32))
     }
 }
 
@@ -177,7 +219,7 @@ mod tests {
 
     #[test]
     fn cloned_allocators_issue_one_shared_nonce_sequence() {
-        let allocator = NonceAllocator::default();
+        let allocator = NonceAllocator::new(0);
         let handles = (0..8)
             .map(|_| {
                 let allocator = allocator.clone();
@@ -200,10 +242,18 @@ mod tests {
     }
 
     #[test]
-    fn nonce_allocator_rejects_exhaustion() {
-        let allocator = NonceAllocator::new(u32::MAX - 1);
+    fn independent_default_allocators_do_not_repeat_transaction_nonces() {
+        let first = NonceAllocator::default().allocate().unwrap();
+        let second = NonceAllocator::default().allocate().unwrap();
 
-        assert_eq!(allocator.allocate().unwrap(), u32::MAX - 1);
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn nonce_allocator_rejects_exhaustion() {
+        let allocator = NonceAllocator::with_issued(7, u32::MAX as u64);
+
+        assert_eq!(allocator.allocate().unwrap(), 6);
         let error = allocator.allocate().unwrap_err();
 
         assert!(error.to_string().contains("nonce space is exhausted"));

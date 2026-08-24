@@ -124,7 +124,7 @@ pub struct AddressBalanceGas {
 }
 
 impl AddressBalanceGas {
-    /// Creates a new independent sender nonce authority.
+    /// Creates a configuration backed by the process nonce authority.
     pub fn new(budget: u64) -> Self {
         Self::with_nonce_allocator(budget, NonceAllocator::default())
     }
@@ -176,11 +176,11 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Configures address balance based gas with an independent nonce authority.
+    /// Configures address balance based gas with the process nonce authority.
     ///
-    /// This creates a nonce authority owned by the resulting client. Use
-    /// [`Self::with_address_balance_gas_config`] when several clients submit
-    /// for the same sender.
+    /// Independently constructed clients in this process allocate from the
+    /// same nonce sequence. Use [`Self::with_address_balance_gas_config`] when
+    /// the caller must supply a distinct nonce authority explicitly.
     pub fn with_address_balance_gas(mut self, budget: u64) -> Self {
         self.address_balance_gas = Some(AddressBalanceGas::new(budget));
         self
@@ -500,6 +500,26 @@ impl NexusClient {
                 creator_role,
                 required_roots,
             )
+            .await?;
+        Ok(Arc::new(context))
+    }
+
+    /// Resolves the package graph preferred for new proposal construction.
+    ///
+    /// This context remains available while runtime effects are paused. It is
+    /// a routing decision only and does not confer protocol effect authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns routing, package compatibility, object state, or RPC errors
+    /// reported by [`StateResolver::resolve_routing_context`].
+    pub async fn routing_context(
+        &self,
+        required_roots: &[SharedRoot],
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        let context = self
+            .state_resolver
+            .resolve_routing_context(Arc::clone(&self.nexus_objects), required_roots)
             .await?;
         Ok(Arc::new(context))
     }
@@ -2039,7 +2059,10 @@ mod tests {
             .with_private_key(pk)
             .with_rpc_url(&rpc_url)
             .with_nexus_objects(nexus_objects)
-            .with_address_balance_gas(9_000)
+            .with_address_balance_gas_config(AddressBalanceGas::with_nonce_allocator(
+                9_000,
+                NonceAllocator::new(0),
+            ))
             .build()
             .await
             .unwrap();
@@ -2204,6 +2227,36 @@ mod tests {
                 if object == context.runtime_authority.object_id()
                     && reason.contains("paused")
         ));
+    }
+
+    #[tokio::test]
+    async fn routing_context_resolves_the_bound_graph_while_runtime_is_paused() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut packages = sui_mocks::grpc::MockMovePackageService::new();
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &context, true);
+        sui_mocks::grpc::mock_nexus_package_graph(&mut ledger, &mut packages, context.packages());
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            package_service_mock: Some(packages),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let routing = client
+            .routing_context(&[])
+            .await
+            .expect("a pause removes effect authority, not package routing");
+
+        assert_eq!(
+            routing
+                .package_id(PackageRole::Scheduler)
+                .expect("routing graph contains Scheduler"),
+            context
+                .package_id(PackageRole::Scheduler)
+                .expect("fixture contains Scheduler"),
+        );
     }
 
     #[tokio::test]

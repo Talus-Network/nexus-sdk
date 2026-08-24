@@ -83,7 +83,10 @@ fn create_binding(
     )
 }
 
-fn share_binding(tx: &mut move_boundary::NexusPtbBuilder, binding: Argument) -> anyhow::Result<()> {
+pub(super) fn share_binding(
+    tx: &mut move_boundary::NexusPtbBuilder,
+    binding: Argument,
+) -> anyhow::Result<()> {
     tx.call_target(
         transfer_binding::public_share_object_target::<network_auth_binding::KeyBinding>,
         vec![binding],
@@ -91,7 +94,10 @@ fn share_binding(tx: &mut move_boundary::NexusPtbBuilder, binding: Argument) -> 
     Ok(())
 }
 
-/// Composes a new tool binding and its initial key into the current transaction.
+/// Composes a new Tool binding and its initial key without sharing the binding.
+///
+/// The caller may use the live binding to configure verifier support before
+/// [`share_binding`] completes the transaction.
 pub(super) fn create_tool_binding_and_register_key(
     tx: &mut move_boundary::NexusPtbBuilder,
     tool: Argument,
@@ -99,13 +105,13 @@ pub(super) fn create_tool_binding_and_register_key(
     public_key: [u8; 32],
     pop_signature: [u8; 64],
     description: Option<Vec<u8>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Argument> {
     let proof_for_binding = proof_for_offchain_tool(tx, tool, owner_cap)?;
     let binding = create_binding(tx, proof_for_binding, description)?;
 
     let proof_for_key = proof_for_offchain_tool(tx, tool, owner_cap)?;
     register_key(tx, binding, proof_for_key, public_key, pop_signature)?;
-    share_binding(tx, binding)
+    Ok(binding)
 }
 
 /// Create a new off chain tool key binding and register the first key.
@@ -123,14 +129,15 @@ pub(crate) fn create_tool_binding_and_register_key_ptb(
     move_boundary::ptb(objects, |tx| {
         let tool = tx.shared_object(tool, false)?;
         let owner_cap = tx.owned_object(owner_cap_over_tool)?;
-        create_tool_binding_and_register_key(
+        let binding = create_tool_binding_and_register_key(
             tx,
             tool,
             owner_cap,
             public_key,
             pop_signature,
             description,
-        )
+        )?;
+        share_binding(tx, binding)
     })
 }
 
@@ -226,14 +233,15 @@ mod tests {
         let actual = move_boundary::ptb(&objects, |tx| {
             let tool = tx.shared_object(&tool, false)?;
             let owner_cap = tx.owned_object(&owner_cap)?;
-            create_tool_binding_and_register_key(
+            let binding = create_tool_binding_and_register_key(
                 tx,
                 tool,
                 owner_cap,
                 public_key,
                 pop_signature,
                 description,
-            )
+            )?;
+            share_binding(tx, binding)
         })
         .unwrap();
 

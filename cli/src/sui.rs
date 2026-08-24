@@ -6,8 +6,27 @@ use {
     nexus_sdk::{
         nexus::client::{AddressBalanceGas, GasSource, NexusClient},
         sui,
+        types::PackageRole,
     },
 };
+
+/// Resolve an explicit creator override or the package preferred by live routing state.
+pub(crate) async fn resolve_creator_package(
+    client: &NexusClient,
+    package_override: Option<sui::types::Address>,
+    role: PackageRole,
+) -> Result<sui::types::Address, NexusCliError> {
+    if let Some(package) = package_override {
+        return Ok(package);
+    }
+
+    client
+        .routing_context(&[])
+        .await
+        .map_err(NexusCliError::Nexus)?
+        .package_id(role)
+        .map_err(NexusCliError::Any)
+}
 
 /// Build Sui client for the provided Sui net.
 pub(crate) async fn build_sui_grpc_client(

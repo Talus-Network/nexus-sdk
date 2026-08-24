@@ -5116,6 +5116,71 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
+            "name": "OccurrenceAdvertisedEvent"
+          },
+          "module": "scheduler",
+          "name": "OccurrenceAdvertisedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task_id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "occurrence_id",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "effective_start_time_ms",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "deadline_ms",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "priority_fee_percentage",
+                  "position": 4,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa5",
+            "module": "scheduler",
             "name": "OccurrenceDispatchedEvent"
           },
           "module": "scheduler",
@@ -6408,24 +6473,6 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "authority",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa0",
-                        "module": "runtime_authority",
-                        "name": "RuntimeAuthority"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
               "name": "task",
               "ty": {
                 "Ref": {
@@ -6436,6 +6483,33 @@
                         "address": "0xa5",
                         "module": "task",
                         "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_work_admission_open",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "authority",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimeAuthority"
                       },
                       "type_arguments": []
                     }
@@ -8037,24 +8111,6 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "authority",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa0",
-                        "module": "runtime_authority",
-                        "name": "RuntimeAuthority"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
               "name": "task",
               "ty": {
                 "Ref": {
@@ -8477,24 +8533,6 @@
               }
             },
             {
-              "name": "authority",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa0",
-                        "module": "runtime_authority",
-                        "name": "RuntimeAuthority"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
               "name": "task",
               "ty": {
                 "Ref": {
@@ -8808,6 +8846,24 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "authority",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimeAuthority"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
               "name": "task",
               "ty": {
                 "Ref": {
@@ -8875,6 +8931,24 @@
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
+            {
+              "name": "authority",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimeAuthority"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "task",
               "ty": {
@@ -8994,6 +9068,24 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "authority",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimeAuthority"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
               "name": "task",
               "ty": {
                 "Ref": {
@@ -9080,6 +9172,24 @@
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
+            {
+              "name": "authority",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimeAuthority"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "task",
               "ty": {
@@ -10145,18 +10255,13 @@
                   "fields": []
                 },
                 {
-                  "name": "DisabledWorkAdmission",
+                  "name": "StaleSkillContract",
                   "position": 1,
                   "fields": []
                 },
                 {
-                  "name": "StaleSkillContract",
-                  "position": 2,
-                  "fields": []
-                },
-                {
                   "name": "MutableDAG",
-                  "position": 3,
+                  "position": 2,
                   "fields": []
                 }
               ]
@@ -10768,25 +10873,6 @@
                   "address": "0x2",
                   "module": "object",
                   "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "disabled_work_admission",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa5",
-                  "module": "task",
-                  "name": "TaskRejectionReason"
                 },
                 "type_arguments": []
               }

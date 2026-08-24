@@ -108,6 +108,7 @@ nexus = [
     "bcs",
     "ed25519-dalek",
     "prost-types",
+    "rand",
     "thiserror",
     "tokio",
 ]
@@ -194,6 +195,7 @@ optional = true
 [dependencies.rand]
 workspace = true
 optional = true
+features = ["std_rng"]
 
 [dependencies.sha2]
 version = "0.10"

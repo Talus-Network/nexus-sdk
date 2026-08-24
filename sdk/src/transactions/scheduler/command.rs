@@ -294,12 +294,16 @@ pub(super) fn append_occurrence(
     authority: &ResolvedAuthority,
     occurrence: &PreparedOccurrence,
 ) -> Result<(), SchedulerError> {
+    let runtime_authority = transaction
+        .runtime_authority(false)
+        .map_err(SchedulerError::transaction)?;
     let (start_time_ms, deadline_ms, priority_fee_percentage) =
         occurrence_args(transaction, occurrence)?;
-    authority.call(
+    authority.call_with_prefix(
         transaction,
         scheduler_binding::schedule_target,
         scheduler_binding::schedule_as_agent_target,
+        vec![runtime_authority],
         task,
         vec![start_time_ms, deadline_ms, priority_fee_percentage],
     )?;
@@ -312,12 +316,16 @@ pub(super) fn append_recurrence(
     authority: &ResolvedAuthority,
     recurrence: &PreparedRecurrence,
 ) -> Result<(), SchedulerError> {
+    let runtime_authority = transaction
+        .runtime_authority(false)
+        .map_err(SchedulerError::transaction)?;
     let (start_time_ms, deadline_ms, interval_ms, occurrences, priority_fee_percentage) =
         recurrence_args(transaction, recurrence)?;
-    authority.call(
+    authority.call_with_prefix(
         transaction,
         scheduler_binding::set_recurrence_target,
         scheduler_binding::set_recurrence_as_agent_target,
+        vec![runtime_authority],
         task,
         vec![
             start_time_ms,
@@ -953,11 +961,36 @@ mod tests {
             .collect()
     }
 
+    fn assert_schedule_calls_read_admission_policy(
+        transaction: &ProgrammableTransaction,
+        objects: &NexusContext,
+    ) {
+        const SCHEDULE_CALLS: &[&str] = &[
+            "schedule",
+            "schedule_as_agent",
+            "set_recurrence",
+            "set_recurrence_as_agent",
+        ];
+
+        let calls: Vec<_> = move_calls(transaction)
+            .filter(|call| SCHEDULE_CALLS.contains(&call.function.as_str()))
+            .collect();
+        assert!(!calls.is_empty());
+        for call in calls {
+            assert_shared_argument(
+                transaction,
+                call.arguments[0],
+                &objects.runtime_authority,
+                false,
+            );
+        }
+    }
+
     #[test]
     fn complete_schedule_has_one_structural_command_path() {
-        let transaction =
-            schedule_task_ptb(&mock_nexus_context(), &task(), &schedule(), address("0x46"))
-                .expect("complete Task compiles");
+        let objects = mock_nexus_context();
+        let transaction = schedule_task_ptb(&objects, &task(), &schedule(), address("0x46"))
+            .expect("complete Task compiles");
 
         assert_eq!(
             scheduler_sequence(&transaction),
@@ -970,6 +1003,7 @@ mod tests {
                 "share",
             ]
         );
+        assert_schedule_calls_read_admission_policy(&transaction, &objects);
     }
 
     #[test]
@@ -1041,8 +1075,9 @@ mod tests {
             occurrence_budget_mist: 1_000,
             failure_policy: FailurePolicy::Continue,
         };
+        let objects = mock_nexus_context();
         let transaction = schedule_task_ptb(
-            &mock_nexus_context(),
+            &objects,
             &task,
             &PreparedSchedule::new(vec![PreparedOccurrence::new(100, None, 20)], None),
             address("0x46"),
@@ -1058,6 +1093,7 @@ mod tests {
                 "share",
             ]
         );
+        assert_schedule_calls_read_admission_policy(&transaction, &objects);
     }
 
     #[test]

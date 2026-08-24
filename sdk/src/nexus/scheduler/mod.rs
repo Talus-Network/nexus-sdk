@@ -198,7 +198,7 @@ pub(super) fn mutation_receipt(
 ) -> Result<TaskMutationReceipt, SchedulerError> {
     let mut scheduled = Vec::new();
     let mut withdrawn = Vec::new();
-    let advertised = None;
+    let mut advertised = None;
 
     for event in &executed.events {
         if let Some(observed_task_id) = scheduler_event_task_id(&event.data) {
@@ -213,6 +213,9 @@ pub(super) fn mutation_receipt(
         }
 
         match &event.data {
+            NexusEventKind::OccurrenceAdvertised(event) => {
+                advertised = Some(OccurrenceRef::new(task_id, event.occurrence_id));
+            }
             NexusEventKind::OccurrenceScheduled(event) => {
                 scheduled.push(ScheduledOccurrence::new(
                     OccurrenceRef::new(task_id, event.occurrence_id),
@@ -262,6 +265,7 @@ fn created_task_id(executed: &ExecutedTransaction) -> Result<sui::types::Address
 
 fn scheduler_event_task_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     match event {
+        NexusEventKind::OccurrenceAdvertised(event) => Some(event.task_id.bytes),
         NexusEventKind::OccurrenceDispatched(event) => Some(event.task_id.bytes),
         NexusEventKind::OccurrenceMissed(event) => Some(event.task_id.bytes),
         NexusEventKind::OccurrenceScheduled(event) => Some(event.task_id.bytes),
@@ -408,6 +412,15 @@ mod tests {
                 30,
                 MoveOccurrenceSource::Recurring { iteration: 3 },
             )),
+            NexusEventKind::OccurrenceAdvertised(
+                scheduler_binding::OccurrenceAdvertisedEvent::new(
+                    ID::new(task_id),
+                    1,
+                    100,
+                    MoveOption::from_option(Some(150)),
+                    20,
+                ),
+            ),
             NexusEventKind::OccurrenceWithdrawn(scheduler_binding::OccurrenceWithdrawnEvent::new(
                 ID::new(task_id),
                 1,
@@ -436,7 +449,10 @@ mod tests {
             receipt.delta().withdrawn()[0].reason(),
             WithdrawalReason::RecurrenceCleared
         );
-        assert_eq!(receipt.delta().advertised(), None);
+        assert_eq!(
+            receipt.delta().advertised(),
+            Some(OccurrenceRef::new(task_id, 1))
+        );
     }
 
     #[test]
@@ -472,6 +488,15 @@ mod tests {
         let task_id = address("0x56");
         let execution_id = ID::new(address("0x57"));
         let events = [
+            NexusEventKind::OccurrenceAdvertised(
+                scheduler_binding::OccurrenceAdvertisedEvent::new(
+                    ID::new(task_id),
+                    1,
+                    10,
+                    MoveOption::from_option(None),
+                    20,
+                ),
+            ),
             NexusEventKind::OccurrenceDispatched(
                 scheduler_binding::OccurrenceDispatchedEvent::new(
                     ID::new(task_id),

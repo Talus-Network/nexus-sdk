@@ -53,8 +53,6 @@ pub enum TaskStatus {
 pub enum TaskRejectionReason {
     /// Current code does not implement the proposal's WorkAdmission contract.
     UnsupportedWorkAdmission,
-    /// Governance explicitly disabled the proposal's WorkAdmission contract.
-    DisabledWorkAdmission,
     /// The referenced Agent skill no longer matches the proposal snapshot.
     StaleSkillContract,
     /// The proposal references a mutable DAG rather than a finalized contract.

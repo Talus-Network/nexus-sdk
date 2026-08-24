@@ -1,6 +1,7 @@
 use {
     crate::{
         move_bindings::{
+            registry::registered_key_verifier as registered_key_verifier_binding,
             sui_framework::transfer as transfer_binding,
             tool::tool_registry as tool_registry_binding,
         },
@@ -338,7 +339,7 @@ fn compose_off_chain_registration(
         clock,
     )?;
     let registered = configure_registration(tx, register_result)?;
-    super::network_auth::create_tool_binding_and_register_key(
+    let binding = super::network_auth::create_tool_binding_and_register_key(
         tx,
         registered.tool,
         registered.owner_cap_over_tool,
@@ -346,12 +347,25 @@ fn compose_off_chain_registration(
         registration.pop_signature,
         None,
     )?;
+    let network_auth = tx.objects().network_auth;
+    let network_auth = tx.shared_root(&network_auth, false)?;
+    tx.call_target(
+        registered_key_verifier_binding::configure_tool_target,
+        vec![
+            tool_registry,
+            registered.tool,
+            registered.owner_cap_over_tool,
+            network_auth,
+            binding,
+        ],
+    )?;
+    super::network_auth::share_binding(tx, binding)?;
     Ok(registered)
 }
 
 /// Builds one [`ProgrammableTransaction`] that atomically registers off chain
-/// [`OffChainToolRegistration`] values and their initial network authorization
-/// keys.
+/// [`OffChainToolRegistration`] values, their initial response keys, and
+/// RegisteredKey verifier support.
 ///
 /// The transaction uses one `$US` withdrawal from the owner address balance.
 ///
@@ -605,14 +619,17 @@ pub fn configure_registered_key_verifier_ptb(
     context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
+    tool_key_binding: &sui::types::ObjectReference,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(context, |tx| {
         let registry = tx.shared_root(&context.tool_registry, true)?;
         let tool = tx.shared_object(tool, false)?;
         let owner_cap = tx.owned_object(owner_cap)?;
+        let network_auth = tx.shared_root(&context.network_auth, false)?;
+        let tool_key_binding = tx.shared_object(tool_key_binding, false)?;
         tx.call_target(
-            tool_registry_binding::configure_registered_key_support_target,
-            vec![registry, tool, owner_cap],
+            registered_key_verifier_binding::configure_tool_target,
+            vec![registry, tool, owner_cap, network_auth, tool_key_binding],
         )?;
         Ok(())
     })
@@ -1118,6 +1135,15 @@ mod tests {
         let key_calls = move_call_indices(&first, "network_auth", "register_key");
         assert_eq!(key_calls.len(), 2);
         let last_key_call = *key_calls.last().expect("batch must register every key");
+        let verifier_calls = move_call_indices(&first, "registered_key_verifier", "configure_tool");
+        assert_eq!(verifier_calls.len(), 2);
+        assert!(
+            key_calls
+                .iter()
+                .zip(&verifier_calls)
+                .all(|(key, verifier)| key < verifier),
+            "each active response key must exist before RegisteredKey support is enabled"
+        );
 
         let tool_type = crate::move_bindings::type_tag::<tool_registry_binding::Tool>(&objects);
         let tool_share_calls = first
@@ -1169,6 +1195,27 @@ mod tests {
                 1
             );
         }
+    }
+
+    #[test]
+    fn registered_key_configuration_uses_the_key_validating_boundary() {
+        let objects = sui_mocks::mock_nexus_context();
+        let tool = sui_mocks::mock_sui_object_ref();
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+        let tool_key_binding = sui_mocks::mock_sui_object_ref();
+
+        let ptb =
+            configure_registered_key_verifier_ptb(&objects, &tool, &owner_cap, &tool_key_binding)
+                .unwrap();
+
+        assert_eq!(
+            move_call_indices(&ptb, "registered_key_verifier", "configure_tool").len(),
+            1
+        );
+        assert!(
+            move_call_indices(&ptb, "tool_registry", "configure_registered_key_support").is_empty(),
+            "SDK callers must not bypass active key validation"
+        );
     }
 
     #[test]

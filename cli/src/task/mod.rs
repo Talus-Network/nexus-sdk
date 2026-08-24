@@ -160,7 +160,7 @@ pub(crate) enum TaskCommand {
             value_name = "PACKAGE_ID",
             help = "Scheduler package that defines TaskPointer"
         )]
-        scheduler_package: sui::types::Address,
+        scheduler_package: Option<sui::types::Address>,
         #[arg(
             long,
             value_name = "HEX",
@@ -243,7 +243,7 @@ pub(crate) struct CreateTaskArgs {
         value_name = "PACKAGE_ID",
         help = "Scheduler package used to create the Task"
     )]
-    scheduler_package: sui::types::Address,
+    scheduler_package: Option<sui::types::Address>,
     #[command(flatten)]
     task: TaskArgs,
     #[command(flatten)]
@@ -257,7 +257,7 @@ pub(crate) struct ScheduleTaskArgs {
         value_name = "PACKAGE_ID",
         help = "Scheduler package used to create the Task"
     )]
-    scheduler_package: sui::types::Address,
+    scheduler_package: Option<sui::types::Address>,
     #[command(flatten)]
     task: TaskArgs,
     #[command(flatten)]
@@ -470,6 +470,32 @@ mod tests {
     }
 
     #[test]
+    fn schedule_uses_live_routing_when_package_override_is_absent() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "task",
+            "schedule",
+            "--dag-id",
+            "0x42",
+            "--prepay-amount-mist",
+            "50000000",
+            "--occurrence-budget-mist",
+            "50000000",
+            "--now",
+        ])
+        .expect("Task scheduling should route through live package state");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Task(task)
+                if matches!(
+                    &*task,
+                    TaskCommand::Schedule(args) if args.scheduler_package.is_none()
+                )
+        ));
+    }
+
+    #[test]
     fn task_list_uses_the_default_page_limit() {
         let cli =
             crate::Cli::try_parse_from(["nexus", "task", "list", "--scheduler-package", "0xa5"])
@@ -483,7 +509,7 @@ mod tests {
                         scheduler_package,
                         cursor: None,
                         limit: 50,
-                    } if scheduler_package == sui::types::Address::from_static("0xa5")
+                    } if scheduler_package == Some(sui::types::Address::from_static("0xa5"))
                 )
         ));
     }
@@ -511,7 +537,7 @@ mod tests {
                         scheduler_package,
                         cursor: Some(ref cursor),
                         limit: 7,
-                    } if scheduler_package == sui::types::Address::from_static("0xa5")
+                    } if scheduler_package == Some(sui::types::Address::from_static("0xa5"))
                         && cursor == "0102"
                 )
         ));

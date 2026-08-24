@@ -303,9 +303,6 @@ fn task_snapshot(
                 crate::move_bindings::scheduler::task::TaskRejectionReason::UnsupportedWorkAdmission => {
                     crate::scheduler::TaskRejectionReason::UnsupportedWorkAdmission
                 }
-                crate::move_bindings::scheduler::task::TaskRejectionReason::DisabledWorkAdmission => {
-                    crate::scheduler::TaskRejectionReason::DisabledWorkAdmission
-                }
                 crate::move_bindings::scheduler::task::TaskRejectionReason::StaleSkillContract => {
                     crate::scheduler::TaskRejectionReason::StaleSkillContract
                 }

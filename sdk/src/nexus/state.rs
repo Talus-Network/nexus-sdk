@@ -109,11 +109,18 @@ impl StateResolver {
         object_id: sui::types::Address,
     ) -> Result<ObservedState, NexusError> {
         for attempt in 0..STATE_OBSERVATION_ATTEMPTS {
-            let (object, fields) = tokio::try_join!(
+            let (object, fields) = tokio::join!(
                 self.crawler.observe_object_metadata(object_id),
                 self.crawler.get_dynamic_field_metadata(object_id),
-            )
-            .map_err(NexusError::Rpc)?;
+            );
+            let (object, fields) = match (object, fields) {
+                (Ok(object), Ok(fields)) => (object, fields),
+                (Err(_error), _) | (_, Err(_error)) if attempt + 1 < STATE_OBSERVATION_ATTEMPTS => {
+                    sleep(STATE_OBSERVATION_RETRY_DELAY).await;
+                    continue;
+                }
+                (Err(error), _) | (_, Err(error)) => return Err(NexusError::Rpc(error)),
+            };
 
             match observed_state_from_metadata(object, fields) {
                 Ok(observed) => return Ok(observed),
@@ -312,6 +319,26 @@ impl StateResolver {
         Ok(NexusContext::new(objects, packages))
     }
 
+    /// Resolves the preferred package graph selected by the fixed runtime authority.
+    ///
+    /// Routing remains available while the runtime is paused because proposal
+    /// construction does not grant protocol effect authority. Onchain runtime
+    /// authorization remains the only authority check.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::InvalidObjectState`] when the configured root is
+    /// malformed or unbound. Package and root compatibility errors are
+    /// returned by the normal package resolver.
+    pub async fn resolve_routing_context(
+        &self,
+        objects: Arc<NexusObjects>,
+        required_roots: &[SharedRoot],
+    ) -> Result<NexusContext, NexusError> {
+        self.resolve_bound_runtime_context(objects, required_roots, false)
+            .await
+    }
+
     /// Resolves the package graph selected by the fixed runtime authority.
     ///
     /// Effect builders must use this context instead of deriving authority
@@ -329,6 +356,16 @@ impl StateResolver {
         &self,
         objects: Arc<NexusObjects>,
         required_roots: &[SharedRoot],
+    ) -> Result<NexusContext, NexusError> {
+        self.resolve_bound_runtime_context(objects, required_roots, true)
+            .await
+    }
+
+    async fn resolve_bound_runtime_context(
+        &self,
+        objects: Arc<NexusObjects>,
+        required_roots: &[SharedRoot],
+        require_active: bool,
     ) -> Result<NexusContext, NexusError> {
         let root = objects.runtime_authority;
         let observed = self
@@ -369,7 +406,7 @@ impl StateResolver {
             .as_option()
             .map(ID::address)
             .ok_or_else(|| invalid("RuntimeAuthority has no current runtime package".to_owned()))?;
-        if observed.data.paused {
+        if require_active && observed.data.paused {
             return Err(invalid(format!(
                 "runtime package '{runtime_package}' is paused"
             )));
@@ -1215,6 +1252,81 @@ fn select_state_field(
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn observation_retries_incomplete_dynamic_field_metadata() {
+        use {
+            crate::test_utils::sui_mocks,
+            std::sync::atomic::{AtomicUsize, Ordering},
+        };
+
+        let object_id = address("0x10");
+        let anchor_type = struct_tag("0xa6", "task", "Task");
+        let witness_key =
+            sui::types::TypeTag::Struct(Box::new(struct_tag("0xa1", "object_state", "Witness")));
+        let inner_key =
+            sui::types::TypeTag::Struct(Box::new(struct_tag("0xa1", "object_state", "Inner")));
+        let witness_type = sui::types::TypeTag::Struct(Box::new(struct_tag("0xa6", "era", "V1")));
+        let inner_type =
+            sui::types::TypeTag::Struct(Box::new(struct_tag("0xa6", "task", "TaskInnerV1")));
+
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        ledger
+            .expect_get_object()
+            .times(2)
+            .returning(move |_request| {
+                let mut object = sui::grpc::Object::default();
+                object.set_object_id(object_id);
+                object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(1)));
+                object.set_object_type(anchor_type.to_string());
+                let mut response = sui::grpc::GetObjectResponse::default();
+                response.set_object(object);
+                Ok(tonic::Response::new(response))
+            });
+
+        let observations = Arc::new(AtomicUsize::new(0));
+        let mut state = sui_mocks::grpc::MockStateService::new();
+        state
+            .expect_list_dynamic_fields()
+            .times(2)
+            .returning(move |_request| {
+                let observation = observations.fetch_add(1, Ordering::SeqCst);
+                let fields = if observation == 0 {
+                    let mut incomplete = sui::grpc::DynamicField::default();
+                    incomplete.set_field_id(address("0x11"));
+                    vec![incomplete]
+                } else {
+                    vec![
+                        listed_state_field(
+                            address("0x11"),
+                            witness_key.clone(),
+                            witness_type.clone(),
+                        ),
+                        listed_state_field(address("0x12"), inner_key.clone(), inner_type.clone()),
+                    ]
+                };
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                response.set_dynamic_fields(fields);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            state_service_mock: Some(state),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(
+            sui::grpc::client(&rpc_url).expect("mock Sui client builds"),
+        ));
+        let observed = StateResolver::new(Arc::new(crawler))
+            .observe(object_id)
+            .await
+            .expect("the coherent retry should be observed");
+
+        assert_eq!(observed.object_id, object_id);
+        assert_eq!(observed.witness.field_id, address("0x11"));
+        assert_eq!(observed.inner.field_id, address("0x12"));
+    }
+
     #[test]
     fn only_missing_state_markers_are_reobserved() {
         assert!(state_observation_may_be_incomplete(
@@ -1355,6 +1467,26 @@ mod tests {
             ))),
             value_type: sui::types::TypeTag::Struct(Box::new(value_type)),
         }
+    }
+
+    fn listed_state_field(
+        field_id: sui::types::Address,
+        key_type: sui::types::TypeTag,
+        value_type: sui::types::TypeTag,
+    ) -> sui::grpc::DynamicField {
+        let field_type = sui::types::StructTag::new(
+            address("0x2"),
+            sui::types::Identifier::from_static("dynamic_field"),
+            sui::types::Identifier::from_static("Field"),
+            vec![key_type, value_type.clone()],
+        );
+        let mut object = sui::grpc::Object::default();
+        object.set_object_type(field_type.to_string());
+        let mut field = sui::grpc::DynamicField::default();
+        field.set_field_id(field_id);
+        field.set_field_object(object);
+        field.set_value_type(value_type.to_string());
+        field
     }
 
     fn struct_tag(

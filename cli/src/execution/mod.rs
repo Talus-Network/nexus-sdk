@@ -177,6 +177,7 @@ mod tests {
                 Err(error) => error,
             };
             let help = error.to_string();
+            let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
 
             for expected in [
                 "created after a Task occurrence is dispatched",
@@ -186,7 +187,10 @@ mod tests {
                 "nexus task occurrence inspect",
                 "nexus tap execution --help",
             ] {
-                assert!(help.contains(expected), "missing '{expected}' from help");
+                assert!(
+                    normalized_help.contains(expected),
+                    "missing '{expected}' from help"
+                );
             }
         }
     }

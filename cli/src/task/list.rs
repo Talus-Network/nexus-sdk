@@ -5,9 +5,9 @@ use {
         display::{human_output, json_output},
         loading,
         prelude::*,
-        sui::get_owner_nexus_client,
+        sui::{get_owner_nexus_client, resolve_creator_package},
     },
-    nexus_sdk::scheduler::TaskPointer,
+    nexus_sdk::{scheduler::TaskPointer, types::PackageRole},
 };
 
 #[derive(Serialize)]
@@ -17,7 +17,7 @@ struct TaskListOutput<'a> {
 }
 
 pub(crate) async fn run(
-    scheduler_package: sui::types::Address,
+    scheduler_package: Option<sui::types::Address>,
     cursor: Option<String>,
     limit: usize,
 ) -> AnyResult<(), NexusCliError> {
@@ -30,6 +30,8 @@ pub(crate) async fn run(
         .transpose()
         .map_err(NexusCliError::Any)?;
     let client = get_owner_nexus_client().await?;
+    let scheduler_package =
+        resolve_creator_package(&client, scheduler_package, PackageRole::Scheduler).await?;
     let progress = loading!("Reading owned TaskPointer objects...");
     let page = client
         .scheduler()

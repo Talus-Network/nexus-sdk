@@ -5,6 +5,7 @@ use {
         move_bindings::{
             interface::verifier::ToolVerifierSupport,
             move_std::ascii,
+            registry::network_auth::IdentityKey,
             sui_framework::{linked_table::Node, object::ID},
             tool::{
                 external_verifier::ExternalVerifier,
@@ -192,10 +193,32 @@ impl ToolActions {
         fqn: &ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<ToolActionResult, NexusError> {
-        let (context, tool_ref, owner_cap) = self.current_tool_inputs(fqn, owner_cap, true).await?;
-        let transaction =
-            tool::configure_registered_key_verifier_ptb(&context, &tool_ref, &owner_cap)
-                .map_err(NexusError::TransactionBuilding)?;
+        let tool_ref = self.client.fetch_tool(fqn).await?;
+        let tool_id = *tool_ref.object_id();
+        let binding_id = self
+            .client
+            .network_auth()
+            .binding_object_id(&IdentityKey::tool(tool_id))
+            .await?;
+        let objects = self.client.get_nexus_objects();
+        let context = self
+            .client
+            .context_for_object_with_roots(
+                objects.network_auth.object_id(),
+                std::slice::from_ref(&objects.tool_registry),
+            )
+            .await?;
+        let (owner_cap, tool_key_binding) = tokio::try_join!(
+            self.client.object_reference(owner_cap),
+            self.client.object_reference(binding_id),
+        )?;
+        let transaction = tool::configure_registered_key_verifier_ptb(
+            &context,
+            &tool_ref,
+            &owner_cap,
+            &tool_key_binding,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         self.submit_action(transaction).await
     }
 
@@ -251,7 +274,7 @@ impl ToolActions {
         fqn: &ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<ToolActionResult, NexusError> {
-        let (context, tool_ref, owner_cap) = self.current_tool_inputs(fqn, owner_cap, true).await?;
+        let (context, tool_ref, owner_cap) = self.unregister_inputs(fqn, owner_cap).await?;
         let transaction = tool::unregister_ptb(&context, &tool_ref, &owner_cap)
             .map_err(NexusError::TransactionBuilding)?;
         self.submit_action(transaction).await
@@ -672,6 +695,34 @@ impl ToolActions {
         Ok((context, tool, owner_cap))
     }
 
+    /// Resolves [`Self::unregister`] from stable IDs and current Registry authority.
+    ///
+    /// Unregistration is the recovery path for a Tool whose inner value this
+    /// SDK cannot decode. The transaction therefore reads only object metadata
+    /// for the Tool and owner capability. The current [`ToolRegistry`] selects
+    /// the call target, and the Move transition remains authoritative for the
+    /// Tool state and ownership checks.
+    async fn unregister_inputs(
+        &self,
+        fqn: &ToolFqn,
+        owner_cap: sui::types::Address,
+    ) -> Result<
+        (
+            Arc<NexusContext>,
+            sui::types::ObjectReference,
+            sui::types::ObjectReference,
+        ),
+        NexusError,
+    > {
+        let registry = &self.client.nexus_objects.tool_registry;
+        let context = self.client.context_for_root(registry).await?;
+        let tool_id = crate::move_bindings::derive_tool_id(registry.object_id(), fqn)
+            .map_err(NexusError::Parsing)?;
+        let tool = self.client.object_reference(tool_id).await?;
+        let owner_cap = self.client.object_reference(owner_cap).await?;
+        Ok((context, tool, owner_cap))
+    }
+
     async fn cashier_inputs(
         &self,
         fqn: &ToolFqn,
@@ -919,5 +970,61 @@ mod tests {
             ToolCompatibility::Unavailable
         );
         assert!(by_fqn["xyz.taluslabs.unavailable.tool@1"].tool.is_none());
+    }
+
+    #[tokio::test]
+    async fn unregister_inputs_do_not_decode_tool_state() {
+        let context = sui_mocks::mock_nexus_context();
+        let fqn = "xyz.taluslabs.legacy.tool@1".parse::<ToolFqn>().unwrap();
+        let tool_id =
+            crate::move_bindings::derive_tool_id(context.tool_registry.object_id(), &fqn).unwrap();
+        let tool_ref = sui_mocks::object_ref_for_id(tool_id);
+        let owner_cap_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xc4"));
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_registry(
+            &mut ledger_service,
+            &mut state_service,
+            &context,
+            registry_inner(sui::types::Address::from_static("0xd1"), &[]),
+        );
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            context.packages(),
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service,
+            tool_ref.clone(),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service,
+            owner_cap_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0xa")),
+            None,
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
+            state_service_mock: Some(state_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&context, &rpc_url).await;
+
+        let (selected, selected_tool, selected_cap) = client
+            .tool()
+            .unregister_inputs(&fqn, *owner_cap_ref.object_id())
+            .await
+            .unwrap();
+
+        assert_eq!(selected_tool, tool_ref);
+        assert_eq!(selected_cap, owner_cap_ref);
+        assert_eq!(
+            selected.packages().get(PackageRole::Tool),
+            context.packages().get(PackageRole::Tool),
+        );
     }
 }

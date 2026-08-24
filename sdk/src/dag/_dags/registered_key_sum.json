@@ -1,0 +1,25 @@
+{
+  "vertices": [
+    {
+      "name": "sum",
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.math.i64.sum@1"
+      },
+      "entry_ports": [
+        {
+          "name": "vec"
+        }
+      ],
+      "verifier": "registered_key"
+    }
+  ],
+  "edges": [],
+  "outputs": [
+    {
+      "vertex": "sum",
+      "output_variant": "ok",
+      "output_port": "result"
+    }
+  ]
+}
