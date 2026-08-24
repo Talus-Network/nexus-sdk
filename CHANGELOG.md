@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added dynamic Invocation policy composition, policy discovery, canonical finite credit and time pass accounts, owner grants, receipt collection, and exact Invocation timeout refunds.
 - Added deterministic entitlement ID derivation from the Tool cashier, payment beneficiary, and policy type.
 - Added beneficiary access inspection with canonical account state, pass activity from the onchain clock, and exact finite credit refunds ready for restoration.
+- Added canonical runtime vertex payment key derivation for exact Invocation lock validation.
 
 #### Fixed
 

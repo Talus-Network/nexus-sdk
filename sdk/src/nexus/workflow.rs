@@ -2403,7 +2403,11 @@ impl ExecutionCostResult {
     }
 }
 
-fn payment_vertex_key(
+/// Derives the canonical payment lock key for one runtime Tool invocation.
+///
+/// This matches the key derived by `nexus_workflow::execution` from the exact
+/// execution, [`RuntimeVertex`], and Tool identity.
+pub fn payment_vertex_key(
     execution_id: sui::types::Address,
     vertex: &RuntimeVertex,
     tool_fqn: &crate::ToolFqn,
