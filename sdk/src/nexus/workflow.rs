@@ -1606,6 +1606,7 @@ impl WorkflowActions {
                 vertex: &vertex,
             },
             &policy,
+            0,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let sender = client.owner()?;

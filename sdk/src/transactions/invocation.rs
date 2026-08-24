@@ -144,6 +144,7 @@ pub fn authorize(
     leader_registry: sui::types::Argument,
     target: InvocationTarget<'_>,
     policy: &InvocationPolicyCall,
+    submission_gas_charge: u64,
 ) -> anyhow::Result<sui::types::Argument> {
     let vertex = super::dag::runtime_vertex_arg(transaction, target.vertex)?;
     let clock = transaction.clock()?;
@@ -171,6 +172,7 @@ pub fn authorize(
     let authorized =
         transaction.call_function(package, module, "get_invocation", policy_arguments)?;
     let walk_index = transaction.arg(&target.walk_index)?;
+    let submission_gas_charge = transaction.arg(&submission_gas_charge)?;
     transaction.call_target(
         invocation_adapter_binding::lock_and_request_target,
         vec![
@@ -180,12 +182,16 @@ pub fn authorize(
             walk_index,
             vertex,
             authorized,
+            submission_gas_charge,
             clock,
         ],
     )
 }
 
 /// Builds a PTB that authorizes one exact Tool Invocation.
+///
+/// `submission_gas_charge` reimburses the transaction sender from the
+/// execution payment. A user submitting for itself should pass zero.
 pub fn authorize_ptb(
     objects: &NexusObjects,
     cashier: &sui::types::ObjectReference,
@@ -194,6 +200,7 @@ pub fn authorize_ptb(
     leader_registry: &sui::types::ObjectReference,
     target: InvocationTarget<'_>,
     policy: &InvocationPolicyCall,
+    submission_gas_charge: u64,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
         let cashier = transaction.shared_object(cashier, false)?;
@@ -208,6 +215,7 @@ pub fn authorize_ptb(
             leader_registry,
             target,
             policy,
+            submission_gas_charge,
         )?;
         Ok(())
     })
@@ -273,7 +281,7 @@ mod tests {
             move_bindings::interface::graph::RuntimeVertex,
             test_utils::sui_mocks::{mock_nexus_objects, object_ref_for_id},
         },
-        sui_sdk_types::{Command, Input},
+        sui_sdk_types::{Argument, Command, Input},
     };
 
     fn vertex() -> RuntimeVertex {
@@ -298,6 +306,7 @@ mod tests {
                 vertex: &vertex(),
             },
             &InvocationPolicyCall::fixed_price(&objects),
+            42,
         )
         .unwrap();
 
@@ -329,6 +338,31 @@ mod tests {
             .position(|call| *call == ("invocation_adapter", "lock_and_request"))
             .unwrap();
         assert!(request < policy && policy < lock_and_request);
+
+        let lock_and_request = ptb
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                Command::MoveCall(call)
+                    if call.module.as_str() == "invocation_adapter"
+                        && call.function.as_str() == "lock_and_request" =>
+                {
+                    Some(call)
+                }
+                _ => None,
+            })
+            .expect("lock and request call");
+        assert_eq!(lock_and_request.arguments.len(), 8);
+        let Argument::Input(gas_charge) = lock_and_request.arguments[6] else {
+            panic!("gas charge must be a pure input")
+        };
+        let Input::Pure(gas_charge) = &ptb.inputs[usize::from(gas_charge)] else {
+            panic!("gas charge must be a pure input")
+        };
+        assert_eq!(
+            u64::from_le_bytes(gas_charge.as_slice().try_into().unwrap()),
+            42,
+        );
     }
 
     #[test]

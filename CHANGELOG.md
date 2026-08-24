@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
 - Finite credit and time pass purchases now withdraw their exact SUI price from the signer address balance inside the purchase PTB.
 - Invocation authorization now emits the executable walk request with its exact Invocation in the same transaction.
+- Automatic Invocation authorization can reimburse its measured submission gas from the execution payment, while user submitted authorization uses zero reimbursement.
 - Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
 - Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
