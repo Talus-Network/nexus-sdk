@@ -494,8 +494,11 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
         NexusEventKind::OccurrenceDispatched(e) => Some(e.execution_id.into()),
         NexusEventKind::ExecutionPaymentFeesRecorded(e) => Some(e.execution_id),
         NexusEventKind::ExecutionPaymentToolCostSnapshotted(e) => Some(e.execution_id),
+        NexusEventKind::InvocationAuthorizationRequired(e) => Some(e.execution.into()),
         NexusEventKind::InvocationLocked(e) => Some(e.execution.bytes),
         NexusEventKind::InvocationSettled(e) => Some(e.execution.bytes),
+        NexusEventKind::RequestWalkExecution(e) => Some(e.execution.into()),
+        NexusEventKind::CommittedToolResult(e) => Some(e.execution.into()),
         NexusEventKind::WalkAdvanced(e) => Some(e.execution.into()),
         NexusEventKind::WalkFailed(e) => Some(e.execution.into()),
         NexusEventKind::SubmissionFailureEvidenceRecorded(e) => Some(e.execution.into()),
@@ -2574,9 +2577,12 @@ mod tests {
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
+                        CommittedToolResultEvent,
                         EndStateReachedEvent,
                         ExecutionFinishedEvent,
                         ExecutionPaymentRefilledEvent,
+                        InvocationAuthorizationRequiredEvent,
+                        RequestWalkExecutionEvent,
                         SubmissionFailureEvidenceRecordedEvent,
                         TerminalErrEvalRecordedEvent,
                         ToolVerificationResolvedEvent,
@@ -4387,6 +4393,47 @@ mod tests {
         });
 
         assert_eq!(event_execution_id(&event), Some(execution));
+    }
+
+    #[test]
+    fn execution_history_includes_the_invocation_boundary() {
+        let execution = sui::types::Address::TWO;
+        let dag = object_id(sui::types::Address::ZERO);
+        let events = [
+            NexusEventKind::InvocationAuthorizationRequired(InvocationAuthorizationRequiredEvent {
+                dag,
+                execution: object_id(execution),
+                walk_index: 0,
+                vertex: RuntimeVertex::plain("tool"),
+            }),
+            NexusEventKind::RequestWalkExecution(RequestWalkExecutionEvent {
+                dag,
+                execution: object_id(execution),
+                invocation: object_id(sui::types::Address::from_static("0x4")),
+                invoker: sui::types::Address::THREE,
+                walk_index: 0,
+                next_vertex: RuntimeVertex::plain("tool"),
+                evaluations: object_id(sui::types::Address::from_static("0x5")),
+                agent_id: object_id(sui::types::Address::from_static("0x6")),
+                skill_id: 7,
+                interface_version: InterfaceVersion::new(1),
+                task_id: object_id(sui::types::Address::from_static("0x7")),
+                occurrence_id: 8,
+            }),
+            NexusEventKind::CommittedToolResult(CommittedToolResultEvent {
+                dag,
+                execution: object_id(execution),
+                walk_index: 0,
+                vertex: RuntimeVertex::plain("tool"),
+                leader: object_id(sui::types::Address::from_static("0x8")),
+                has_primary_failure_evidence: false,
+                has_secondary_failure_evidence: false,
+            }),
+        ];
+
+        for event in events {
+            assert_eq!(event_execution_id(&event), Some(execution));
+        }
     }
 
     #[test]

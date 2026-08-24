@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Execution inspection now includes Invocation authorization, walk request, and committed result events from the execution object history.
 - Finite credit and time pass transactions now construct payment beneficiaries through the canonical Move API instead of submitting unforgeable package values as pure PTB inputs.
 - Tool cashier inbox discovery, collection, and finite credit refund restoration now use the address owner representation produced by Transfer to Object.
 - Permissionless timeout builders now append owning Task settlement after Invocation resolution when the Task is supplied.
