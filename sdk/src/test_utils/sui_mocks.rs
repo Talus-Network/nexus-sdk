@@ -160,7 +160,6 @@ pub fn mock_nexus_packages() -> NexusPackages {
                 ("tool_cashier", "ToolCashierKey"),
                 ("finite_credits", "Policy"),
                 ("fixed_price", "Policy"),
-                ("free_invocation", "Policy"),
                 ("time_pass", "Policy"),
             ],
             &["0xa1", "0xa2"],

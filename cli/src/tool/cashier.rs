@@ -67,12 +67,6 @@ pub(crate) enum CashierCommand {
         recipient: Option<sui::types::Address>,
     },
 
-    #[command(subcommand, about = "Manage fixed price admission")]
-    FixedPrice(PolicyToggleCommand),
-
-    #[command(subcommand, about = "Manage sponsored free admission")]
-    Free(PolicyToggleCommand),
-
     #[command(subcommand, about = "Manage finite invocation credits")]
     FiniteCredits(FiniteCreditCommand),
 
@@ -134,20 +128,6 @@ impl BeneficiaryArgs {
             (Some(_), Some(_)) => unreachable!("clap rejects multiple beneficiary selectors"),
         }
     }
-}
-
-#[derive(Subcommand)]
-pub(crate) enum PolicyToggleCommand {
-    #[command(about = "Accept this policy for new Invocations")]
-    Enable {
-        #[command(flatten)]
-        admin: AdminArgs,
-    },
-    #[command(about = "Stop accepting this policy for new Invocations")]
-    Disable {
-        #[command(flatten)]
-        admin: AdminArgs,
-    },
 }
 
 #[derive(Args)]
@@ -291,14 +271,10 @@ pub(crate) enum TimePassCommand {
 
 #[derive(Clone, Copy)]
 enum AdminAction {
-    EnableFixedPrice,
-    DisableFixedPrice,
-    EnableFree,
-    DisableFree,
-    CloseFiniteCreditIssuance,
-    OpenFiniteCreditIssuance,
-    CloseTimePassIssuance,
-    OpenTimePassIssuance,
+    CloseFiniteCredits,
+    OpenFiniteCredits,
+    CloseTimePass,
+    OpenTimePass,
 }
 
 async fn resolve_cashier_admin(
@@ -463,12 +439,7 @@ fn print_economy(tool_fqn: &ToolFqn, economy: &ToolEconomy) {
     for policy in &economy.policies {
         notify_success!("Policy: {policy}");
     }
-    if let Some(price) = economy.fixed_price_mist {
-        notify_success!("Fixed price: {price} MIST");
-    }
-    if economy.free_invocations {
-        notify_success!("Sponsored free admission: enabled");
-    }
+    notify_success!("Fixed price: {} MIST", economy.fixed_price_mist);
     if let Some(offer) = &economy.finite_credits {
         notify_success!(
             "Finite credits: {} MIST each, {} to {}, issuance {}",
@@ -504,49 +475,25 @@ async fn run_admin(admin: AdminArgs, action: AdminAction) -> AnyResult<(), Nexus
     let client = get_nexus_client(admin.gas.sui_gas_coin, admin.gas.sui_gas_budget).await?;
     let progress = loading!("Submitting policy transaction...");
     let result = match action {
-        AdminAction::EnableFixedPrice => {
-            client
-                .tool()
-                .enable_fixed_price(&tool_fqn, cashier_admin)
-                .await
-        }
-        AdminAction::DisableFixedPrice => {
-            client
-                .tool()
-                .disable_fixed_price(&tool_fqn, cashier_admin)
-                .await
-        }
-        AdminAction::EnableFree => {
-            client
-                .tool()
-                .enable_free_invocations(&tool_fqn, cashier_admin)
-                .await
-        }
-        AdminAction::DisableFree => {
-            client
-                .tool()
-                .disable_free_invocations(&tool_fqn, cashier_admin)
-                .await
-        }
-        AdminAction::CloseFiniteCreditIssuance => {
+        AdminAction::CloseFiniteCredits => {
             client
                 .tool()
                 .close_finite_credit_issuance(&tool_fqn, cashier_admin)
                 .await
         }
-        AdminAction::OpenFiniteCreditIssuance => {
+        AdminAction::OpenFiniteCredits => {
             client
                 .tool()
                 .open_finite_credit_issuance(&tool_fqn, cashier_admin)
                 .await
         }
-        AdminAction::CloseTimePassIssuance => {
+        AdminAction::CloseTimePass => {
             client
                 .tool()
                 .close_time_pass_issuance(&tool_fqn, cashier_admin)
                 .await
         }
-        AdminAction::OpenTimePassIssuance => {
+        AdminAction::OpenTimePass => {
             client
                 .tool()
                 .open_time_pass_issuance(&tool_fqn, cashier_admin)
@@ -564,14 +511,10 @@ async fn run_admin(admin: AdminArgs, action: AdminAction) -> AnyResult<(), Nexus
         }
     };
     let action = match action {
-        AdminAction::EnableFixedPrice => "enable_fixed_price",
-        AdminAction::DisableFixedPrice => "disable_fixed_price",
-        AdminAction::EnableFree => "enable_free_invocations",
-        AdminAction::DisableFree => "disable_free_invocations",
-        AdminAction::CloseFiniteCreditIssuance => "close_finite_credit_issuance",
-        AdminAction::OpenFiniteCreditIssuance => "open_finite_credit_issuance",
-        AdminAction::CloseTimePassIssuance => "close_time_pass_issuance",
-        AdminAction::OpenTimePassIssuance => "open_time_pass_issuance",
+        AdminAction::CloseFiniteCredits => "close_finite_credit_issuance",
+        AdminAction::OpenFiniteCredits => "open_finite_credit_issuance",
+        AdminAction::CloseTimePass => "close_time_pass_issuance",
+        AdminAction::OpenTimePass => "open_time_pass_issuance",
     };
     emit_result(action, &tool_fqn, &result.tx_digest)
 }
@@ -813,29 +756,13 @@ pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), Nex
             deposit_ids,
             recipient,
         } => collect_deposits(admin, deposit_ids, recipient).await,
-        CashierCommand::FixedPrice(command) => match command {
-            PolicyToggleCommand::Enable { admin } => {
-                run_admin(admin, AdminAction::EnableFixedPrice).await
-            }
-            PolicyToggleCommand::Disable { admin } => {
-                run_admin(admin, AdminAction::DisableFixedPrice).await
-            }
-        },
-        CashierCommand::Free(command) => match command {
-            PolicyToggleCommand::Enable { admin } => {
-                run_admin(admin, AdminAction::EnableFree).await
-            }
-            PolicyToggleCommand::Disable { admin } => {
-                run_admin(admin, AdminAction::DisableFree).await
-            }
-        },
         CashierCommand::FiniteCredits(command) => match command {
             FiniteCreditCommand::Enable { terms } => set_finite_credit_terms(terms, true).await,
             FiniteCreditCommand::CloseIssuance { admin } => {
-                run_admin(admin, AdminAction::CloseFiniteCreditIssuance).await
+                run_admin(admin, AdminAction::CloseFiniteCredits).await
             }
             FiniteCreditCommand::OpenIssuance { admin } => {
-                run_admin(admin, AdminAction::OpenFiniteCreditIssuance).await
+                run_admin(admin, AdminAction::OpenFiniteCredits).await
             }
             FiniteCreditCommand::UpdateTerms { terms } => {
                 set_finite_credit_terms(terms, false).await
@@ -860,10 +787,10 @@ pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), Nex
         CashierCommand::TimePass(command) => match command {
             TimePassCommand::Enable { terms } => set_time_pass_terms(terms, true).await,
             TimePassCommand::CloseIssuance { admin } => {
-                run_admin(admin, AdminAction::CloseTimePassIssuance).await
+                run_admin(admin, AdminAction::CloseTimePass).await
             }
             TimePassCommand::OpenIssuance { admin } => {
-                run_admin(admin, AdminAction::OpenTimePassIssuance).await
+                run_admin(admin, AdminAction::OpenTimePass).await
             }
             TimePassCommand::UpdateTerms { terms } => set_time_pass_terms(terms, false).await,
             TimePassCommand::Buy {

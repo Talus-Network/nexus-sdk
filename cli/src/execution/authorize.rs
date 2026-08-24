@@ -101,7 +101,6 @@ pub(super) async fn run(
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let policy = match policy {
         InvocationPolicyCommand::FixedPrice => InvocationPolicy::FixedPrice,
-        InvocationPolicyCommand::Free => InvocationPolicy::Free,
         InvocationPolicyCommand::FiniteCredits => InvocationPolicy::FiniteCredits,
         InvocationPolicyCommand::TimePass => InvocationPolicy::TimePass,
         InvocationPolicyCommand::Custom { policy, arguments } => {

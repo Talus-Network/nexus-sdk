@@ -7,8 +7,6 @@ use crate::{
         sui_framework::{coin as coin_binding, sui::SUI, transfer::Receiving},
         tool::{
             finite_credits as finite_credits_binding,
-            fixed_price as fixed_price_binding,
-            free_invocation as free_invocation_binding,
             invocation::Invocation,
             time_pass as time_pass_binding,
             tool_cashier::{self as tool_cashier_binding, CashierDeposit},
@@ -75,62 +73,6 @@ fn payment_source_kind_arg(
             )
         }
     }
-}
-
-/// Enables the canonical fixed price policy.
-pub fn enable_fixed_price_ptb(
-    objects: &NexusContext,
-    tool_cashier: &sui::types::ObjectReference,
-    cashier_admin: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    policy_toggle_ptb(
-        objects,
-        tool_cashier,
-        cashier_admin,
-        fixed_price_binding::enable_target,
-    )
-}
-
-/// Disables the canonical fixed price policy.
-pub fn disable_fixed_price_ptb(
-    objects: &NexusContext,
-    tool_cashier: &sui::types::ObjectReference,
-    cashier_admin: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    policy_toggle_ptb(
-        objects,
-        tool_cashier,
-        cashier_admin,
-        fixed_price_binding::disable_target,
-    )
-}
-
-/// Enables sponsored free Invocations.
-pub fn enable_free_invocation_ptb(
-    objects: &NexusContext,
-    tool_cashier: &sui::types::ObjectReference,
-    cashier_admin: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    policy_toggle_ptb(
-        objects,
-        tool_cashier,
-        cashier_admin,
-        free_invocation_binding::enable_target,
-    )
-}
-
-/// Disables sponsored free Invocations.
-pub fn disable_free_invocation_ptb(
-    objects: &NexusContext,
-    tool_cashier: &sui::types::ObjectReference,
-    cashier_admin: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    policy_toggle_ptb(
-        objects,
-        tool_cashier,
-        cashier_admin,
-        free_invocation_binding::disable_target,
-    )
 }
 
 /// Enables finite credit sales and admission.

@@ -138,8 +138,7 @@ pub struct ToolEconomy {
     pub tool_id: sui::types::Address,
     pub cashier_id: sui::types::Address,
     pub policies: Vec<TypeName>,
-    pub fixed_price_mist: Option<u64>,
-    pub free_invocations: bool,
+    pub fixed_price_mist: u64,
     pub finite_credits: Option<FiniteCreditOffer>,
     pub time_pass: Option<TimePassOffer>,
 }
@@ -550,82 +549,6 @@ impl ToolActions {
         let transaction = tool::claim_collateral_for_self_ptb(&context, &tool_ref, &owner_cap)
             .map_err(NexusError::TransactionBuilding)?;
         self.submit_action(transaction).await
-    }
-
-    /// Enables fixed price Invocation admission for a [`Tool`].
-    pub async fn enable_fixed_price(
-        &self,
-        fqn: &ToolFqn,
-        cashier_admin: sui::types::Address,
-    ) -> Result<ToolCashierActionResult, NexusError> {
-        let client = &self.client;
-        let address = client.owner()?;
-        let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(client, fqn, cashier_admin).await?;
-        let transaction =
-            tool_cashier::enable_fixed_price_ptb(&context, &tool_cashier, &cashier_admin)
-                .map_err(NexusError::TransactionBuilding)?;
-        let response = client.submit_transaction(transaction, address).await?;
-        Ok(ToolCashierActionResult {
-            tx_digest: response.digest,
-        })
-    }
-
-    /// Disables fixed price admission without changing existing Invocations.
-    pub async fn disable_fixed_price(
-        &self,
-        tool_fqn: &ToolFqn,
-        cashier_admin: sui::types::Address,
-    ) -> Result<ToolCashierActionResult, NexusError> {
-        let client = &self.client;
-        let address = client.owner()?;
-        let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
-        let transaction =
-            tool_cashier::disable_fixed_price_ptb(&context, &tool_cashier, &cashier_admin)
-                .map_err(NexusError::TransactionBuilding)?;
-        let response = client.submit_transaction(transaction, address).await?;
-        Ok(ToolCashierActionResult {
-            tx_digest: response.digest,
-        })
-    }
-
-    /// Enables sponsored free Invocation admission for a [`Tool`].
-    pub async fn enable_free_invocations(
-        &self,
-        tool_fqn: &ToolFqn,
-        cashier_admin: sui::types::Address,
-    ) -> Result<ToolCashierActionResult, NexusError> {
-        let client = &self.client;
-        let address = client.owner()?;
-        let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
-        let transaction =
-            tool_cashier::enable_free_invocation_ptb(&context, &tool_cashier, &cashier_admin)
-                .map_err(NexusError::TransactionBuilding)?;
-        let response = client.submit_transaction(transaction, address).await?;
-        Ok(ToolCashierActionResult {
-            tx_digest: response.digest,
-        })
-    }
-
-    /// Disables sponsored free admission without changing existing Invocations.
-    pub async fn disable_free_invocations(
-        &self,
-        tool_fqn: &ToolFqn,
-        cashier_admin: sui::types::Address,
-    ) -> Result<ToolCashierActionResult, NexusError> {
-        let client = &self.client;
-        let address = client.owner()?;
-        let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
-        let transaction =
-            tool_cashier::disable_free_invocation_ptb(&context, &tool_cashier, &cashier_admin)
-                .map_err(NexusError::TransactionBuilding)?;
-        let response = client.submit_transaction(transaction, address).await?;
-        Ok(ToolCashierActionResult {
-            tx_digest: response.digest,
-        })
     }
 
     /// Enables time pass sales and admission for a [`Tool`].
@@ -1396,37 +1319,35 @@ impl ToolActions {
         }
 
         let policies = cashier.data.policies.contents;
-        let fixed_price_mist = if canonical_policy_accepted(&context, &policies, "fixed_price")? {
-            let registry_root = &client.nexus_objects.tool_registry;
-            let registry_context = client.context_for_root(registry_root).await?;
-            let registry = client
-                .state_resolver()
-                .load_inner_for_supported_witness::<ToolRegistry, ToolRegistryInnerV1>(
-                    registry_root.object_id(),
-                    &registry_context,
-                )
-                .await?;
-            let fqn_key = ascii::String::from(tool_fqn.to_string());
-            let fqn_type = crate::move_bindings::type_tag::<ascii::String>(&registry_context);
-            Some(
-                crawler
-                    .get_dynamic_field_by_key::<ascii::String, u64>(
-                        registry.data.invocation_costs_mist.id(),
-                        fqn_key,
-                        &fqn_type,
-                    )
-                    .await
-                    .map_err(NexusError::Rpc)?
-                    .ok_or_else(|| {
-                        NexusError::Configuration(format!(
-                            "Fixed price policy for Tool '{tool_fqn}' has no price"
-                        ))
-                    })?,
+        if !canonical_policy_accepted(&context, &policies, "fixed_price")? {
+            return Err(NexusError::Configuration(format!(
+                "Tool '{tool_fqn}' is missing its mandatory fixed price policy"
+            )));
+        }
+        let registry_root = &client.nexus_objects.tool_registry;
+        let registry_context = client.context_for_root(registry_root).await?;
+        let registry = client
+            .state_resolver()
+            .load_inner_for_supported_witness::<ToolRegistry, ToolRegistryInnerV1>(
+                registry_root.object_id(),
+                &registry_context,
             )
-        } else {
-            None
-        };
-        let free_invocations = canonical_policy_accepted(&context, &policies, "free_invocation")?;
+            .await?;
+        let fqn_key = ascii::String::from(tool_fqn.to_string());
+        let fqn_type = crate::move_bindings::type_tag::<ascii::String>(&registry_context);
+        let fixed_price_mist = crawler
+            .get_dynamic_field_by_key::<ascii::String, u64>(
+                registry.data.invocation_costs_mist.id(),
+                fqn_key,
+                &fqn_type,
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            .ok_or_else(|| {
+                NexusError::Configuration(format!(
+                    "Fixed price policy for Tool '{tool_fqn}' has no price"
+                ))
+            })?;
         let finite_credits = if canonical_policy_accepted(&context, &policies, "finite_credits")? {
             Some(Self::fetch_finite_credit_offer(client, &context, cashier_id, tool_fqn).await?)
         } else {
@@ -1443,7 +1364,6 @@ impl ToolActions {
             cashier_id,
             policies,
             fixed_price_mist,
-            free_invocations,
             finite_credits,
             time_pass,
         })
@@ -2140,6 +2060,127 @@ mod tests {
             ToolCompatibility::Unavailable
         );
         assert!(by_fqn["xyz.taluslabs.unavailable.tool@1"].tool.is_none());
+    }
+
+    #[tokio::test]
+    async fn access_inspection_derives_and_reads_canonical_accounts() {
+        let context = sui_mocks::mock_nexus_context();
+        let tool_fqn = "xyz.taluslabs.access@1"
+            .parse::<ToolFqn>()
+            .expect("Tool FQN parses");
+        let tool_id =
+            crate::move_bindings::derive_tool_id(context.tool_registry.object_id(), &tool_fqn)
+                .expect("tool id derives");
+        let cashier_origin = context
+            .type_origin(PackageRole::Tool, "tool_cashier", "ToolCashierKey")
+            .expect("cashier origin resolves");
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(cashier_origin, tool_id)
+            .expect("cashier id derives");
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0x31"));
+        let credits_id = crate::move_bindings::derive_finite_credits_id(
+            &context,
+            cashier_id,
+            beneficiary.clone(),
+        )
+        .expect("credit account id derives");
+        let pass_id =
+            crate::move_bindings::derive_time_pass_id(&context, cashier_id, beneficiary.clone())
+                .expect("time pass id derives");
+        let credits = FiniteCredits::new(
+            UID::new(credits_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            finite_credits::State::new(7),
+        );
+        let pass = TimePass::new(
+            UID::new(pass_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            time_pass::State::new(10, 90),
+        );
+
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut packages = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state = sui_mocks::grpc::MockStateService::new();
+        mock_registry(
+            &mut ledger,
+            &mut state,
+            &context,
+            registry_inner(sui::types::Address::from_static("0xd1"), &[]),
+        );
+        sui_mocks::grpc::mock_nexus_package_graph(&mut ledger, &mut packages, context.packages());
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(cashier_id),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(move_boundary::CLOCK_OBJECT_ID),
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&SuiClock::new(move_boundary::CLOCK_OBJECT_ID, 50))
+                .expect("clock serializes"),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(credits_id),
+            sui::types::Owner::Shared(4),
+            bcs::to_bytes(&credits).expect("credits serialize"),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(pass_id),
+            sui::types::Owner::Shared(5),
+            bcs::to_bytes(&pass).expect("pass serializes"),
+        );
+        state
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once(move |request| {
+                assert_eq!(
+                    request.get_ref().owner.as_deref(),
+                    Some(credits_id.to_string().as_str())
+                );
+                Ok(tonic::Response::new(
+                    sui::grpc::ListOwnedObjectsResponse::default(),
+                ))
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            package_service_mock: Some(packages),
+            state_service_mock: Some(state),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&context, &rpc_url).await;
+
+        let access = client
+            .tool()
+            .inspect_access(&tool_fqn, beneficiary.clone())
+            .await
+            .expect("access inspection succeeds");
+
+        assert_eq!(access.tool_id, tool_id);
+        assert_eq!(access.cashier_id, cashier_id);
+        assert_eq!(access.beneficiary, beneficiary);
+        assert_eq!(access.observed_at_ms, 50);
+        assert_eq!(
+            access.finite_credits,
+            Some(FiniteCreditAccess {
+                account_id: credits_id,
+                remaining: 7,
+                refunded_invocations: vec![],
+            })
+        );
+        assert_eq!(
+            access.time_pass,
+            Some(TimePassAccess {
+                account_id: pass_id,
+                valid_from_ms: 10,
+                valid_until_ms: 90,
+                active: true,
+            })
+        );
     }
 
     #[tokio::test]

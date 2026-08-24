@@ -59,14 +59,6 @@ impl InvocationPolicyCall {
         ))
     }
 
-    /// Selects the canonical sponsored free policy for this Nexus deployment.
-    pub fn free_invocation(context: &NexusContext) -> anyhow::Result<Self> {
-        Ok(Self::new(
-            policy_type_name(context, "free_invocation")?,
-            Vec::new(),
-        ))
-    }
-
     /// Selects the canonical finite credit policy with one mutable account.
     pub fn finite_credits(
         context: &NexusContext,

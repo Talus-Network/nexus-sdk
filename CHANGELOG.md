@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
+- Tool economy inspection now exposes one mandatory fixed price, where zero represents public access, alongside optional finite credit and time pass products.
 - Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
 - Finite credit and time pass purchases now withdraw their exact SUI price from the signer address balance inside the purchase PTB.
 - Invocation authorization now emits the executable walk request with its exact Invocation in the same transaction.
@@ -43,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Removed
 
 - Removed ticket lookup and cashier based settlement APIs in favor of exact Invocation objects.
+- Removed the separate free policy and fixed price policy toggle APIs because every Tool uses its fixed price baseline.
 - Removed finite credit split, join, and object selection APIs because canonical account IDs are derived automatically.
 - Removed migration-only transaction builders, coexistence-suffixed generated targets and state names, duplicate Nexus value witnesses, and the Walrus storage-key API in favor of the fresh canonical package graph and Blob IDs.
 - Removed generated Move call targets for `NexusData::is_one` and `NexusData::is_valid`; generated `is_many` now represents the variant-only discriminator while SDK-native cardinality discriminants remain unchanged.
@@ -64,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Finite credit and time pass purchases now use the active signer address balance without requiring a payment coin object ID.
+- Public access authorization now uses the fixed price command with a zero Tool price; separate free and fixed price toggle commands were removed.
 
 #### Changed
 

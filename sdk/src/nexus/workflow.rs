@@ -90,7 +90,6 @@ pub struct PublishResult {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InvocationPolicy {
     FixedPrice,
-    Free,
     FiniteCredits,
     TimePass,
     Custom(InvocationPolicyCall),
@@ -1415,9 +1414,6 @@ async fn resolve_invocation_policy_call(
     match policy {
         InvocationPolicy::FixedPrice => {
             InvocationPolicyCall::fixed_price(context).map_err(NexusError::Parsing)
-        }
-        InvocationPolicy::Free => {
-            InvocationPolicyCall::free_invocation(context).map_err(NexusError::Parsing)
         }
         InvocationPolicy::FiniteCredits => {
             let credits_id = crate::move_bindings::derive_finite_credits_id(

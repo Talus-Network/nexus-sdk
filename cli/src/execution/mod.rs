@@ -110,8 +110,6 @@ pub(crate) enum ExecutionCommand {
 pub(crate) enum InvocationPolicyCommand {
     #[command(about = "Pay the invocation price snapshotted by the Execution")]
     FixedPrice,
-    #[command(about = "Use owner enabled sponsored free access")]
-    Free,
     #[command(about = "Consume one unit from the beneficiary finite credit account")]
     FiniteCredits,
     #[command(about = "Use the beneficiary time pass account")]
@@ -258,6 +256,23 @@ mod tests {
             "--iteration",
             "2",
             "fixed-price",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn invocation_authorization_has_no_separate_free_policy() {
+        assert!(Cli::try_parse_from([
+            "nexus",
+            "execution",
+            "authorize",
+            "--execution-id",
+            "0x42",
+            "--walk-index",
+            "0",
+            "--vertex",
+            "worker",
+            "free",
         ])
         .is_err());
     }
