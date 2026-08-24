@@ -294,6 +294,15 @@ mod tests {
             boundary_test_signature: "async fn cli_transaction_setup_attaches_explicit_coin_gas(",
             boundary_test_marker: "configure_nexus_client_gas",
         },
+        CoinFreeClientCallSite {
+            command: "nexus tool cashier access",
+            source: include_str!("tool/cashier.rs"),
+            function_signature: "async fn inspect_access(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tool.rs"),
+            boundary_test_signature:
+                "async fn access_inspection_derives_and_reads_canonical_accounts(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
     ];
 
     const READ_ONLY_NEXUS_COMMANDS: &[CoinFreeClientCallSite] = &[
