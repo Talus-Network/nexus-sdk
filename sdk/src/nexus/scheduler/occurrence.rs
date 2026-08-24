@@ -1,5 +1,5 @@
 use {
-    super::{mutation_receipt, occurrence_source, resolve, withdrawal_reason},
+    super::{mutation_receipt, occurrence_source, resolve, settlement_receipt, withdrawal_reason},
     crate::{
         move_bindings::{
             derive_task_execution_id,
@@ -192,13 +192,14 @@ impl OccurrenceHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`SchedulerError::OccurrenceNotDispatched`] before dispatch,
-    /// or another [`SchedulerError`] when object reads or submission fail.
+    /// Returns [`SchedulerError::OccurrenceNotReadyForSettlement`] unless the
+    /// occurrence is finished, or another [`SchedulerError`] when object reads
+    /// or submission fail.
     pub async fn settle(&self) -> Result<TaskMutationReceipt, SchedulerError> {
         let task =
             resolve::fetch_task_with_roots(&self.client, self.reference.task_id(), &[]).await?;
         let snapshot = self.snapshot_from_task(&self.client, &task).await?;
-        let execution_id = dispatched_execution_id(&snapshot)?;
+        let execution_id = settlement_execution_id(&snapshot)?;
         let execution = resolve::fetch_execution(&self.client, &task.context, execution_id)
             .await?
             .ok_or_else(|| SchedulerError::InconsistentChainState {
@@ -225,7 +226,7 @@ impl OccurrenceHandle {
             .submit_transaction(transaction, sender)
             .await
             .map_err(SchedulerError::from)?;
-        mutation_receipt(executed, self.reference.task_id())
+        settlement_receipt(executed, self.reference, execution_id)
     }
 
     /// Reads payment accounting for the dispatched runtime object.
@@ -486,6 +487,25 @@ fn dispatched_execution_id(
         })
 }
 
+/// Returns the runtime identity only for the single valid settlement source state.
+///
+/// A dispatched runtime identity survives settlement, so identity alone cannot
+/// distinguish work that is still executing from work that already settled.
+/// Requiring [`OccurrenceStatus::Finished`] makes SDK success correspond to an
+/// attempted `Finished` to `Settled` transition rather than a possible no op.
+fn settlement_execution_id(
+    snapshot: &OccurrenceSnapshot,
+) -> Result<sui::types::Address, SchedulerError> {
+    if snapshot.status() != OccurrenceStatus::Finished {
+        return Err(SchedulerError::OccurrenceNotReadyForSettlement {
+            task_id: snapshot.reference().task_id(),
+            occurrence_id: snapshot.reference().occurrence_id(),
+            observed: snapshot.status(),
+        });
+    }
+    dispatched_execution_id(snapshot)
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -628,6 +648,45 @@ mod tests {
             dispatched_execution_id(&dispatched).expect("runtime identity is present"),
             execution_id
         );
+    }
+
+    #[test]
+    fn settlement_requires_a_finished_occurrence() {
+        let task_id = sui::types::Address::from_static("0x46");
+        let execution_id = sui::types::Address::from_static("0x47");
+        let reference = OccurrenceRef::new(task_id, 7);
+        let snapshot = |status| OccurrenceSnapshot {
+            reference,
+            source: OccurrenceSource::Standalone,
+            requested_start_time_ms: 1,
+            effective_start_time_ms: Some(1),
+            deadline_ms: None,
+            priority_fee_percentage: 20,
+            dispatched_at_ms: Some(2),
+            settled_at_ms: None,
+            status,
+            execution: Some(ExecutionSnapshot::unavailable(execution_id)),
+            observed_task_version: 1,
+        };
+
+        assert_eq!(
+            settlement_execution_id(&snapshot(OccurrenceStatus::Finished))
+                .expect("finished occurrence is ready"),
+            execution_id
+        );
+        for status in [
+            OccurrenceStatus::Executing,
+            OccurrenceStatus::Settled { succeeded: true },
+        ] {
+            assert!(matches!(
+                settlement_execution_id(&snapshot(status)),
+                Err(SchedulerError::OccurrenceNotReadyForSettlement {
+                    task_id: observed_task,
+                    occurrence_id: 7,
+                    observed,
+                }) if observed_task == task_id && observed == status
+            ));
+        }
     }
 
     #[test]

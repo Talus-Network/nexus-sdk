@@ -3,7 +3,10 @@
 #[cfg(feature = "nexus")]
 use crate::nexus::error::NexusError;
 use {
-    crate::{scheduler::OccurrenceSnapshot, sui},
+    crate::{
+        scheduler::{OccurrenceSnapshot, OccurrenceStatus},
+        sui,
+    },
     std::error::Error,
     thiserror::Error,
 };
@@ -110,6 +113,20 @@ pub enum SchedulerError {
         task_id: sui::types::Address,
         /// Occurrence identifier.
         occurrence_id: u64,
+    },
+
+    /// Settlement was requested from a lifecycle state other than `Finished`.
+    #[error(
+        "occurrence {occurrence_id} on Task '{task_id}' is not ready for settlement; expected \
+         finished, observed {observed:?}"
+    )]
+    OccurrenceNotReadyForSettlement {
+        /// Owning Task identifier.
+        task_id: sui::types::Address,
+        /// Occurrence identifier.
+        occurrence_id: u64,
+        /// Lifecycle state observed immediately before transaction construction.
+        observed: OccurrenceStatus,
     },
 
     /// A selected DAG does not contain the requested Task entry group.
