@@ -201,7 +201,7 @@ pub fn authorize_ptb(
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(context, |transaction| {
         let cashier = transaction.shared_object(cashier, false)?;
-        let dag = transaction.shared_object(dag, false)?;
+        let dag = transaction.immutable_object(dag)?;
         let execution = transaction.shared_object(execution, true)?;
         let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
         authorize(
@@ -248,7 +248,7 @@ pub fn abort_expired_ptb(
     task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(context, |transaction| {
-        let dag = transaction.shared_object(dag, false)?;
+        let dag = transaction.immutable_object(dag)?;
         let execution = transaction.shared_object(execution, true)?;
         let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
         let vertex = super::dag::runtime_vertex_arg(transaction, vertex)?;
@@ -314,6 +314,10 @@ mod tests {
             !shared.mutability().is_mutable(),
             "Invocation admission must not mutate ToolCashier"
         );
+        let Input::ImmutableOrOwned(dag_input) = &ptb.inputs[1] else {
+            panic!("finalized DAG must be an immutable input")
+        };
+        assert_eq!(dag_input.object_id(), dag.object_id());
         let calls = ptb
             .commands
             .iter()
@@ -430,6 +434,10 @@ mod tests {
             Some(&task),
         )
         .expect("ptb should build");
+        let Input::ImmutableOrOwned(dag_input) = &ptb.inputs[0] else {
+            panic!("finalized DAG must be an immutable input")
+        };
+        assert_eq!(dag_input.object_id(), dag.object_id());
         let calls = ptb
             .commands
             .iter()
