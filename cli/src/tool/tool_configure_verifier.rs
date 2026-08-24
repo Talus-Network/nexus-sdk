@@ -26,7 +26,12 @@ pub(crate) enum VerifierCommand {
         module: sui::types::Identifier,
         #[arg(long = "function", value_name = "FUNCTION")]
         function: sui::types::Identifier,
-        #[arg(long = "verifier-object", value_name = "OBJECT_ID", required = true)]
+        #[arg(
+            long = "verifier-object",
+            value_name = "OBJECT_ID",
+            required = true,
+            num_args = 1..
+        )]
         verifier_objects: Vec<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
@@ -109,4 +114,47 @@ async fn resolve_owner_cap(
                 "No OwnerCap<OverTool> object ID found for Tool '{tool_fqn}'."
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, clap::Parser};
+
+    #[test]
+    fn external_configuration_accepts_ordered_objects_after_one_flag() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "configure-verifier",
+            "external",
+            "--tool-fqn",
+            "xyz.demo.tool@1",
+            "--package",
+            "0x20",
+            "--module",
+            "verifier",
+            "--function",
+            "verify",
+            "--verifier-object",
+            "0x30",
+            "0x31",
+        ])
+        .expect("ordered verifier objects after one flag should parse");
+
+        let crate::Command::Tool(crate::tool::ToolCommand::ConfigureVerifier(
+            VerifierCommand::External {
+                verifier_objects, ..
+            },
+        )) = cli.command
+        else {
+            panic!("expected External verifier configuration");
+        };
+        assert_eq!(
+            verifier_objects,
+            vec![
+                sui::types::Address::from_static("0x30"),
+                sui::types::Address::from_static("0x31"),
+            ]
+        );
+    }
 }
