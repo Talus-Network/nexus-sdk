@@ -277,6 +277,7 @@ mod tests {
             move_bindings::interface::graph::RuntimeVertex,
             test_utils::sui_mocks::{mock_nexus_context, object_ref_for_id},
         },
+        assert_matches::assert_matches,
         sui_sdk_types::{Argument, Command, Input},
     };
 
@@ -356,13 +357,14 @@ mod tests {
             })
             .expect("lock and request call");
         assert_eq!(lock_and_request.arguments.len(), 10);
-        let Argument::Input(leader_cap_input) = lock_and_request.arguments[4] else {
-            panic!("leader capability must be an object input")
-        };
-        let Input::ImmutableOrOwned(leader_cap_input) = &ptb.inputs[usize::from(leader_cap_input)]
-        else {
-            panic!("leader capability must preserve its owner representation")
-        };
+        let leader_cap_input = assert_matches!(
+            lock_and_request.arguments[4],
+            Argument::Input(leader_cap_input) => leader_cap_input
+        );
+        let leader_cap_input = assert_matches!(
+            &ptb.inputs[usize::from(leader_cap_input)],
+            Input::ImmutableOrOwned(leader_cap_input) => leader_cap_input
+        );
         assert_eq!(leader_cap_input.object_id(), leader_cap.object_id());
         let Argument::Input(gas_charge) = lock_and_request.arguments[8] else {
             panic!("gas charge must be a pure input")

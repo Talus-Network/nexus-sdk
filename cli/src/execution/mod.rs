@@ -214,6 +214,7 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
 #[cfg(test)]
 mod tests {
     use {
+        super::*,
         crate::{Cli, Command},
         clap::Parser,
     };
@@ -266,6 +267,29 @@ mod tests {
             "fixed-price",
         ])
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn execution_authorize_dispatches_leader_cap_before_iterator_validation() {
+        let error = handle(ExecutionCommand::Authorize {
+            execution_id: nexus_sdk::sui::types::Address::from_static("0x42"),
+            leader_cap_id: nexus_sdk::sui::types::Address::from_static("0x43"),
+            walk_index: 0,
+            vertex: "worker".to_owned(),
+            iteration: Some(2),
+            out_of: Some(2),
+            policy: InvocationPolicyCommand::FixedPrice,
+            gas: GasArgs {
+                sui_gas_coin: None,
+                sui_gas_budget: nexus_sdk::nexus::client::DEFAULT_GAS_BUDGET,
+            },
+        })
+        .await
+        .expect_err("an iterator at the item count should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("must be smaller than item count"));
     }
 
     #[test]

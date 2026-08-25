@@ -2580,7 +2580,13 @@ mod tests {
                 },
                 scheduler::scheduler::OccurrenceDispatchedEvent,
                 sui_framework::{table::Table as MoveTable, vec_set::VecSet},
-                tool::tool_registry::{ToolRegistry, ToolRegistryInnerV1},
+                tool::tool_registry::{
+                    Tool as ToolAnchor,
+                    ToolInnerV1,
+                    ToolRef as ToolRegistryRef,
+                    ToolRegistry,
+                    ToolRegistryInnerV1,
+                },
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
@@ -2820,6 +2826,198 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn authorize_invocation_maps_leader_cap_metadata_failure() {
+        let nexus_objects = sui_mocks::mock_nexus_context();
+        let leader_cap_id = sui::types::Address::from_static("0x43");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_not_found(&mut ledger_service_mock, leader_cap_id);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let error = client
+            .workflow()
+            .authorize_invocation(
+                sui::types::Address::from_static("0x42"),
+                leader_cap_id,
+                0,
+                RuntimeVertex::plain("worker"),
+                InvocationPolicy::FixedPrice,
+            )
+            .await
+            .expect_err("leader-cap metadata failure should stop authorization");
+
+        assert!(matches!(error, NexusError::Rpc(_)));
+    }
+
+    #[tokio::test]
+    async fn authorize_invocation_validates_the_active_walk_after_capability_resolution() {
+        let nexus_objects = sui_mocks::mock_nexus_context();
+        let execution_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let leader_cap_ref = sui_mocks::mock_sui_object_ref();
+        let vertex = RuntimeVertex::plain("worker");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_get_object_metadata_exact(
+            &mut ledger_service_mock,
+            leader_cap_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x99")),
+            None,
+        );
+        mock_get_dag_execution_bcs(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            execution_ref.clone(),
+            &dag_ref,
+            vec![execution_move::DAGWalk::Successful],
+        );
+        let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            package_service_mock: Some(package_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let error = client
+            .workflow()
+            .authorize_invocation(
+                *execution_ref.object_id(),
+                *leader_cap_ref.object_id(),
+                0,
+                vertex.clone(),
+                InvocationPolicy::FixedPrice,
+            )
+            .await
+            .expect_err("a terminal walk must not be authorized");
+
+        assert!(
+            matches!(error, NexusError::Configuration(ref message) if message.contains("is not active")),
+            "unexpected inactive-walk error: {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn authorize_invocation_forwards_capability_to_the_ptb_boundary() {
+        let nexus_objects = sui_mocks::mock_nexus_context();
+        let execution_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let leader_cap_ref = sui_mocks::mock_sui_object_ref();
+        let vertex = RuntimeVertex::plain("worker");
+        let tool_fqn = fqn!("xyz.taluslabs.authorize@1");
+        let tool_id = crate::move_bindings::derive_tool_id(
+            nexus_objects.tool_registry.object_id(),
+            &tool_fqn,
+        )
+        .expect("tool ID derives");
+        let cashier_origin = nexus_objects
+            .type_origin(PackageRole::Tool, "tool_cashier", "ToolCashierKey")
+            .expect("cashier origin resolves");
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(cashier_origin, tool_id)
+            .expect("cashier ID derives");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_get_object_metadata_exact(
+            &mut ledger_service_mock,
+            leader_cap_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x99")),
+            None,
+        );
+        mock_get_dag_execution_bcs(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            execution_ref.clone(),
+            &dag_ref,
+            vec![execution_move::DAGWalk::Active {
+                next_vertex: vertex.clone(),
+                timeout_ms: 30_000,
+                requires_vertex_authorization_grant: false,
+                created_at: 1_000,
+            }],
+        );
+        let dag = dag_bcs(1);
+        let vertices_id = dag.vertices.id();
+        mock_get_dag_bcs(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            dag_ref.clone(),
+            dag,
+        );
+        sui_mocks::grpc::mock_get_dynamic_field_by_key(
+            &mut ledger_service_mock,
+            vertices_id,
+            &crate::move_bindings::type_tag::<graph_move::Vertex>(&nexus_objects),
+            graph_move::Vertex::new("worker"),
+            offchain_vertex_node_bcs(&tool_fqn),
+        );
+        mock_object_state_for_authorize(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            tool_id,
+            &tool_fqn,
+        );
+        sui_mocks::grpc::mock_get_object_metadata_exact(
+            &mut ledger_service_mock,
+            sui_mocks::object_ref_for_id(cashier_id),
+            sui::types::Owner::Shared(2),
+            None,
+        );
+        let payment_ref = sui_mocks::mock_sui_object_ref();
+        mock_execution_payment_field(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            *execution_ref.object_id(),
+            payment_ref,
+            authorize_payment_fixture(*execution_ref.object_id()),
+        );
+        mock_tool_registry_observation(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+        );
+        mock_leader_registry_observation(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+        );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
+        let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            package_service_mock: Some(package_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let error = client
+            .workflow()
+            .authorize_invocation(
+                *execution_ref.object_id(),
+                *leader_cap_ref.object_id(),
+                0,
+                vertex,
+                InvocationPolicy::Custom(InvocationPolicyCall::new(
+                    TypeName::new("malformed-policy"),
+                    vec![],
+                )),
+            )
+            .await
+            .expect_err("malformed policy should fail inside PTB construction");
+
+        assert!(matches!(error, NexusError::TransactionBuilding(_)));
+    }
+
     fn empty_object_table<T0, T1>(
         id: sui::types::Address,
     ) -> crate::move_bindings::sui_framework::object_table::ObjectTable<T0, T1> {
@@ -3038,6 +3236,75 @@ mod tests {
             anchor,
             payment,
         );
+    }
+
+    fn mock_object_state_for_authorize(
+        ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
+        state_service_mock: &mut sui_mocks::grpc::MockStateService,
+        nexus_objects: &NexusContext,
+        tool_id: sui::types::Address,
+        tool_fqn: &crate::ToolFqn,
+    ) {
+        sui_mocks::grpc::mock_object_state::<ToolAnchor, ToolWitnessV1, ToolInnerV1>(
+            ledger_service_mock,
+            state_service_mock,
+            nexus_objects,
+            sui_mocks::object_ref_for_id(tool_id),
+            sui::types::Owner::Shared(1),
+            ToolAnchor::new(crate::move_bindings::sui_framework::object::UID::new(
+                tool_id,
+            )),
+            ToolInnerV1::new(
+                crate::move_bindings::sui_framework::object::ID::new(
+                    nexus_objects.tool_registry.object_id(),
+                ),
+                MoveString::from(tool_fqn.to_string()),
+                ToolRegistryRef::Http {
+                    url: b"https://example.com/tool".to_vec(),
+                },
+                b"coverage fixture".to_vec(),
+                MetaSchema::new(vec![], vec![]),
+                false,
+                crate::move_bindings::sui_framework::balance::Balance {
+                    value: 0,
+                    phantom_t0: std::marker::PhantomData,
+                },
+                false,
+                0,
+                0,
+                MoveOption::from(Some(1)),
+            ),
+        );
+    }
+
+    fn authorize_payment_fixture(execution_id: sui::types::Address) -> ExecutionPaymentInnerV1 {
+        ExecutionPaymentInnerV1 {
+            execution_id,
+            agent_id: object_id(sui::types::Address::from_static("0xa")),
+            skill_id: 11,
+            interface_revision: InterfaceVersion::new(7),
+            payment_policy: SkillPaymentPolicy::UserFunded,
+            source_kind: PaymentSourceKind::user_funded(sui::types::Address::from_static("0x1")),
+            max_budget_mist: 100_000,
+            gas_budget_mist: 83_334,
+            priority_fee_reserve_mist: 16_666,
+            locked_budget_mist: 0,
+            funds: crate::move_bindings::sui_framework::balance::Balance {
+                value: 100_000,
+                phantom_t0: std::marker::PhantomData,
+            },
+            consumed: 0,
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 20,
+            accomplished: false,
+            refunded: false,
+            final_state: ExecutionPaymentFinalState::Pending,
+            tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
+            locked_vertices: vec![],
+        }
     }
 
     fn pending_settlement_walks(
