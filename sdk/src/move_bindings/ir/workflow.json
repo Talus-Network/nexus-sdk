@@ -546,22 +546,15 @@
                   "ty": "U64"
                 },
                 {
-                  "name": "leader_selection_seed",
+                  "name": "last_request_for_execution_emitted_at_digest",
                   "position": 10,
                   "ty": {
                     "Vector": "U8"
                   }
                 },
                 {
-                  "name": "last_request_for_execution_emitted_at_digest",
-                  "position": 11,
-                  "ty": {
-                    "Vector": "U8"
-                  }
-                },
-                {
                   "name": "last_request_for_execution_leaders",
-                  "position": 12,
+                  "position": 11,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -577,7 +570,7 @@
                 },
                 {
                   "name": "network",
-                  "position": 13,
+                  "position": 12,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -591,7 +584,7 @@
                 },
                 {
                   "name": "evaluations",
-                  "position": 14,
+                  "position": 13,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -626,7 +619,7 @@
                 },
                 {
                   "name": "terminal_records",
-                  "position": 15,
+                  "position": 14,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -652,7 +645,7 @@
                 },
                 {
                   "name": "submission_failure_records",
-                  "position": 16,
+                  "position": 15,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -680,7 +673,7 @@
                 },
                 {
                   "name": "pending_retry_handoff_cap_ids",
-                  "position": 17,
+                  "position": 16,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -706,7 +699,7 @@
                 },
                 {
                   "name": "walk_request_authorities",
-                  "position": 18,
+                  "position": 17,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -732,7 +725,7 @@
                 },
                 {
                   "name": "pending_payment_settlements",
-                  "position": 19,
+                  "position": 18,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -767,7 +760,7 @@
                 },
                 {
                   "name": "walks",
-                  "position": 20,
+                  "position": 19,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -783,42 +776,42 @@
                 },
                 {
                   "name": "active_walks",
-                  "position": 21,
+                  "position": 20,
                   "ty": "U64"
                 },
                 {
                   "name": "pending_abort_walks",
-                  "position": 22,
+                  "position": 21,
                   "ty": "U64"
                 },
                 {
                   "name": "pending_settlement_walks",
-                  "position": 23,
+                  "position": 22,
                   "ty": "U64"
                 },
                 {
                   "name": "successful_walks",
-                  "position": 24,
+                  "position": 23,
                   "ty": "U64"
                 },
                 {
                   "name": "failed_walks",
-                  "position": 25,
+                  "position": 24,
                   "ty": "U64"
                 },
                 {
                   "name": "aborted_walks",
-                  "position": 26,
+                  "position": 25,
                   "ty": "U64"
                 },
                 {
                   "name": "consumed_walks",
-                  "position": 27,
+                  "position": 26,
                   "ty": "U64"
                 },
                 {
                   "name": "cancelled_walks",
-                  "position": 28,
+                  "position": 27,
                   "ty": "U64"
                 }
               ]
@@ -4337,12 +4330,6 @@
             {
               "name": "occurrence_id",
               "ty": "U64"
-            },
-            {
-              "name": "leader_selection_seed",
-              "ty": {
-                "Vector": "U8"
-              }
             },
             {
               "name": "tool_registry",
@@ -7918,12 +7905,6 @@
             {
               "name": "occurrence_id",
               "ty": "U64"
-            },
-            {
-              "name": "leader_selection_seed",
-              "ty": {
-                "Vector": "U8"
-              }
             },
             {
               "name": "network",
@@ -12414,12 +12395,6 @@
               "ty": "U64"
             },
             {
-              "name": "leader_selection_seed",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
               "name": "priority_fee_percentage",
               "ty": "U64"
             },
@@ -12749,12 +12724,6 @@
               "ty": "U64"
             },
             {
-              "name": "leader_selection_seed",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
               "name": "priority_fee_percentage",
               "ty": "U64"
             },
@@ -12994,12 +12963,6 @@
             {
               "name": "occurrence_id",
               "ty": "U64"
-            },
-            {
-              "name": "leader_selection_seed",
-              "ty": {
-                "Vector": "U8"
-              }
             },
             {
               "name": "priority_fee_percentage",
