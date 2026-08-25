@@ -639,6 +639,7 @@ pub fn reject_occurrence_with_gas_charge_ptb(
         let gas_charge = transaction
             .arg(&gas_charge)
             .map_err(SchedulerError::transaction)?;
+        let clock = transaction.clock().map_err(SchedulerError::transaction)?;
         transaction
             .call_target(
                 scheduler_binding::reject_next_target,
@@ -651,6 +652,7 @@ pub fn reject_occurrence_with_gas_charge_ptb(
                     leader_cap,
                     occurrence_id,
                     gas_charge,
+                    clock,
                 ],
             )
             .map_err(SchedulerError::transaction)?;
@@ -919,6 +921,17 @@ mod tests {
             panic!("expected immutable object input");
         };
         assert_eq!(object, expected);
+    }
+
+    fn assert_clock_argument(transaction: &ProgrammableTransaction, argument: Argument) {
+        let Argument::Input(index) = argument else {
+            panic!("expected clock input argument");
+        };
+        let Input::Shared(clock) = &transaction.inputs[usize::from(index)] else {
+            panic!("expected shared Clock input");
+        };
+        assert_eq!(clock.object_id(), crate::move_boundary::CLOCK_OBJECT_ID);
+        assert!(!clock.mutability().is_mutable());
     }
 
     fn scheduler_sequence(transaction: &ProgrammableTransaction) -> Vec<&str> {
@@ -1201,7 +1214,7 @@ mod tests {
             .find(|call| call.function.as_str() == "reject_next")
             .expect("rejection call");
 
-        assert_eq!(rejection.arguments.len(), 8);
+        assert_eq!(rejection.arguments.len(), 9);
         assert_shared_argument(
             &transaction,
             rejection.arguments[0],
@@ -1222,5 +1235,6 @@ mod tests {
             false,
         );
         assert_eq!(pure_u64(&transaction, rejection.arguments[7]), 42);
+        assert_clock_argument(&transaction, rejection.arguments[8]);
     }
 }
