@@ -24,11 +24,9 @@ pub(crate) async fn inspect_dag(dag_id: sui::types::Address) -> AnyResult<(), Ne
     json_output(&dag_json(&snapshot).map_err(NexusCliError::Any)?)
 }
 
-/// Projects a DAG snapshot into its public readable JSON representation.
+/// Projects a [`DagSnapshot`] into readable JSON.
 ///
-/// [`DagSnapshot`] retains byte vectors because it mirrors Move storage. CLI
-/// output is an operator interface, so MetaSchema names must use their validated
-/// UTF8 representation rather than JSON arrays of byte values.
+/// Stored byte names become validated UTF8 text for CLI output.
 fn dag_json(snapshot: &DagSnapshot) -> AnyResult<serde_json::Value> {
     let vertex_meta_schemas = snapshot
         .vertex_meta_schemas

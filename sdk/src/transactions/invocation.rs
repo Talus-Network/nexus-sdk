@@ -169,10 +169,9 @@ fn prepare_authorization(
     Ok((walk_index, vertex, authorized, clock))
 }
 
-/// Appends one leader authorized [Invocation] admission to an existing PTB.
+/// Appends one [Invocation] admission authorized by a leader.
 ///
-/// The capability restricts admission to the current leader. The verified gas
-/// charge reimburses that leader from the execution payment.
+/// The capability guards admission. The verified gas charge reimburses that leader.
 #[allow(clippy::too_many_arguments)]
 pub fn authorize(
     transaction: &mut move_boundary::NexusPtbBuilder,
@@ -206,10 +205,9 @@ pub fn authorize(
     )
 }
 
-/// Builds one leader authorized Tool [Invocation] admission transaction.
+/// Builds one Tool [Invocation] admission authorized by a leader.
 ///
-/// Sui enforces access to the consensus owned capability for the transaction
-/// sender. The submitted gas charge must be the cost verified by the leader.
+/// Sui checks capability control. The gas charge must be verified by the leader.
 #[allow(clippy::too_many_arguments)]
 pub fn authorize_ptb(
     context: &NexusContext,

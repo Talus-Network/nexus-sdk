@@ -242,11 +242,9 @@ pub(super) fn mutation_receipt(
     ))
 }
 
-/// Requires one exact settlement event before producing a mutation receipt.
+/// Produces a [`TaskMutationReceipt`] from one exact settlement event.
 ///
-/// A successful Sui transaction may legally contain a scheduler no op. The
-/// event is therefore the authoritative evidence that the requested occurrence
-/// and runtime object made the `Finished` to `Settled` transition.
+/// The event proves the transition because a successful transaction may be a no op.
 pub(super) fn settlement_receipt(
     executed: ExecutedTransaction,
     occurrence: OccurrenceRef,

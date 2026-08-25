@@ -487,12 +487,9 @@ fn dispatched_execution_id(
         })
 }
 
-/// Returns the runtime identity only for the single valid settlement source state.
+/// Returns the runtime identity for [`OccurrenceStatus::Finished`].
 ///
-/// A dispatched runtime identity survives settlement, so identity alone cannot
-/// distinguish work that is still executing from work that already settled.
-/// Requiring [`OccurrenceStatus::Finished`] makes SDK success correspond to an
-/// attempted `Finished` to `Settled` transition rather than a possible no op.
+/// The identity survives settlement, so status remains authoritative.
 fn settlement_execution_id(
     snapshot: &OccurrenceSnapshot,
 ) -> Result<sui::types::Address, SchedulerError> {

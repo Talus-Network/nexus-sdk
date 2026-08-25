@@ -28,13 +28,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- Invocation authorization requires the current Leader capability and records the verified submission reimbursement in the same transaction.
+- Invocation authorization builders and workflow callers now pass an explicit Leader capability object, preserving its owner representation for scheduler admission.
+- Invocation authorization now uses one current Leader capability boundary; crawler references preserve the consensus start version without a separate owner argument.
 - Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
 - Tool economy inspection now exposes one mandatory fixed price, where zero represents public access, alongside optional finite credit and time pass products.
 - Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
 - Finite credit and time pass purchases now withdraw their exact SUI price from the signer address balance inside the purchase PTB.
 - Invocation authorization now emits the executable walk request with its exact Invocation in the same transaction.
-- Automatic Invocation authorization reimburses its measured submission gas from the execution payment after authenticating the Leader capability.
+- Automatic Invocation authorization can reimburse its measured submission gas from the execution payment, while user submitted authorization uses zero reimbursement.
+- Manual Leader authorization records zero reimbursement, while the automatic Leader service records only its verified submission cost.
 - Scheduler builders now pass the fixed runtime authority to standalone and recurring scheduling, decode allocation and advertisement as distinct events, and resolve proposal routing while runtime effects are paused.
 - Onchain Tool validation now requires the public composable `execute` ABI, and registration builders can configure the initial key and verifier support before sharing the binding.
 - Default address balance clients now share one process nonce authority, preventing independently constructed clients from rebuilding the same transaction digest.
@@ -67,7 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- Execution Invocation authorization requires a Leader capability; the manual CLI path records zero reimbursement.
+- Execution Invocation authorization now requires `--leader-cap` so CLI transactions identify the authenticated Leader capability explicitly.
+- Execution Invocation authorization is a Leader operation, and manual submissions record zero reimbursement.
 - Finite credit and time pass purchases now use the active signer address balance without requiring a payment coin object ID.
 - Public access authorization now uses the fixed price command with a zero Tool price; separate free and fixed price toggle commands were removed.
 

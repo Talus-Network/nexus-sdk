@@ -20,12 +20,10 @@ pub fn over_network_cap_struct_tag(objects: &NexusContext) -> sui::types::Struct
     crate::move_bindings::struct_tag::<OverNetworkCap>(objects)
 }
 
-/// Configure every leader registry policy value in one transaction.
+/// Configures every leader registry policy value atomically.
 ///
-/// Keeping these updates atomic prevents registration or selection from observing
-/// a mixture of old and new protocol policy. The owner description is required
-/// because the administration capability may use either address or consensus
-/// ownership.
+/// Atomic updates prevent mixed policy observations. [`sui::types::Owner`]
+/// preserves the administration capability ownership form.
 pub fn configure_registry_ptb(
     objects: &NexusContext,
     admin_cap: &sui::types::ObjectReference,
