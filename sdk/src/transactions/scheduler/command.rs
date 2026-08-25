@@ -6,10 +6,9 @@ use {
     crate::{
         move_bindings::scheduler::{
             execution_entries as execution_entries_binding,
-            invocation_adapter as invocation_adapter_binding,
             scheduler as scheduler_binding,
         },
-        move_boundary::NexusPtbBuilder,
+        move_boundary::{self, NexusPtbBuilder},
         scheduler::{FailurePolicy, ScheduleError, SchedulerError, TaskInputs, TaskOperation},
         sui,
         transactions::agent_input::AgentInput,
@@ -721,6 +720,33 @@ pub fn dispatch_occurrence_ptb(
     })
 }
 
+/// Builds a transaction that commits the random seed used for occurrence leader selection.
+pub fn commit_occurrence_selection_seed_ptb(
+    objects: &NexusContext,
+    task: &sui::types::ObjectReference,
+    occurrence_id: u64,
+) -> Result<ProgrammableTransaction, SchedulerError> {
+    ptb(objects, |transaction| {
+        let runtime_authority = transaction
+            .runtime_authority(false)
+            .map_err(SchedulerError::transaction)?;
+        let task = shared_task_arg(transaction, task)?;
+        let random = transaction
+            .shared_object_by_id(move_boundary::RANDOM_OBJECT_ID, 1, false)
+            .map_err(SchedulerError::transaction)?;
+        let occurrence_id = transaction
+            .arg(&occurrence_id)
+            .map_err(SchedulerError::transaction)?;
+        transaction
+            .call_target(
+                scheduler_binding::commit_occurrence_selection_seed_target,
+                vec![runtime_authority, task, random, occurrence_id],
+            )
+            .map_err(SchedulerError::transaction)?;
+        Ok(())
+    })
+}
+
 fn append_dispatch_occurrence_(
     transaction: &mut NexusPtbBuilder,
     task: &sui::types::ObjectReference,
@@ -776,12 +802,6 @@ fn append_dispatch_occurrence_(
         )
         .map_err(SchedulerError::transaction)?;
 
-    transaction
-        .call_target(
-            invocation_adapter_binding::snapshot_dag_invocation_costs_target,
-            vec![runtime_authority, tool_registry, execution, dag],
-        )
-        .map_err(SchedulerError::transaction)?;
     transaction
         .call_target(
             execution_entries_binding::start_and_share_target,
@@ -1181,6 +1201,31 @@ mod tests {
 
         assert_eq!(dispatch.arguments.len(), 10);
         assert_eq!(pure_u64(&transaction, dispatch.arguments[8]), 42);
+    }
+
+    #[test]
+    fn selection_seed_uses_the_framework_random_object() {
+        let objects = mock_nexus_context();
+        let task = object_ref_for_id(address("0x50"));
+
+        let transaction = commit_occurrence_selection_seed_ptb(&objects, &task, 7)
+            .expect("selection seed compiles");
+        let commit = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "commit_occurrence_selection_seed")
+            .expect("selection seed call");
+
+        assert_eq!(commit.arguments.len(), 4);
+        assert_shared_argument(
+            &transaction,
+            commit.arguments[0],
+            &objects.runtime_authority,
+            false,
+        );
+        let task_root = SharedRoot::new(*task.object_id(), task.version());
+        assert_shared_argument(&transaction, commit.arguments[1], &task_root, true);
+        let random = SharedRoot::new(move_boundary::RANDOM_OBJECT_ID, 1);
+        assert_shared_argument(&transaction, commit.arguments[2], &random, false);
+        assert_eq!(pure_u64(&transaction, commit.arguments[3]), 7);
     }
 
     #[test]

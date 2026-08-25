@@ -3042,6 +3042,7 @@ mod tests {
             interface_version: InterfaceVersion::new(7),
             task_id: object_id(sui::types::Address::from_static("0xb")),
             occurrence_id: 0,
+            leader_selection_seed: vec![0; 32],
             last_request_for_execution_emitted_at_digest: vec![],
             last_request_for_execution_leaders: vec![],
             network: object_id(sui::types::Address::from_static("0xf")),

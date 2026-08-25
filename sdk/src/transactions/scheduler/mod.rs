@@ -6,6 +6,7 @@ mod compose;
 mod encode;
 
 pub use command::{
+    commit_occurrence_selection_seed_ptb,
     dispatch_occurrence_ptb,
     expire_occurrence_with_gas_charge_ptb,
     reject_occurrence_with_gas_charge_ptb,
