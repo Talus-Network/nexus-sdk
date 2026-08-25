@@ -269,7 +269,7 @@ impl OccurrenceHandle {
         invocation_id: Option<sui::types::Address>,
     ) -> Result<AbortReceipt, SchedulerError> {
         let client = &self.client;
-        let execution_id = dispatched_execution_id(&self.snapshot_with(&client).await?)?;
+        let execution_id = dispatched_execution_id(&self.snapshot_with(client).await?)?;
         let transaction = if let Some(invocation_id) = invocation_id {
             let result = client
                 .workflow()

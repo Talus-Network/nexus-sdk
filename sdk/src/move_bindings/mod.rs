@@ -228,7 +228,7 @@ pub fn derive_tool_cashier_id(
     derive_object_id(tool, &key, &tool::tool_cashier::ToolCashierKey::new(false))
 }
 
-/// Derive the canonical finite credit account for [beneficiary].
+/// Derive the canonical finite credit account for one [interface::payment::PaymentSourceKind].
 pub fn derive_finite_credits_id(
     context: &NexusContext,
     cashier: sui::types::Address,
@@ -238,7 +238,7 @@ pub fn derive_finite_credits_id(
     derive_object_id(cashier, &type_tag::<Key>(context), &Key::new(beneficiary))
 }
 
-/// Derive the canonical time pass account for [beneficiary].
+/// Derive the canonical time pass account for one [interface::payment::PaymentSourceKind].
 pub fn derive_time_pass_id(
     context: &NexusContext,
     cashier: sui::types::Address,
@@ -422,6 +422,41 @@ mod tests {
     fn generated_bindings_expose_calls() {
         let _ = registry::leader::claim_unstaked_for_self_target;
         let _ = super::talus::us::US::type_tag_static;
+    }
+
+    #[test]
+    fn committed_ir_exposes_only_leader_authorized_invocation_admission() {
+        for (package, source) in [
+            ("scheduler", include_str!("ir/scheduler.json")),
+            ("workflow", include_str!("ir/workflow.json")),
+        ] {
+            let ir: serde_json::Value =
+                serde_json::from_str(source).expect("committed binding IR must be valid JSON");
+            let functions = ir["modules"]["invocation_adapter"]["functions"]
+                .as_array()
+                .expect("Invocation adapter functions must be an array");
+            let public_admissions: Vec<_> = functions
+                .iter()
+                .filter(|function| {
+                    function["visibility"] == "Public"
+                        && function["name"]
+                            .as_str()
+                            .is_some_and(|name| name.starts_with("lock_and_request"))
+                })
+                .collect();
+
+            assert_eq!(
+                public_admissions.len(),
+                1,
+                "{package} must expose one public Invocation admission"
+            );
+            assert_eq!(public_admissions[0]["name"], "lock_and_request");
+            assert!(public_admissions[0]["parameters"]
+                .as_array()
+                .expect("Invocation admission parameters must be an array")
+                .iter()
+                .any(|parameter| parameter["name"] == "leader_cap"));
+        }
     }
 
     #[test]

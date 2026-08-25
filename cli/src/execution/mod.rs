@@ -19,9 +19,9 @@ Identify an Execution directly, or let the CLI resolve it from its occurrence:
   nexus execution inspect --execution-id 0x42
   nexus execution inspect --task-id 0x21 --occurrence-id 7
 
-Authorize one exact active Tool Invocation through an accepted policy:
-  nexus execution authorize --execution-id 0x42 --walk-index 0 --vertex worker fixed-price
-  nexus execution authorize --execution-id 0x42 --walk-index 0 --vertex worker finite-credits
+As a Leader, authorize one exact active Tool Invocation through an accepted policy:
+  nexus execution authorize --execution-id 0x42 --leader-cap 0x43 --walk-index 0 --vertex worker fixed-price
+  nexus execution authorize --execution-id 0x42 --leader-cap 0x43 --walk-index 0 --vertex worker finite-credits
 
 After runtime inspection, return to the occurrence to settle or verify it:
   nexus task occurrence inspect --task-id 0x21 --occurrence-id 7
@@ -67,7 +67,7 @@ pub(crate) enum ExecutionCommand {
         )]
         poll_ms: u64,
     },
-    #[command(about = "Authorize one exact active Tool Invocation")]
+    #[command(about = "Authorize one exact active Tool Invocation as a Leader")]
     Authorize {
         #[arg(
             long,
@@ -76,6 +76,12 @@ pub(crate) enum ExecutionCommand {
             help = "Execution object ID"
         )]
         execution_id: nexus_sdk::sui::types::Address,
+        #[arg(
+            long = "leader-cap",
+            value_name = "OBJECT_ID",
+            help = "Leader capability controlled by the transaction signer"
+        )]
+        leader_cap_id: nexus_sdk::sui::types::Address,
         #[arg(
             long,
             value_name = "U64",
@@ -183,6 +189,7 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
         }
         ExecutionCommand::Authorize {
             execution_id,
+            leader_cap_id,
             walk_index,
             vertex,
             iteration,
@@ -192,6 +199,7 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
         } => {
             authorize::run(
                 execution_id,
+                leader_cap_id,
                 walk_index,
                 vertex,
                 iteration.zip(out_of),
@@ -206,6 +214,7 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
 #[cfg(test)]
 mod tests {
     use {
+        super::*,
         crate::{Cli, Command},
         clap::Parser,
     };
@@ -226,6 +235,8 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
+            "--leader-cap",
+            "0x43",
             "--walk-index",
             "3",
             "--vertex",
@@ -242,6 +253,46 @@ mod tests {
     }
 
     #[test]
+    fn execution_authorize_requires_a_leader_capability() {
+        assert!(Cli::try_parse_from([
+            "nexus",
+            "execution",
+            "authorize",
+            "--execution-id",
+            "0x42",
+            "--walk-index",
+            "0",
+            "--vertex",
+            "worker",
+            "fixed-price",
+        ])
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn execution_authorize_validates_iterator_before_network_access() {
+        let error = handle(ExecutionCommand::Authorize {
+            execution_id: nexus_sdk::sui::types::Address::from_static("0x42"),
+            leader_cap_id: nexus_sdk::sui::types::Address::from_static("0x43"),
+            walk_index: 0,
+            vertex: "worker".to_owned(),
+            iteration: Some(2),
+            out_of: Some(2),
+            policy: InvocationPolicyCommand::FixedPrice,
+            gas: GasArgs {
+                sui_gas_coin: None,
+                sui_gas_budget: nexus_sdk::nexus::client::DEFAULT_GAS_BUDGET,
+            },
+        })
+        .await
+        .expect_err("an iterator at the item count should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("must be smaller than item count"));
+    }
+
+    #[test]
     fn iterator_authorization_requires_complete_runtime_identity() {
         assert!(Cli::try_parse_from([
             "nexus",
@@ -249,6 +300,8 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
+            "--leader-cap",
+            "0x43",
             "--walk-index",
             "3",
             "--vertex",
@@ -268,6 +321,8 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
+            "--leader-cap",
+            "0x43",
             "--walk-index",
             "0",
             "--vertex",

@@ -169,43 +169,12 @@ fn prepare_authorization(
     Ok((walk_index, vertex, authorized, clock))
 }
 
-/// Appends permissionless Invocation authorization to an existing PTB.
+/// Appends one leader authorized [Invocation] admission to an existing PTB.
 ///
-/// The transaction sender pays its own submission cost. The permissionless
-/// contract entry has no reimbursement argument.
+/// The capability restricts admission to the current leader. The verified gas
+/// charge reimburses that leader from the execution payment.
+#[allow(clippy::too_many_arguments)]
 pub fn authorize(
-    transaction: &mut move_boundary::NexusPtbBuilder,
-    cashier: sui::types::Argument,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    leader_registry: sui::types::Argument,
-    target: InvocationTarget<'_>,
-    policy: &InvocationPolicyCall,
-) -> anyhow::Result<sui::types::Argument> {
-    let (walk_index, vertex, authorized, clock) =
-        prepare_authorization(transaction, cashier, dag, execution, target, policy)?;
-    let runtime_authority = transaction.runtime_authority(false)?;
-    transaction.call_target(
-        scheduler_invocation_adapter_binding::lock_and_request_target,
-        vec![
-            runtime_authority,
-            dag,
-            execution,
-            leader_registry,
-            walk_index,
-            vertex,
-            authorized,
-            clock,
-        ],
-    )
-}
-
-/// Appends Invocation authorization with direct leader reimbursement.
-///
-/// The leader network capability identifies the accountable leader. The Move
-/// transition verifies that it is current, active, and bound to the execution
-/// network before charging the execution payment.
-pub fn authorize_with_leader_reimbursement(
     transaction: &mut move_boundary::NexusPtbBuilder,
     cashier: sui::types::Argument,
     dag: sui::types::Argument,
@@ -221,7 +190,7 @@ pub fn authorize_with_leader_reimbursement(
     let submission_gas_charge = transaction.arg(&submission_gas_charge)?;
     let runtime_authority = transaction.runtime_authority(false)?;
     transaction.call_target(
-        scheduler_invocation_adapter_binding::lock_and_request_with_leader_reimbursement_target,
+        scheduler_invocation_adapter_binding::lock_and_request_target,
         vec![
             runtime_authority,
             dag,
@@ -237,42 +206,12 @@ pub fn authorize_with_leader_reimbursement(
     )
 }
 
-/// Builds a permissionless PTB that authorizes one exact Tool Invocation.
+/// Builds one leader authorized Tool [Invocation] admission transaction.
 ///
-/// The transaction sender pays its own submission cost. Only the leader
-/// specific builder can charge the execution payment.
+/// Sui enforces access to the consensus owned capability for the transaction
+/// sender. The submitted gas charge must be the cost verified by the leader.
+#[allow(clippy::too_many_arguments)]
 pub fn authorize_ptb(
-    context: &NexusContext,
-    cashier: &sui::types::ObjectReference,
-    dag: &sui::types::ObjectReference,
-    execution: &sui::types::ObjectReference,
-    target: InvocationTarget<'_>,
-    policy: &InvocationPolicyCall,
-) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(context, |transaction| {
-        let cashier = transaction.shared_object(cashier, false)?;
-        let dag = transaction.immutable_object(dag)?;
-        let execution = transaction.shared_object(execution, true)?;
-        let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
-        authorize(
-            transaction,
-            cashier,
-            dag,
-            execution,
-            leader_registry,
-            target,
-            policy,
-        )?;
-        Ok(())
-    })
-}
-
-/// Builds a PTB that authorizes one Invocation and reimburses one leader.
-///
-/// `leader_cap` must be the current active capability for the execution
-/// network. `submission_gas_charge` is the exact effective cost verified by
-/// the leader merchant before signing.
-pub fn authorize_with_leader_reimbursement_ptb(
     context: &NexusContext,
     cashier: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
@@ -288,7 +227,7 @@ pub fn authorize_with_leader_reimbursement_ptb(
         let execution = transaction.shared_object(execution, true)?;
         let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
         let leader_cap = transaction.shared_object(leader_cap, false)?;
-        authorize_with_leader_reimbursement(
+        authorize(
             transaction,
             cashier,
             dag,
@@ -366,22 +305,25 @@ mod tests {
     }
 
     #[test]
-    fn permissionless_authorization_has_no_reimbursement_input() {
+    fn leader_authorization_calls_policy_before_lock_and_request() {
         let context = mock_nexus_context();
         let cashier = object_ref_for_id(sui::types::Address::from_static("0x81"));
         let dag = object_ref_for_id(sui::types::Address::from_static("0x82"));
         let execution = object_ref_for_id(sui::types::Address::from_static("0x83"));
+        let leader_cap = object_ref_for_id(sui::types::Address::from_static("0x84"));
         let policy = InvocationPolicyCall::fixed_price(&context).unwrap();
         let ptb = authorize_ptb(
             &context,
             &cashier,
             &dag,
             &execution,
+            &leader_cap,
             InvocationTarget {
                 walk_index: 0,
                 vertex: &vertex(),
             },
             &policy,
+            42,
         )
         .unwrap();
 
@@ -431,7 +373,7 @@ mod tests {
                 _ => None,
             })
             .expect("lock and request call");
-        assert_eq!(lock_and_request.arguments.len(), 8);
+        assert_eq!(lock_and_request.arguments.len(), 10);
     }
 
     #[test]
@@ -442,7 +384,7 @@ mod tests {
         let execution = object_ref_for_id(sui::types::Address::from_static("0x83"));
         let leader_cap = object_ref_for_id(sui::types::Address::from_static("0x84"));
         let policy = InvocationPolicyCall::fixed_price(&context).unwrap();
-        let ptb = authorize_with_leader_reimbursement_ptb(
+        let ptb = authorize_ptb(
             &context,
             &cashier,
             &dag,
@@ -463,8 +405,7 @@ mod tests {
             .find_map(|command| match command {
                 Command::MoveCall(call)
                     if call.module.as_str() == "invocation_adapter"
-                        && call.function.as_str()
-                            == "lock_and_request_with_leader_reimbursement" =>
+                        && call.function.as_str() == "lock_and_request" =>
                 {
                     Some(call)
                 }

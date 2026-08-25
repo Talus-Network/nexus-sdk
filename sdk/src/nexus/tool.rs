@@ -551,7 +551,7 @@ impl ToolActions {
         self.submit_action(transaction).await
     }
 
-    /// Enables time pass sales and admission for a [`Tool`].
+    /// Enables time pass sales and admission for a [`crate::types::Tool`].
     pub async fn enable_time_passes(
         &self,
         tool_fqn: &ToolFqn,
@@ -579,7 +579,7 @@ impl ToolActions {
         })
     }
 
-    /// Closes time pass issuance for a [`Tool`] without invalidating existing passes.
+    /// Closes time pass issuance for a [`crate::types::Tool`] without invalidating existing passes.
     pub async fn close_time_pass_issuance(
         &self,
         fqn: &ToolFqn,
@@ -598,7 +598,7 @@ impl ToolActions {
         })
     }
 
-    /// Opens time pass issuance for a [`Tool`] using its current terms.
+    /// Opens time pass issuance for a [`crate::types::Tool`] using its current terms.
     pub async fn open_time_pass_issuance(
         &self,
         fqn: &ToolFqn,
@@ -617,7 +617,7 @@ impl ToolActions {
         })
     }
 
-    /// Updates time pass terms for a [`Tool`] without invalidating existing passes.
+    /// Updates time pass terms for a [`crate::types::Tool`] without invalidating existing passes.
     pub async fn update_time_pass_terms(
         &self,
         tool_fqn: &ToolFqn,
@@ -653,7 +653,7 @@ impl ToolActions {
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = &self.client;
         let beneficiary = PaymentSourceKind::user_funded(client.owner()?);
-        self.buy_time_pass_with(&client, tool_fqn, duration_ms, beneficiary)
+        self.buy_time_pass_with(client, tool_fqn, duration_ms, beneficiary)
             .await
     }
 
@@ -665,7 +665,7 @@ impl ToolActions {
         beneficiary: PaymentSourceKind,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = &self.client;
-        self.buy_time_pass_with(&client, tool_fqn, duration_ms, beneficiary)
+        self.buy_time_pass_with(client, tool_fqn, duration_ms, beneficiary)
             .await
     }
 
@@ -764,7 +764,7 @@ impl ToolActions {
         let client = &self.client;
         let address = client.owner()?;
         let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
         let entitlement_id = crate::move_bindings::derive_time_pass_id(
             &context,
             *tool_cashier.object_id(),
@@ -812,7 +812,7 @@ impl ToolActions {
         })
     }
 
-    /// Enables finite credit sales and admission for a [`Tool`].
+    /// Enables finite credit sales and admission for a [`crate::types::Tool`].
     pub async fn enable_finite_credits(
         &self,
         tool_fqn: &ToolFqn,
@@ -833,7 +833,7 @@ impl ToolActions {
         }
         let client = &self.client;
         let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
         let transaction = tool_cashier::enable_finite_credits_ptb(
             &context,
             &tool_cashier,
@@ -846,7 +846,7 @@ impl ToolActions {
         self.submit_action(transaction).await
     }
 
-    /// Closes finite credit issuance for a [`Tool`] without invalidating existing credits.
+    /// Closes finite credit issuance for a [`crate::types::Tool`] without invalidating existing credits.
     pub async fn close_finite_credit_issuance(
         &self,
         fqn: &ToolFqn,
@@ -865,7 +865,7 @@ impl ToolActions {
         })
     }
 
-    /// Opens finite credit issuance for a [`Tool`] using its current terms.
+    /// Opens finite credit issuance for a [`crate::types::Tool`] using its current terms.
     pub async fn open_finite_credit_issuance(
         &self,
         tool_fqn: &ToolFqn,
@@ -874,7 +874,7 @@ impl ToolActions {
         let client = &self.client;
         let address = client.owner()?;
         let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
         let transaction =
             tool_cashier::open_finite_credit_issuance_ptb(&context, &tool_cashier, &cashier_admin)
                 .map_err(NexusError::TransactionBuilding)?;
@@ -884,7 +884,7 @@ impl ToolActions {
         })
     }
 
-    /// Updates finite credit terms for a [`Tool`] without invalidating issued credits.
+    /// Updates finite credit terms for a [`crate::types::Tool`] without invalidating issued credits.
     pub async fn update_finite_credit_terms(
         &self,
         tool_fqn: &ToolFqn,
@@ -906,7 +906,7 @@ impl ToolActions {
         let client = &self.client;
         let address = client.owner()?;
         let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
         let transaction = tool_cashier::update_finite_credit_terms_ptb(
             &context,
             &tool_cashier,
@@ -931,7 +931,7 @@ impl ToolActions {
         let client = &self.client;
         let address = client.owner()?;
         self.buy_finite_credits_with(
-            &client,
+            client,
             tool_fqn,
             credits,
             PaymentSourceKind::user_funded(address),
@@ -947,7 +947,7 @@ impl ToolActions {
         beneficiary: PaymentSourceKind,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = &self.client;
-        self.buy_finite_credits_with(&client, tool_fqn, credits, beneficiary)
+        self.buy_finite_credits_with(client, tool_fqn, credits, beneficiary)
             .await
     }
 
@@ -1045,7 +1045,7 @@ impl ToolActions {
         let client = &self.client;
         let address = client.owner()?;
         let (context, tool_cashier, cashier_admin) =
-            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
         let entitlement_id = crate::move_bindings::derive_finite_credits_id(
             &context,
             *tool_cashier.object_id(),
@@ -1282,13 +1282,13 @@ impl ToolActions {
         })
     }
 
-    /// Reads every accepted policy and the canonical offers for one [`Tool`].
+    /// Reads every accepted policy and the canonical offers for one [`crate::types::Tool`].
     ///
     /// Custom policy witness types remain visible in [`ToolEconomy::policies`]
     /// even when this SDK does not know how to decode their private configs.
     pub async fn inspect_economy(&self, tool_fqn: &ToolFqn) -> Result<ToolEconomy, NexusError> {
         let client = &self.client;
-        Self::inspect_economy_with(&client, tool_fqn).await
+        Self::inspect_economy_with(client, tool_fqn).await
     }
 
     async fn inspect_economy_with(
@@ -1439,7 +1439,7 @@ impl ToolActions {
         let client = &self.client;
         let address = client.owner()?;
         let (context, cashier, admin) =
-            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
         let tool_id = crate::move_bindings::derive_tool_id(
             client.nexus_objects.tool_registry.object_id(),
             tool_fqn,
@@ -1505,7 +1505,7 @@ impl ToolActions {
     ) -> Result<ToolCashierActionResult, NexusError> {
         let client = &self.client;
         let (context, cashier, admin) =
-            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+            Self::resolve_tool_cashier_and_cap(client, tool_fqn, cashier_admin).await?;
         let references = client
             .crawler()
             .get_objects_metadata(deposit_ids)

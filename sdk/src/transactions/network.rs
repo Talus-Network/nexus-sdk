@@ -87,8 +87,7 @@ pub fn withdraw_priority_fee(
     move_boundary::ptb(context, |transaction| {
         let vault = transaction.shared_root(&context.priority_fee_vault, true)?;
         let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
-        let leader_cap =
-            transaction.object_from_owner(leader_cap, leader_cap_owner, false)?;
+        let leader_cap = transaction.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let share = transaction.arg(&share_to_withdraw)?;
         let us_out = transaction.call_target(
             priority_fee_vault_binding::withdraw_priority_fee_target,
@@ -205,14 +204,9 @@ mod tests {
             owner: address("0x31"),
         };
 
-        let ptb = withdraw_priority_fee(
-            &objects,
-            &leader_cap,
-            &leader_cap_owner,
-            5,
-            address("0x31"),
-        )
-        .expect("consensus address owned cap is a valid input");
+        let ptb =
+            withdraw_priority_fee(&objects, &leader_cap, &leader_cap_owner, 5, address("0x31"))
+                .expect("consensus address owned cap is a valid input");
 
         assert!(ptb.inputs.iter().any(|input| {
             matches!(
