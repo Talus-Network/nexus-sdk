@@ -1541,7 +1541,7 @@ impl WorkflowActions {
     /// Authorizes one active [RuntimeVertex] with the current Leader capability.
     ///
     /// The signer must control the supplied capability. This manual path records
-    /// no reimbursement; the automatic Leader service supplies the verified cost.
+    /// no reimbursement. The automatic Leader service supplies the verified cost.
     pub async fn authorize_invocation(
         &self,
         dag_execution_id: sui::types::Address,

@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Added a scheduler transaction builder that commits Sui randomness before occurrence leader selection.
 - Added dynamic Invocation policy composition, policy discovery, canonical finite credit and time pass accounts, owner grants, receipt collection, and exact Invocation timeout refunds.
 - Added deterministic entitlement ID derivation from the Tool cashier, payment beneficiary, and policy type.
 - Added beneficiary access inspection with canonical account state, pass activity from the onchain clock, and exact finite credit refunds ready for restoration.
@@ -28,8 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Generated bindings now match atomic price snapshots, transaction budget enforcement, bounded gas accounting, and committed random occurrence selection.
+- Finite credit and time pass purchase builders now rely on the Move purchase call to share each canonical beneficiary account atomically.
 - Invocation authorization builders and workflow callers now pass an explicit Leader capability object, preserving its owner representation for scheduler admission.
-- Invocation authorization now uses one current Leader capability boundary; crawler references preserve the consensus start version without a separate owner argument.
+- Invocation authorization now uses one current Leader capability boundary. Crawler references preserve the consensus start version without a separate owner argument.
 - Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
 - Tool economy inspection now exposes one mandatory fixed price, where zero represents public access, alongside optional finite credit and time pass products.
 - Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
@@ -47,6 +50,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Removed
 
+- Removed explicit execution price snapshot transaction calls because execution creation now freezes every bound Tool price.
+- Removed the obsolete Agent vault locked amount model and related balance helpers because active execution payments hold reserved funds separately.
 - Removed ticket lookup and cashier based settlement APIs in favor of exact Invocation objects.
 - Removed the separate free policy and fixed price policy toggle APIs because every Tool uses its fixed price baseline.
 - Removed finite credit split, join, and object selection APIs because canonical account IDs are derived automatically.
@@ -77,6 +82,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Task and TAP commands now use the routing package graph for creation and pass `RuntimeAuthority` at the WorkAdmission scheduling boundary.
+
+#### Removed
+
+- Removed obsolete locked and unlocked Agent vault fields from TAP command output.
 
 ### `nexus-toolkit`
 

@@ -108,7 +108,7 @@ pub trait NexusTool: Send + Sync + 'static {
     ///
     /// This value is part of the durable registry metadata that users and
     /// Agent developers rely on when selecting a Tool. Implementations must
-    /// provide meaningful text; SDK registration rejects blank descriptions.
+    /// provide meaningful text. SDK registration rejects blank descriptions.
     fn description() -> &'static str;
     /// Construct a new instance of the tool. This is mainly here so that
     /// dependencies can be injected for testing purposes.
