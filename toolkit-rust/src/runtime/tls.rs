@@ -97,7 +97,13 @@ fn load_server_config(cert_path: &Path, key_path: &Path) -> anyhow::Result<Serve
 
     let private_key = PrivateKeyDer::from_pem_file(key_path)
         .with_context(|| format!("failed to read TLS private key file {}", key_path.display()))?;
-    let mut config = ServerConfig::builder()
+    // The toolkit owns the server transport, so it must select its provider
+    // explicitly. Tool dependencies may enable another rustls provider and
+    // make process wide inference ambiguous.
+    let provider = Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
+    let mut config = ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .context("failed to select safe TLS protocol versions")?
         .with_no_client_auth()
         .with_single_cert(certificates, private_key)
         .context("failed to build TLS server configuration")?;

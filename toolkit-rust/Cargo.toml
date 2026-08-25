@@ -40,5 +40,6 @@ nexus-sdk = { workspace = true, features = ["signed_http", "types"] }
 http-body-util = "0.1"
 rcgen = "0.13"
 reqwest = { version = "0.12.14", default-features = false, features = ["json", "rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 tempfile.workspace = true
 tokio = { version = "1.44.1", features = ["macros"] }
