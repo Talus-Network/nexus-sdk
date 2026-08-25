@@ -2641,7 +2641,6 @@ mod tests {
                 value: 10,
                 phantom_t0: std::marker::PhantomData,
             },
-            locked_amount: 3,
         };
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
@@ -2678,7 +2677,7 @@ mod tests {
             .await
             .expect("vault read should not require owned coins");
 
-        assert_eq!(response.data.unlocked_balance_value(), 7);
+        assert_eq!(response.data.available_balance_value(), 10);
     }
 
     #[test]

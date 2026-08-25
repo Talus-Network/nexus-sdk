@@ -282,16 +282,6 @@ pub(crate) fn render_vault_balance(
         "Available balance",
         format_args!("{} MIST", vault.data.available_balance_value()),
     );
-    write_field(
-        &mut output,
-        "Locked amount",
-        format_args!("{} MIST", vault.data.locked_amount),
-    );
-    write_field(
-        &mut output,
-        "Unlocked balance",
-        format_args!("{} MIST", vault.data.unlocked_balance_value()),
-    );
     output
 }
 
@@ -698,8 +688,6 @@ pub(crate) fn vault_balance_result_json(
         "agent_id": agent_id,
         "vault_id": vault.object_id,
         "available_balance": vault.data.available_balance_value(),
-        "locked_amount": vault.data.locked_amount,
-        "unlocked_balance": vault.data.unlocked_balance_value(),
     })
 }
 
