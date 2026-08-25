@@ -510,6 +510,10 @@ mod tests {
         type Input = Input;
         type Output = Output;
 
+        fn description() -> &'static str {
+            "Echoes the submitted prompt."
+        }
+
         async fn new() -> Self {
             Self
         }
@@ -534,6 +538,10 @@ mod tests {
     impl NexusTool for DummyToolWithPath {
         type Input = Input;
         type Output = Output;
+
+        fn description() -> &'static str {
+            "Echoes the submitted prompt at a nested path."
+        }
 
         async fn new() -> Self {
             Self

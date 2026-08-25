@@ -26,6 +26,10 @@ impl NexusTool for DummyTool {
     type Input = Input;
     type Output = Output;
 
+    fn description() -> &'static str {
+        "Echoes the submitted prompt."
+    }
+
     async fn new() -> Self {
         Self
     }
@@ -50,6 +54,10 @@ struct DummyErrTool;
 impl NexusTool for DummyErrTool {
     type Input = Input;
     type Output = Output;
+
+    fn description() -> &'static str {
+        "Returns a deterministic Tool error."
+    }
 
     async fn new() -> Self {
         Self

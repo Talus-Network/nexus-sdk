@@ -657,6 +657,10 @@ mod tests {
         type Input = Input;
         type Output = Output;
 
+        fn description() -> &'static str {
+            "Returns a structured test response."
+        }
+
         fn fqn() -> ToolFqn {
             fqn!("xyz.taluslabs.test@1")
         }

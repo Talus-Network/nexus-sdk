@@ -15,11 +15,21 @@ pub(crate) enum ToolTemplate {
 impl ToolTemplate {
     /// For each template, transform the template based on the given variables
     /// and return the files to write.
-    pub(crate) fn transform(&self, name: &str) -> AnyResult<Vec<(String, Option<String>)>> {
+    pub(crate) fn transform(
+        &self,
+        name: &str,
+        description: &str,
+    ) -> AnyResult<Vec<(String, Option<String>)>> {
+        let description = description.trim();
+        if description.is_empty() {
+            anyhow::bail!("Tool description must not be empty");
+        }
+
         match self {
             ToolTemplate::Rust => {
                 let name_kebab_case = name.to_case(Case::Kebab);
                 let name_pascal_case = name.to_case(Case::Pascal);
+                let description_literal = serde_json::to_string(description)?;
 
                 let mut env = Environment::new();
 
@@ -33,7 +43,9 @@ impl ToolTemplate {
                     ("src".to_string(), None),
                     (
                         "src/main.rs".to_string(),
-                        Some(main_template.render(context! { name_kebab_case, name_pascal_case })?),
+                        Some(main_template.render(
+                            context! { name_kebab_case, name_pascal_case, description_literal },
+                        )?),
                     ),
                     (
                         "Cargo.toml".to_string(),
@@ -48,6 +60,11 @@ impl ToolTemplate {
                 let name_snake_case = name.to_case(Case::Snake);
                 let name_pascal_case = name.to_case(Case::Pascal);
                 let name_uppercase = name.to_case(Case::UpperSnake);
+                let description_doc = description
+                    .lines()
+                    .map(|line| format!("//! {}", line.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
 
                 let mut env = Environment::new();
 
@@ -73,9 +90,12 @@ impl ToolTemplate {
                     ),
                     (
                         format!("sources/{name_snake_case}.move"),
-                        Some(tool_move_template.render(
-                            context! { name_snake_case, name_pascal_case, name_uppercase },
-                        )?),
+                        Some(tool_move_template.render(context! {
+                            name_snake_case,
+                            name_pascal_case,
+                            name_uppercase,
+                            description_doc,
+                        })?),
                     ),
                     (
                         format!("tests/{name_snake_case}_tests.move"),
@@ -94,6 +114,7 @@ impl ToolTemplate {
 /// Create a new tool based on the provided name and template.
 pub(crate) async fn create_new_tool(
     name: String,
+    description: String,
     template: ToolTemplate,
     target: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
@@ -104,7 +125,7 @@ pub(crate) async fn create_new_tool(
 
     let transforming_template = loading!("Transforming template...");
 
-    let files = match template.transform(&name) {
+    let files = match template.transform(&name, &description) {
         Ok(files) => files,
         Err(e) => {
             transforming_template.error();
@@ -172,7 +193,13 @@ mod tests {
     async fn test_create_new_tool() {
         let tempdir = tempfile::tempdir().unwrap().keep();
 
-        let result = create_new_tool("test".to_string(), ToolTemplate::Rust, tempdir.clone()).await;
+        let result = create_new_tool(
+            "test".to_string(),
+            "Returns a quoted \"test\" result.".to_string(),
+            ToolTemplate::Rust,
+            tempdir.clone(),
+        )
+        .await;
 
         assert_matches!(result, Ok(()));
 
@@ -184,6 +211,9 @@ mod tests {
         assert!(contents.contains("    async fn new() -> Self {\n        Self\n    }"));
         assert!(contents.contains("    fn fqn() -> ToolFqn {\n        // The fully qualified name of the tool.\n\n        fqn!(\"domain.author.test@1\")\n    }"));
         assert!(contents.contains("    fn path() -> &'static str {\n        \"\"\n    }"));
+        assert!(contents.contains(
+            "    fn description() -> &'static str {\n        \"Returns a quoted \\\"test\\\" result.\"\n    }"
+        ));
         assert!(contents.contains("struct Test;"));
         assert!(contents.contains("impl NexusTool for Test {"));
 
@@ -199,8 +229,13 @@ mod tests {
     async fn test_create_new_move_tool() {
         let tempdir = tempfile::tempdir().unwrap().keep();
 
-        let result =
-            create_new_tool("test_tool".to_string(), ToolTemplate::Move, tempdir.clone()).await;
+        let result = create_new_tool(
+            "test_tool".to_string(),
+            "Increments an onchain counter.".to_string(),
+            ToolTemplate::Move,
+            tempdir.clone(),
+        )
+        .await;
 
         assert_matches!(result, Ok(()));
 
@@ -224,6 +259,7 @@ mod tests {
         let move_file_path = tempdir.join("test_tool/sources/test_tool.move");
         let move_contents = tokio::fs::read_to_string(move_file_path).await.unwrap();
 
+        assert!(move_contents.starts_with("//! Increments an onchain counter.\n"));
         assert!(move_contents.contains("module test_tool::test_tool;"));
         assert!(move_contents.contains("public struct TEST_TOOL has drop {}"));
         assert!(move_contents.contains("public struct TestToolWitness has key, store"));
@@ -263,5 +299,14 @@ mod tests {
         let gitignore_contents = tokio::fs::read_to_string(gitignore_path).await.unwrap();
 
         assert!(gitignore_contents.contains("build/*"));
+    }
+
+    #[test]
+    fn blank_description_is_rejected_before_scaffolding() {
+        let error = ToolTemplate::Rust
+            .transform("test", " \n\t")
+            .expect_err("blank descriptions must be rejected");
+
+        assert_eq!(error.to_string(), "Tool description must not be empty");
     }
 }

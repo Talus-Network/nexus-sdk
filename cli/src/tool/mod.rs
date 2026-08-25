@@ -315,6 +315,12 @@ pub(crate) enum ToolCommand {
         /// directory that contains the newly created tool.
         #[arg(long = "name", short = 'n', help = "The name of the tool to create")]
         name: String,
+        /// A concise description of the Tool's observable behavior.
+        #[arg(
+            long = "description",
+            help = "The user facing behavior description stored with the Tool"
+        )]
+        description: String,
         /// The template to use for generating this tool.
         #[arg(
             long = "template",
@@ -487,9 +493,10 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool new` ==
         ToolCommand::New {
             name,
+            description,
             template,
             target,
-        } => create_new_tool(name, template, target).await,
+        } => create_new_tool(name, description, template, target).await,
 
         // == `$ nexus tool validate` ==
         ToolCommand::Validate { tool_type } => match tool_type {
