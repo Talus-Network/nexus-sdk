@@ -1547,6 +1547,7 @@ impl WorkflowActions {
     pub async fn authorize_invocation(
         &self,
         dag_execution_id: sui::types::Address,
+        leader_cap_id: sui::types::Address,
         walk_index: u64,
         vertex: RuntimeVertex,
         policy: InvocationPolicy,
@@ -1555,6 +1556,10 @@ impl WorkflowActions {
         let objects = client.get_nexus_objects();
         let required_roots = [objects.tool_registry, objects.leader_registry];
         let crawler = client.crawler();
+        let leader_cap_ref = crawler
+            .get_object_metadata(leader_cap_id)
+            .await
+            .map_err(NexusError::Rpc)?;
         let execution = fetch_execution(client, dag_execution_id, &[]).await?;
         let is_active = execution
             .object
@@ -1610,6 +1615,8 @@ impl WorkflowActions {
             &cashier,
             &dag.object_ref(),
             &execution.object.object_ref(),
+            &leader_cap_ref.object_ref(),
+            &leader_cap_ref.owner,
             invocation::InvocationTarget {
                 walk_index,
                 vertex: &vertex,

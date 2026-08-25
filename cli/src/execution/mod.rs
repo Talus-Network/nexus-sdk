@@ -20,8 +20,8 @@ Identify an Execution directly, or let the CLI resolve it from its occurrence:
   nexus execution inspect --task-id 0x21 --occurrence-id 7
 
 Authorize one exact active Tool Invocation through an accepted policy:
-  nexus execution authorize --execution-id 0x42 --walk-index 0 --vertex worker fixed-price
-  nexus execution authorize --execution-id 0x42 --walk-index 0 --vertex worker finite-credits
+  nexus execution authorize --execution-id 0x42 --leader-cap 0x43 --walk-index 0 --vertex worker fixed-price
+  nexus execution authorize --execution-id 0x42 --leader-cap 0x43 --walk-index 0 --vertex worker finite-credits
 
 After runtime inspection, return to the occurrence to settle or verify it:
   nexus task occurrence inspect --task-id 0x21 --occurrence-id 7
@@ -76,6 +76,12 @@ pub(crate) enum ExecutionCommand {
             help = "Execution object ID"
         )]
         execution_id: nexus_sdk::sui::types::Address,
+        #[arg(
+            long = "leader-cap",
+            value_name = "OBJECT_ID",
+            help = "Leader capability object ID used for Invocation admission"
+        )]
+        leader_cap_id: nexus_sdk::sui::types::Address,
         #[arg(
             long,
             value_name = "U64",
@@ -183,6 +189,7 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
         }
         ExecutionCommand::Authorize {
             execution_id,
+            leader_cap_id,
             walk_index,
             vertex,
             iteration,
@@ -192,6 +199,7 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
         } => {
             authorize::run(
                 execution_id,
+                leader_cap_id,
                 walk_index,
                 vertex,
                 iteration.zip(out_of),
@@ -228,6 +236,8 @@ mod tests {
             "0x42",
             "--walk-index",
             "3",
+            "--leader-cap",
+            "0x43",
             "--vertex",
             "worker",
             "--iteration",
@@ -242,6 +252,23 @@ mod tests {
     }
 
     #[test]
+    fn execution_authorize_requires_a_leader_capability() {
+        assert!(Cli::try_parse_from([
+            "nexus",
+            "execution",
+            "authorize",
+            "--execution-id",
+            "0x42",
+            "--walk-index",
+            "0",
+            "--vertex",
+            "worker",
+            "fixed-price",
+        ])
+        .is_err());
+    }
+
+    #[test]
     fn iterator_authorization_requires_complete_runtime_identity() {
         assert!(Cli::try_parse_from([
             "nexus",
@@ -251,6 +278,8 @@ mod tests {
             "0x42",
             "--walk-index",
             "3",
+            "--leader-cap",
+            "0x43",
             "--vertex",
             "worker",
             "--iteration",
@@ -270,6 +299,8 @@ mod tests {
             "0x42",
             "--walk-index",
             "0",
+            "--leader-cap",
+            "0x43",
             "--vertex",
             "worker",
             "free",

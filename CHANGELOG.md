@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Invocation authorization builders and workflow callers now pass an explicit Leader capability object, preserving its owner representation for scheduler admission.
 - Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
 - Tool economy inspection now exposes one mandatory fixed price, where zero represents public access, alongside optional finite credit and time pass products.
 - Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
@@ -66,6 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Execution Invocation authorization now requires `--leader-cap` so CLI transactions identify the authenticated Leader capability explicitly.
 - Finite credit and time pass purchases now use the active signer address balance without requiring a payment coin object ID.
 - Public access authorization now uses the fixed price command with a zero Tool price; separate free and fixed price toggle commands were removed.
 
