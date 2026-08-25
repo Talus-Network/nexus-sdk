@@ -81,6 +81,7 @@ async fn resolve_custom_argument(
 
 pub(super) async fn run(
     execution_id: sui::types::Address,
+    leader_cap_id: sui::types::Address,
     walk_index: u64,
     vertex_name: String,
     iterator: Option<(u64, u64)>,
@@ -121,7 +122,7 @@ pub(super) async fn run(
     let progress = loading!("Submitting Invocation policy transaction...");
     let result = match client
         .workflow()
-        .authorize_invocation(execution_id, walk_index, vertex, policy)
+        .authorize_invocation(execution_id, leader_cap_id, walk_index, vertex, policy)
         .await
     {
         Ok(result) => {

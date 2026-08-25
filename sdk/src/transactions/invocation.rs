@@ -128,12 +128,14 @@ pub(crate) fn policy_target(
 }
 
 /// Appends exact Invocation authorization to an existing PTB.
+#[allow(clippy::too_many_arguments)]
 pub fn authorize(
     transaction: &mut move_boundary::NexusPtbBuilder,
     cashier: sui::types::Argument,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     leader_registry: sui::types::Argument,
+    leader_cap: sui::types::Argument,
     target: InvocationTarget<'_>,
     policy: &InvocationPolicyCall,
     submission_gas_charge: u64,
@@ -173,6 +175,7 @@ pub fn authorize(
             dag,
             execution,
             leader_registry,
+            leader_cap,
             walk_index,
             vertex,
             authorized,
@@ -186,11 +189,14 @@ pub fn authorize(
 ///
 /// `submission_gas_charge` reimburses the transaction sender from the
 /// execution payment. A user submitting for itself should pass zero.
+#[allow(clippy::too_many_arguments)]
 pub fn authorize_ptb(
     context: &NexusContext,
     cashier: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    leader_cap_owner: &sui::types::Owner,
     target: InvocationTarget<'_>,
     policy: &InvocationPolicyCall,
     submission_gas_charge: u64,
@@ -200,12 +206,14 @@ pub fn authorize_ptb(
         let dag = transaction.immutable_object(dag)?;
         let execution = transaction.shared_object(execution, true)?;
         let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
+        let leader_cap = transaction.object_from_owner(leader_cap, leader_cap_owner, false)?;
         authorize(
             transaction,
             cashier,
             dag,
             execution,
             leader_registry,
+            leader_cap,
             target,
             policy,
             submission_gas_charge,
@@ -269,6 +277,7 @@ mod tests {
             move_bindings::interface::graph::RuntimeVertex,
             test_utils::sui_mocks::{mock_nexus_context, object_ref_for_id},
         },
+        assert_matches::assert_matches,
         sui_sdk_types::{Argument, Command, Input},
     };
 
@@ -282,12 +291,16 @@ mod tests {
         let cashier = object_ref_for_id(sui::types::Address::from_static("0x81"));
         let dag = object_ref_for_id(sui::types::Address::from_static("0x82"));
         let execution = object_ref_for_id(sui::types::Address::from_static("0x83"));
+        let leader_cap = object_ref_for_id(sui::types::Address::from_static("0x84"));
+        let leader_cap_owner = sui::types::Owner::Address(sui::types::Address::from_static("0x85"));
         let policy = InvocationPolicyCall::fixed_price(&context).unwrap();
         let ptb = authorize_ptb(
             &context,
             &cashier,
             &dag,
             &execution,
+            &leader_cap,
+            &leader_cap_owner,
             InvocationTarget {
                 walk_index: 0,
                 vertex: &vertex(),
@@ -343,8 +356,17 @@ mod tests {
                 _ => None,
             })
             .expect("lock and request call");
-        assert_eq!(lock_and_request.arguments.len(), 9);
-        let Argument::Input(gas_charge) = lock_and_request.arguments[7] else {
+        assert_eq!(lock_and_request.arguments.len(), 10);
+        let leader_cap_input = assert_matches!(
+            lock_and_request.arguments[4],
+            Argument::Input(leader_cap_input) => leader_cap_input
+        );
+        let leader_cap_input = assert_matches!(
+            &ptb.inputs[usize::from(leader_cap_input)],
+            Input::ImmutableOrOwned(leader_cap_input) => leader_cap_input
+        );
+        assert_eq!(leader_cap_input.object_id(), leader_cap.object_id());
+        let Argument::Input(gas_charge) = lock_and_request.arguments[8] else {
             panic!("gas charge must be a pure input")
         };
         let Input::Pure(gas_charge) = &ptb.inputs[usize::from(gas_charge)] else {
