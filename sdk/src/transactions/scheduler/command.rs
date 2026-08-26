@@ -4,20 +4,16 @@ use {
         encode::{execution_config_arg, failure_policy_arg, occurrence_args, recurrence_args},
     },
     crate::{
-        move_bindings::{
-            scheduler::scheduler as scheduler_binding,
-            workflow::{
-                execution_entries as execution_entries_binding,
-                tool_cashier_adapter as tool_cashier_adapter_binding,
-            },
+        move_bindings::scheduler::{
+            execution_entries as execution_entries_binding,
+            scheduler as scheduler_binding,
         },
         move_boundary::NexusPtbBuilder,
         scheduler::{FailurePolicy, ScheduleError, SchedulerError, TaskInputs, TaskOperation},
         sui,
         transactions::agent_input::AgentInput,
-        types::NexusObjects,
+        types::NexusContext,
     },
-    std::collections::HashSet,
     sui_sdk_types::{Argument, ProgrammableTransaction},
 };
 
@@ -35,6 +31,7 @@ pub(crate) enum PreparedFunding {
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedTask {
     pub(crate) operation: TaskOperation,
+    pub(crate) dag: sui::types::ObjectReference,
     pub(crate) agent: Option<AgentInput>,
     pub(crate) entry_group: String,
     pub(crate) inputs: TaskInputs,
@@ -114,7 +111,7 @@ impl PreparedSchedule {
 }
 
 fn ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     build: impl FnOnce(&mut NexusPtbBuilder) -> Result<(), SchedulerError>,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     let mut transaction = NexusPtbBuilder::new(std::sync::Arc::new(objects.clone()));
@@ -134,13 +131,16 @@ pub(super) fn create_unshared_task(
         return Err(ScheduleError::ZeroOccurrenceBudget.into());
     }
 
-    let leader_registry_ref = transaction.objects().leader_registry.clone();
-    let leader_registry = transaction
-        .shared_object(&leader_registry_ref, false)
-        .map_err(SchedulerError::transaction)?;
-    let registry_ref = transaction.objects().agent_registry.clone();
+    let registry_ref = transaction.objects().agent_registry;
     let registry = transaction
-        .shared_object(&registry_ref, true)
+        .shared_root(&registry_ref, false)
+        .map_err(SchedulerError::transaction)?;
+    let dag = transaction
+        .immutable_object(&task.dag)
+        .map_err(SchedulerError::transaction)?;
+    let tool_registry_ref = transaction.objects().tool_registry;
+    let tool_registry = transaction
+        .shared_root(&tool_registry_ref, false)
         .map_err(SchedulerError::transaction)?;
     let execution = execution_config_arg(transaction, task)?;
     let occurrence_budget_mist = transaction
@@ -164,10 +164,11 @@ pub(super) fn create_unshared_task(
                 .map_err(SchedulerError::transaction)?;
             let result = transaction
                 .call_target(
-                    scheduler_binding::new_default_task_v2_target,
+                    scheduler_binding::new_default_task_target,
                     vec![
                         registry,
-                        leader_registry,
+                        dag,
+                        tool_registry,
                         execution,
                         prepayment,
                         refund_recipient,
@@ -198,10 +199,11 @@ pub(super) fn create_unshared_task(
                 .map_err(SchedulerError::transaction)?;
             let result = transaction
                 .call_target(
-                    scheduler_binding::new_user_task_v2_target,
+                    scheduler_binding::new_user_task_target,
                     vec![
                         registry,
-                        leader_registry,
+                        dag,
+                        tool_registry,
                         agent_argument,
                         execution,
                         prepayment,
@@ -227,10 +229,11 @@ pub(super) fn create_unshared_task(
                 .map_err(SchedulerError::transaction)?;
             let result = transaction
                 .call_target(
-                    scheduler_binding::new_agent_task_v2_target,
+                    scheduler_binding::new_agent_task_target,
                     vec![
                         registry,
-                        leader_registry,
+                        dag,
+                        tool_registry,
                         agent_argument,
                         execution,
                         prepay_amount_mist,
@@ -289,25 +292,18 @@ pub(super) fn append_occurrence(
     authority: &ResolvedAuthority,
     occurrence: &PreparedOccurrence,
 ) -> Result<(), SchedulerError> {
+    let runtime_authority = transaction
+        .runtime_authority(false)
+        .map_err(SchedulerError::transaction)?;
     let (start_time_ms, deadline_ms, priority_fee_percentage) =
         occurrence_args(transaction, occurrence)?;
-    let leader_registry_ref = transaction.objects().leader_registry.clone();
-    let leader_registry = transaction
-        .shared_object(&leader_registry_ref, false)
-        .map_err(SchedulerError::transaction)?;
-    let clock = transaction.clock().map_err(SchedulerError::transaction)?;
-    authority.call(
+    authority.call_with_prefix(
         transaction,
         scheduler_binding::schedule_target,
         scheduler_binding::schedule_as_agent_target,
+        vec![runtime_authority],
         task,
-        vec![
-            start_time_ms,
-            deadline_ms,
-            priority_fee_percentage,
-            leader_registry,
-            clock,
-        ],
+        vec![start_time_ms, deadline_ms, priority_fee_percentage],
     )?;
     Ok(())
 }
@@ -318,17 +314,16 @@ pub(super) fn append_recurrence(
     authority: &ResolvedAuthority,
     recurrence: &PreparedRecurrence,
 ) -> Result<(), SchedulerError> {
+    let runtime_authority = transaction
+        .runtime_authority(false)
+        .map_err(SchedulerError::transaction)?;
     let (start_time_ms, deadline_ms, interval_ms, occurrences, priority_fee_percentage) =
         recurrence_args(transaction, recurrence)?;
-    let leader_registry_ref = transaction.objects().leader_registry.clone();
-    let leader_registry = transaction
-        .shared_object(&leader_registry_ref, false)
-        .map_err(SchedulerError::transaction)?;
-    let clock = transaction.clock().map_err(SchedulerError::transaction)?;
-    authority.call(
+    authority.call_with_prefix(
         transaction,
         scheduler_binding::set_recurrence_target,
         scheduler_binding::set_recurrence_as_agent_target,
+        vec![runtime_authority],
         task,
         vec![
             start_time_ms,
@@ -336,8 +331,6 @@ pub(super) fn append_recurrence(
             interval_ms,
             occurrences,
             priority_fee_percentage,
-            leader_registry,
-            clock,
         ],
     )?;
     Ok(())
@@ -377,7 +370,7 @@ pub(super) fn finish_task(
 }
 
 pub(crate) fn create_task_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &PreparedTask,
     pointer_owner: sui::types::Address,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
@@ -388,7 +381,7 @@ pub(crate) fn create_task_ptb(
 }
 
 pub(crate) fn schedule_task_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &PreparedTask,
     schedule: &PreparedSchedule,
     pointer_owner: sui::types::Address,
@@ -404,7 +397,7 @@ pub(crate) fn schedule_task_ptb(
 }
 
 pub(crate) fn add_occurrence_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
     occurrence: &PreparedOccurrence,
@@ -416,7 +409,7 @@ pub(crate) fn add_occurrence_ptb(
 }
 
 pub(crate) fn set_recurrence_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
     recurrence: &PreparedRecurrence,
@@ -428,29 +421,25 @@ pub(crate) fn set_recurrence_ptb(
 }
 
 pub(crate) fn clear_recurrence_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         let task = shared_task_arg(transaction, task)?;
-        let leader_registry = transaction
-            .shared_object(&objects.leader_registry, false)
-            .map_err(SchedulerError::transaction)?;
-        let clock = transaction.clock().map_err(SchedulerError::transaction)?;
         authority.call(
             transaction,
             scheduler_binding::clear_recurrence_target,
             scheduler_binding::clear_recurrence_as_agent_target,
             task,
-            vec![leader_registry, clock],
+            vec![],
         )?;
         Ok(())
     })
 }
 
 pub(crate) fn pause_task_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
@@ -468,29 +457,25 @@ pub(crate) fn pause_task_ptb(
 }
 
 pub(crate) fn resume_task_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         let task = shared_task_arg(transaction, task)?;
-        let leader_registry = transaction
-            .shared_object(&objects.leader_registry, false)
-            .map_err(SchedulerError::transaction)?;
-        let clock = transaction.clock().map_err(SchedulerError::transaction)?;
         authority.call(
             transaction,
             scheduler_binding::resume_target,
             scheduler_binding::resume_as_agent_target,
             task,
-            vec![leader_registry, clock],
+            vec![],
         )?;
         Ok(())
     })
 }
 
 pub(crate) fn cancel_task_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
@@ -508,18 +493,13 @@ pub(crate) fn cancel_task_ptb(
 }
 
 pub(crate) fn refill_task_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
     amount_mist: u64,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         let task = shared_task_arg(transaction, task)?;
-        let leader_registry = transaction
-            .shared_object(&objects.leader_registry, false)
-            .map_err(SchedulerError::transaction)?;
-        let clock = transaction.clock().map_err(SchedulerError::transaction)?;
-
         authority.lower(
             transaction,
             |transaction| {
@@ -527,10 +507,7 @@ pub(crate) fn refill_task_ptb(
                     .withdraw_sui_coin(amount_mist)
                     .map_err(SchedulerError::transaction)?;
                 transaction
-                    .call_target(
-                        scheduler_binding::refill_target,
-                        vec![task, funds, leader_registry, clock],
-                    )
+                    .call_target(scheduler_binding::refill_target, vec![task, funds])
                     .map_err(SchedulerError::transaction)
             },
             |transaction, agent| {
@@ -543,7 +520,7 @@ pub(crate) fn refill_task_ptb(
                 transaction
                     .call_target(
                         scheduler_binding::refill_from_agent_target,
-                        vec![task, agent, amount_mist, leader_registry, clock],
+                        vec![task, agent, amount_mist],
                     )
                     .map_err(SchedulerError::transaction)
             },
@@ -553,28 +530,25 @@ pub(crate) fn refill_task_ptb(
 }
 
 pub(crate) fn close_task_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     authority: &ResolvedAuthority,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         let task = shared_task_arg(transaction, task)?;
-        let registry = transaction
-            .shared_object(&objects.agent_registry, true)
-            .map_err(SchedulerError::transaction)?;
         authority.call_mutably(
             transaction,
             scheduler_binding::close_target,
             scheduler_binding::close_as_agent_target,
             task,
-            vec![registry],
+            vec![],
         )?;
         Ok(())
     })
 }
 
 pub(crate) fn expire_occurrence_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     occurrence_id: u64,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
@@ -585,7 +559,7 @@ pub(crate) fn expire_occurrence_ptb(
 
 /// Builds an occurrence expiration that reimburses the leader submission gas charge.
 pub fn expire_occurrence_with_gas_charge_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
@@ -593,9 +567,12 @@ pub fn expire_occurrence_with_gas_charge_ptb(
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         let task = shared_task_arg(transaction, task)?;
-        let leader_registry_ref = transaction.objects().leader_registry.clone();
+        let runtime_authority = transaction
+            .runtime_authority(false)
+            .map_err(SchedulerError::transaction)?;
+        let leader_registry_ref = transaction.objects().leader_registry;
         let leader_registry = transaction
-            .shared_object(&leader_registry_ref, false)
+            .shared_root(&leader_registry_ref, false)
             .map_err(SchedulerError::transaction)?;
         let leader_cap = transaction
             .shared_object(leader_cap, false)
@@ -611,7 +588,65 @@ pub fn expire_occurrence_with_gas_charge_ptb(
             .call_target(
                 scheduler_binding::expire_with_gas_charge_target,
                 vec![
+                    runtime_authority,
                     task,
+                    leader_registry,
+                    leader_cap,
+                    occurrence_id,
+                    gas_charge,
+                    clock,
+                ],
+            )
+            .map_err(SchedulerError::transaction)?;
+        Ok(())
+    })
+}
+
+/// Builds a proven permanent proposal rejection that reimburses the leader
+/// submission gas charge.
+///
+/// The Move transition derives the rejection reason from current state. A
+/// caller cannot use this builder to reject otherwise valid work.
+pub fn reject_occurrence_with_gas_charge_ptb(
+    objects: &NexusContext,
+    task: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    gas_charge: u64,
+) -> Result<ProgrammableTransaction, SchedulerError> {
+    ptb(objects, |transaction| {
+        let runtime_authority = transaction
+            .runtime_authority(false)
+            .map_err(SchedulerError::transaction)?;
+        let task = shared_task_arg(transaction, task)?;
+        let dag = transaction
+            .immutable_object(dag)
+            .map_err(SchedulerError::transaction)?;
+        let agent_registry = transaction
+            .shared_root(&objects.agent_registry, false)
+            .map_err(SchedulerError::transaction)?;
+        let leader_registry = transaction
+            .shared_root(&objects.leader_registry, false)
+            .map_err(SchedulerError::transaction)?;
+        let leader_cap = transaction
+            .shared_object(leader_cap, false)
+            .map_err(SchedulerError::transaction)?;
+        let occurrence_id = transaction
+            .arg(&occurrence_id)
+            .map_err(SchedulerError::transaction)?;
+        let gas_charge = transaction
+            .arg(&gas_charge)
+            .map_err(SchedulerError::transaction)?;
+        let clock = transaction.clock().map_err(SchedulerError::transaction)?;
+        transaction
+            .call_target(
+                scheduler_binding::reject_next_target,
+                vec![
+                    runtime_authority,
+                    task,
+                    dag,
+                    agent_registry,
                     leader_registry,
                     leader_cap,
                     occurrence_id,
@@ -630,18 +665,17 @@ pub(crate) fn append_expire_occurrence(
     occurrence_id: u64,
 ) -> Result<(), SchedulerError> {
     let task = shared_task_arg(transaction, task)?;
+    let runtime_authority = transaction
+        .runtime_authority(false)
+        .map_err(SchedulerError::transaction)?;
     let occurrence_id = transaction
         .arg(&occurrence_id)
-        .map_err(SchedulerError::transaction)?;
-    let leader_registry_ref = transaction.objects().leader_registry.clone();
-    let leader_registry = transaction
-        .shared_object(&leader_registry_ref, false)
         .map_err(SchedulerError::transaction)?;
     let clock = transaction.clock().map_err(SchedulerError::transaction)?;
     transaction
         .call_target(
             scheduler_binding::expire_target,
-            vec![task, occurrence_id, leader_registry, clock],
+            vec![runtime_authority, task, occurrence_id, clock],
         )
         .map_err(SchedulerError::transaction)?;
     Ok(())
@@ -654,7 +688,6 @@ pub(crate) fn append_dispatch_occurrence(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
     append_dispatch_occurrence_(
         transaction,
@@ -663,19 +696,17 @@ pub(crate) fn append_dispatch_occurrence(
         leader_cap,
         occurrence_id,
         gas_charge,
-        tool_cashiers,
     )
 }
 
 /// Builds an occurrence dispatch with an explicit leader submission gas charge.
 pub fn dispatch_occurrence_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         append_dispatch_occurrence_(
@@ -685,7 +716,6 @@ pub fn dispatch_occurrence_ptb(
             leader_cap,
             occurrence_id,
             gas_charge,
-            tool_cashiers,
         )
     })
 }
@@ -697,27 +727,25 @@ fn append_dispatch_occurrence_(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
-    let protocol_ref = transaction.objects().protocol.clone();
-    let protocol = transaction
-        .shared_object(&protocol_ref, false)
-        .map_err(SchedulerError::transaction)?;
     let task = shared_task_arg(transaction, task)?;
+    let runtime_authority = transaction
+        .runtime_authority(false)
+        .map_err(SchedulerError::transaction)?;
     let dag = transaction
-        .shared_object(dag, false)
+        .immutable_object(dag)
         .map_err(SchedulerError::transaction)?;
-    let agent_registry_ref = transaction.objects().agent_registry.clone();
+    let agent_registry_ref = transaction.objects().agent_registry;
     let agent_registry = transaction
-        .shared_object(&agent_registry_ref, false)
+        .shared_root(&agent_registry_ref, false)
         .map_err(SchedulerError::transaction)?;
-    let tool_registry_ref = transaction.objects().tool_registry.clone();
+    let tool_registry_ref = transaction.objects().tool_registry;
     let tool_registry = transaction
-        .shared_object(&tool_registry_ref, false)
+        .shared_root(&tool_registry_ref, false)
         .map_err(SchedulerError::transaction)?;
-    let leader_registry_ref = transaction.objects().leader_registry.clone();
+    let leader_registry_ref = transaction.objects().leader_registry;
     let leader_registry = transaction
-        .shared_object(&leader_registry_ref, false)
+        .shared_root(&leader_registry_ref, false)
         .map_err(SchedulerError::transaction)?;
     let leader_cap = transaction
         .shared_object(leader_cap, false)
@@ -731,9 +759,9 @@ fn append_dispatch_occurrence_(
     let clock = transaction.clock().map_err(SchedulerError::transaction)?;
     let execution = transaction
         .call_target(
-            scheduler_binding::dispatch_next_target,
+            scheduler_binding::admit_next_target,
             vec![
-                protocol,
+                runtime_authority,
                 task,
                 dag,
                 agent_registry,
@@ -749,35 +777,15 @@ fn append_dispatch_occurrence_(
 
     transaction
         .call_target(
-            tool_cashier_adapter_binding::snapshot_dag_invocation_costs_target,
-            vec![tool_registry, execution, dag],
-        )
-        .map_err(SchedulerError::transaction)?;
-
-    let mut tool_cashiers = tool_cashiers.iter().copied().collect::<Vec<_>>();
-    tool_cashiers.sort_unstable();
-    for (address, version) in tool_cashiers {
-        let tool_cashier = transaction
-            .shared_object_by_id(address, version, true)
-            .map_err(SchedulerError::transaction)?;
-        transaction
-            .call_target(
-                tool_cashier_adapter_binding::lock_payment_state_for_tool_target,
-                vec![tool_cashier, dag, execution],
-            )
-            .map_err(SchedulerError::transaction)?;
-    }
-    transaction
-        .call_target(
             execution_entries_binding::start_and_share_target,
-            vec![dag, execution, leader_registry, clock],
+            vec![runtime_authority, dag, execution, leader_registry, clock],
         )
         .map_err(SchedulerError::transaction)?;
     Ok(())
 }
 
 pub(crate) fn settle_occurrence_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     task: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
@@ -785,11 +793,8 @@ pub(crate) fn settle_occurrence_ptb(
         let execution = transaction
             .shared_object(execution, true)
             .map_err(SchedulerError::transaction)?;
-        let leader_registry = transaction
-            .shared_object(&objects.leader_registry, false)
-            .map_err(SchedulerError::transaction)?;
         let clock = transaction.clock().map_err(SchedulerError::transaction)?;
-        append_settle_occurrence(transaction, task, execution, leader_registry, clock)
+        append_settle_occurrence(transaction, task, execution, clock)
     })
 }
 
@@ -797,14 +802,16 @@ pub(crate) fn append_settle_occurrence(
     transaction: &mut NexusPtbBuilder,
     task: &sui::types::ObjectReference,
     execution: Argument,
-    leader_registry: Argument,
     clock: Argument,
 ) -> Result<(), SchedulerError> {
     let task = shared_task_arg(transaction, task)?;
+    let runtime_authority = transaction
+        .runtime_authority(false)
+        .map_err(SchedulerError::transaction)?;
     transaction
         .call_target(
             scheduler_binding::settle_target,
-            vec![task, execution, leader_registry, clock],
+            vec![runtime_authority, task, execution, clock],
         )
         .map_err(SchedulerError::transaction)?;
     Ok(())
@@ -816,8 +823,9 @@ mod tests {
         super::*,
         crate::{
             move_boundary::NexusPtbBuilder,
-            test_utils::sui_mocks::{mock_nexus_objects, object_ref_for_id},
+            test_utils::sui_mocks::{mock_nexus_context, object_ref_for_id},
             transactions::scheduler::compose::TaskDraftCompiler,
+            types::SharedRoot,
         },
         std::collections::BTreeMap,
         sui_sdk_types::{Argument, Command, Input, MoveCall},
@@ -830,6 +838,7 @@ mod tests {
     fn task() -> PreparedTask {
         PreparedTask {
             operation: TaskOperation::default_dag(address("0x42")),
+            dag: object_ref_for_id(address("0x42")),
             agent: None,
             entry_group: "main".to_owned(),
             inputs: BTreeMap::new(),
@@ -879,7 +888,7 @@ mod tests {
     fn assert_shared_argument(
         transaction: &ProgrammableTransaction,
         argument: Argument,
-        expected: &sui::types::ObjectReference,
+        expected: &SharedRoot,
         expected_mutable: bool,
     ) {
         let Argument::Input(index) = argument else {
@@ -888,18 +897,43 @@ mod tests {
         let Input::Shared(shared) = &transaction.inputs[usize::from(index)] else {
             panic!("expected shared object input");
         };
-        assert_eq!(shared.object_id(), *expected.object_id());
-        assert_eq!(shared.version(), expected.version());
+        assert_eq!(shared.object_id(), expected.object_id());
+        assert_eq!(shared.version(), expected.initial_shared_version);
         assert_eq!(shared.mutability().is_mutable(), expected_mutable);
+    }
+
+    fn assert_immutable_argument(
+        transaction: &ProgrammableTransaction,
+        argument: Argument,
+        expected: &sui::types::ObjectReference,
+    ) {
+        let Argument::Input(index) = argument else {
+            panic!("expected input argument");
+        };
+        let Input::ImmutableOrOwned(object) = &transaction.inputs[usize::from(index)] else {
+            panic!("expected immutable object input");
+        };
+        assert_eq!(object, expected);
+    }
+
+    fn assert_clock_argument(transaction: &ProgrammableTransaction, argument: Argument) {
+        let Argument::Input(index) = argument else {
+            panic!("expected clock input argument");
+        };
+        let Input::Shared(clock) = &transaction.inputs[usize::from(index)] else {
+            panic!("expected shared Clock input");
+        };
+        assert_eq!(clock.object_id(), crate::move_boundary::CLOCK_OBJECT_ID);
+        assert!(!clock.mutability().is_mutable());
     }
 
     fn scheduler_sequence(transaction: &ProgrammableTransaction) -> Vec<&str> {
         const STRUCTURAL_CALLS: &[&str] = &[
-            "new_default_agent_execution_config_v2",
-            "new_agent_execution_config_v2",
-            "new_default_task_v2",
-            "new_user_task_v2",
-            "new_agent_task_v2",
+            "new_default_agent_execution_config",
+            "new_agent_execution_config",
+            "new_default_task",
+            "new_user_task",
+            "new_agent_task",
             "schedule",
             "schedule_as_agent",
             "set_recurrence",
@@ -913,53 +947,86 @@ mod tests {
             .collect()
     }
 
+    fn assert_schedule_calls_read_admission_policy(
+        transaction: &ProgrammableTransaction,
+        objects: &NexusContext,
+    ) {
+        const SCHEDULE_CALLS: &[&str] = &[
+            "schedule",
+            "schedule_as_agent",
+            "set_recurrence",
+            "set_recurrence_as_agent",
+        ];
+
+        let calls: Vec<_> = move_calls(transaction)
+            .filter(|call| SCHEDULE_CALLS.contains(&call.function.as_str()))
+            .collect();
+        assert!(!calls.is_empty());
+        for call in calls {
+            assert_shared_argument(
+                transaction,
+                call.arguments[0],
+                &objects.runtime_authority,
+                false,
+            );
+        }
+    }
+
     #[test]
     fn complete_schedule_has_one_structural_command_path() {
-        let transaction =
-            schedule_task_ptb(&mock_nexus_objects(), &task(), &schedule(), address("0x46"))
-                .expect("complete Task compiles");
+        let objects = mock_nexus_context();
+        let transaction = schedule_task_ptb(&objects, &task(), &schedule(), address("0x46"))
+            .expect("complete Task compiles");
 
         assert_eq!(
             scheduler_sequence(&transaction),
             [
-                "new_default_agent_execution_config_v2",
-                "new_default_task_v2",
+                "new_default_agent_execution_config",
+                "new_default_task",
                 "schedule",
                 "schedule",
                 "set_recurrence",
                 "share",
             ]
         );
+        assert_schedule_calls_read_admission_policy(&transaction, &objects);
     }
 
     #[test]
     fn empty_creation_is_composable() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let transaction =
             create_task_ptb(&objects, &task(), address("0x46")).expect("empty Task compiles");
 
         assert_eq!(
             scheduler_sequence(&transaction),
             [
-                "new_default_agent_execution_config_v2",
-                "new_default_task_v2",
+                "new_default_agent_execution_config",
+                "new_default_task",
                 "share",
             ]
         );
         let constructor = move_calls(&transaction)
-            .find(|call| call.function.as_str() == "new_default_task_v2")
+            .find(|call| call.function.as_str() == "new_default_task")
             .expect("default Task constructor");
         assert_shared_argument(
             &transaction,
-            constructor.arguments[1],
-            &objects.leader_registry,
+            constructor.arguments[0],
+            &objects.agent_registry,
+            false,
+        );
+        assert_immutable_argument(&transaction, constructor.arguments[1], &task().dag);
+        assert_shared_argument(
+            &transaction,
+            constructor.arguments[2],
+            &objects.tool_registry,
             false,
         );
     }
 
     #[test]
     fn composer_and_complete_compiler_are_identical() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let task = task();
         let schedule = schedule();
         let pointer_owner = address("0x46");
@@ -983,7 +1050,8 @@ mod tests {
         let agent_id = address("0x45");
         let agent = AgentInput::Shared(object_ref_for_id(agent_id));
         let task = PreparedTask {
-            operation: TaskOperation::agent_skill(agent_id, 7, None, vec![]),
+            operation: TaskOperation::agent_skill(agent_id, 7, None, Default::default()),
+            dag: object_ref_for_id(address("0x42")),
             agent: Some(agent),
             entry_group: "main".to_owned(),
             inputs: BTreeMap::new(),
@@ -993,8 +1061,9 @@ mod tests {
             occurrence_budget_mist: 1_000,
             failure_policy: FailurePolicy::Continue,
         };
+        let objects = mock_nexus_context();
         let transaction = schedule_task_ptb(
-            &mock_nexus_objects(),
+            &objects,
             &task,
             &PreparedSchedule::new(vec![PreparedOccurrence::new(100, None, 20)], None),
             address("0x46"),
@@ -1004,17 +1073,18 @@ mod tests {
         assert_eq!(
             scheduler_sequence(&transaction),
             [
-                "new_agent_execution_config_v2",
-                "new_agent_task_v2",
+                "new_agent_execution_config",
+                "new_agent_task",
                 "schedule_as_agent",
                 "share",
             ]
         );
+        assert_schedule_calls_read_admission_policy(&transaction, &objects);
     }
 
     #[test]
     fn creation_transfers_the_pointer_result_to_its_owner() {
-        let transaction = create_task_ptb(&mock_nexus_objects(), &task(), address("0x46"))
+        let transaction = create_task_ptb(&mock_nexus_context(), &task(), address("0x46"))
             .expect("Task compiles");
         let new_task_index = transaction
             .commands
@@ -1022,7 +1092,7 @@ mod tests {
             .position(|command| {
                 matches!(
                     command,
-                    Command::MoveCall(call) if call.function.as_str() == "new_default_task_v2"
+                    Command::MoveCall(call) if call.function.as_str() == "new_default_task"
                 )
             })
             .expect("Task constructor");
@@ -1046,54 +1116,61 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_uses_the_protocol_as_its_first_argument() {
-        let objects = mock_nexus_objects();
+    fn dispatch_uses_each_required_canonical_root() {
+        let objects = mock_nexus_context();
         let task = object_ref_for_id(address("0x50"));
         let dag = object_ref_for_id(address("0x51"));
         let leader_cap = object_ref_for_id(address("0x52"));
         let mut builder = NexusPtbBuilder::new(std::sync::Arc::new(objects.clone()));
 
-        append_dispatch_occurrence(
-            &mut builder,
-            &task,
-            &dag,
-            &leader_cap,
-            7,
-            0,
-            &HashSet::new(),
-        )
-        .expect("dispatch compiles");
+        append_dispatch_occurrence(&mut builder, &task, &dag, &leader_cap, 7, 0)
+            .expect("dispatch compiles");
         let transaction = builder.finish();
         let dispatch = move_calls(&transaction)
-            .find(|call| call.function.as_str() == "dispatch_next")
-            .expect("dispatch call");
+            .find(|call| call.function.as_str() == "admit_next")
+            .expect("admission call");
 
         assert_eq!(dispatch.arguments.len(), 10);
         assert_eq!(pure_u64(&transaction, dispatch.arguments[8]), 0);
-        let Argument::Input(protocol_index) = dispatch.arguments[0] else {
-            panic!("expected protocol input argument");
-        };
-        let Input::Shared(protocol) = &transaction.inputs[usize::from(protocol_index)] else {
-            panic!("expected shared protocol input");
-        };
-        assert_eq!(protocol.object_id(), *objects.protocol.object_id());
-        assert_eq!(protocol.version(), objects.protocol.version());
-        assert!(!protocol.mutability().is_mutable());
+        assert_shared_argument(
+            &transaction,
+            dispatch.arguments[0],
+            &objects.runtime_authority,
+            false,
+        );
+        assert_immutable_argument(&transaction, dispatch.arguments[2], &dag);
+        assert_shared_argument(
+            &transaction,
+            dispatch.arguments[3],
+            &objects.agent_registry,
+            false,
+        );
+        assert_shared_argument(
+            &transaction,
+            dispatch.arguments[4],
+            &objects.tool_registry,
+            false,
+        );
+        assert_shared_argument(
+            &transaction,
+            dispatch.arguments[5],
+            &objects.leader_registry,
+            false,
+        );
     }
 
     #[test]
     fn dispatch_serializes_the_submission_gas_charge() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let task = object_ref_for_id(address("0x50"));
         let dag = object_ref_for_id(address("0x51"));
         let leader_cap = object_ref_for_id(address("0x52"));
 
-        let transaction =
-            dispatch_occurrence_ptb(&objects, &task, &dag, &leader_cap, 7, 42, &HashSet::new())
-                .expect("charged dispatch compiles");
+        let transaction = dispatch_occurrence_ptb(&objects, &task, &dag, &leader_cap, 7, 42)
+            .expect("charged dispatch compiles");
         let dispatch = move_calls(&transaction)
-            .find(|call| call.function.as_str() == "dispatch_next")
-            .expect("charged dispatch call");
+            .find(|call| call.function.as_str() == "admit_next")
+            .expect("charged admission call");
 
         assert_eq!(dispatch.arguments.len(), 10);
         assert_eq!(pure_u64(&transaction, dispatch.arguments[8]), 42);
@@ -1101,7 +1178,7 @@ mod tests {
 
     #[test]
     fn charged_expiration_serializes_the_submission_gas_charge() {
-        let objects = mock_nexus_objects();
+        let objects = mock_nexus_context();
         let task = object_ref_for_id(address("0x50"));
         let leader_cap = object_ref_for_id(address("0x52"));
 
@@ -1112,7 +1189,45 @@ mod tests {
             .find(|call| call.function.as_str() == "expire_with_gas_charge")
             .expect("charged expiration call");
 
-        assert_eq!(expiration.arguments.len(), 6);
-        assert_eq!(pure_u64(&transaction, expiration.arguments[4]), 42);
+        assert_eq!(expiration.arguments.len(), 7);
+        assert_eq!(pure_u64(&transaction, expiration.arguments[5]), 42);
+    }
+
+    #[test]
+    fn permanent_rejection_uses_current_roots_and_serializes_its_charge() {
+        let objects = mock_nexus_context();
+        let task = object_ref_for_id(address("0x50"));
+        let dag = object_ref_for_id(address("0x51"));
+        let leader_cap = object_ref_for_id(address("0x52"));
+
+        let transaction =
+            reject_occurrence_with_gas_charge_ptb(&objects, &task, &dag, &leader_cap, 7, 42)
+                .expect("permanent rejection compiles");
+        let rejection = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "reject_next")
+            .expect("rejection call");
+
+        assert_eq!(rejection.arguments.len(), 9);
+        assert_shared_argument(
+            &transaction,
+            rejection.arguments[0],
+            &objects.runtime_authority,
+            false,
+        );
+        assert_immutable_argument(&transaction, rejection.arguments[2], &dag);
+        assert_shared_argument(
+            &transaction,
+            rejection.arguments[3],
+            &objects.agent_registry,
+            false,
+        );
+        assert_shared_argument(
+            &transaction,
+            rejection.arguments[4],
+            &objects.leader_registry,
+            false,
+        );
+        assert_eq!(pure_u64(&transaction, rejection.arguments[7]), 42);
+        assert_clock_argument(&transaction, rejection.arguments[8]);
     }
 }

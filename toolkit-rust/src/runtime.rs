@@ -95,14 +95,13 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// ## Example config
 /// ```json
 /// {
-///   "version": 2,
 ///   "invoke_max_body_bytes": 10485760,
 ///   "signed_http": {
 ///     "mode": "required",
 ///     "allowed_leaders_path": "./allowed_leaders.json",
 ///     "tools": {
 ///       "xyz.dummy.tool@1": {
-///         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000",
+///         "response_signing_key": "0000000000000000000000000000000000000000000000000000000000000000",
 ///         "replay_cache_ttl_ms": 300000
 ///       }
 ///     }
@@ -228,14 +227,19 @@ macro_rules! bootstrap {
         // Add a default health route in case there is none in the root.
         let default_health_route = $crate::warp::get()
             .and($crate::warp::path("health"))
-            .map(|| $crate::warp::reply::with_status("", StatusCode::OK));
+            .map(|| {
+                $crate::warp::reply::with_status($crate::warp::reply(), StatusCode::OK)
+            });
 
         // Add a default tools route to list all tools available at that webserver.
         let default_tools_route = $crate::warp::get()
             .and($crate::warp::path("tools"))
             .map(move || $crate::warp::reply::json(&paths));
 
-        let routes = routes.or(default_health_route).or(default_tools_route);
+        let routes = routes
+            .or(default_health_route)
+            .or(default_tools_route)
+            .boxed();
         // Terminate TLS directly when both credential paths are configured.
         match $crate::runtime::tls::Config::from_env()
             .expect("Invalid Nexus Tool TLS configuration")
@@ -248,7 +252,7 @@ macro_rules! bootstrap {
                     $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
                         .await
                         .expect("Failed to start Nexus Tool TLS server");
-                $crate::warp::serve(routes).run_incoming(incoming).await
+                $crate::runtime::tls::serve(routes, incoming).await
             }
         }
     }};
@@ -335,7 +339,7 @@ async fn health_handler<T: NexusTool>() -> Result<impl Reply, Rejection> {
         .await
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-    Ok(warp::reply::with_status("", status))
+    Ok(warp::reply::with_status(warp::reply(), status))
 }
 
 async fn meta_handler<T: NexusTool>(
@@ -652,6 +656,10 @@ mod tests {
     impl NexusTool for TestTool {
         type Input = Input;
         type Output = Output;
+
+        fn description() -> &'static str {
+            "Returns a structured test response."
+        }
 
         fn fqn() -> ToolFqn {
             fqn!("xyz.taluslabs.test@1")

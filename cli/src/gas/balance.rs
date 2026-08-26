@@ -214,8 +214,10 @@ pub(super) async fn deposit(amount: NonZeroU64, gas: GasArgs) -> Result<(), Nexu
         .await
         .map_err(NexusCliError::Nexus)?;
     let objects = client.get_nexus_objects();
+    let context =
+        nexus_sdk::types::NexusContext::new(objects, nexus_sdk::types::NexusPackages::default());
     let transaction = nexus_sdk::transactions::gas::deposit_sui_to_address_balance(
-        &objects,
+        &context,
         amount.get(),
         address,
     )

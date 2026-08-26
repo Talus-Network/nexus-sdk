@@ -1,7 +1,4 @@
-use {
-    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
-    nexus_sdk::{transactions::tool, types::Tool},
-};
+use crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*};
 
 /// Claim collateral for a Tool based on the provided FQN.
 pub(crate) async fn claim_collateral(
@@ -13,11 +10,6 @@ pub(crate) async fn claim_collateral(
     command_title!("Claiming collateral for Tool '{tool_fqn}'");
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let signer = nexus_client.signer().map_err(NexusCliError::Nexus)?;
-    let address = signer.get_active_address();
-    let nexus_objects = &*nexus_client.get_nexus_objects();
-    let crawler = nexus_client.crawler();
-
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Use the provided or saved `owner_cap` object ID and fetch the object.
@@ -27,64 +19,20 @@ pub(crate) async fn claim_collateral(
         )));
     };
 
-    let owner_cap = crawler
-        .get_object_metadata(owner_cap)
+    let progress = loading!("Submitting collateral claim transaction...");
+    let response = nexus_client
+        .tool()
+        .claim_collateral(&tool_fqn, owner_cap)
         .await
-        .map(|resp| resp.object_ref())
-        .map_err(|e| {
-            NexusCliError::Any(anyhow!(
-                "Failed to fetch OwnerCap object metadata for '{owner_cap}': {e}"
-            ))
-        })?;
-
-    // Resolve the tool derived object.
-    let tool_handle = loading!("Resolving tool derived object for tool '{tool_fqn}'...");
-
-    let tool_id = Tool::derive_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-        .map_err(NexusCliError::Any)?;
-
-    let tool = match crawler.get_object_metadata(tool_id).await {
-        Ok(resp) => {
-            tool_handle.success();
-
-            resp.object_ref()
-        }
-        Err(e) => {
-            tool_handle.error();
-
-            return Err(NexusCliError::Any(anyhow!(
-                "Failed to fetch tool derived object for tool '{tool_fqn}': {e}"
-            )));
-        }
-    };
-
-    // Craft a TX to claim the collateral for a Tool.
-    let tx_handle = loading!("Crafting transaction...");
-
-    let tx = match tool::claim_collateral_for_self_ptb(nexus_objects, &tool, &owner_cap) {
-        Ok(tx) => tx,
-        Err(e) => {
-            tx_handle.error();
-            return Err(NexusCliError::Any(e));
-        }
-    };
-
-    let response = match nexus_client.submit_transaction(tx, address).await {
-        Ok(response) => response,
-        Err(e) => {
-            tx_handle.error();
-            return Err(NexusCliError::Nexus(e));
-        }
-    };
-
-    tx_handle.success();
+        .map_err(NexusCliError::Nexus)?;
+    progress.success();
 
     notify_success!(
         "Transaction digest: {digest}",
-        digest = response.digest.to_string().truecolor(100, 100, 100)
+        digest = response.tx_digest.to_string().truecolor(100, 100, 100)
     );
 
-    json_output(&json!({ "digest": response.digest }))?;
+    json_output(&json!({ "digest": response.tx_digest }))?;
 
     Ok(())
 }

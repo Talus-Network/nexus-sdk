@@ -6,7 +6,7 @@
 //! The goals are:
 //! - Keep configuration deployment-friendly (one file mounted into the tool container/VM).
 //! - Avoid per-tool env var naming schemes (like `NEXUS_TOOL_SIGNING_KEY_<SUFFIX>`).
-//! - Tools only need a local allowlist of permitted Leaders (public keys) plus their own Tool signing key.
+//! - Tools need a local allowlist of permitted Leaders. A response signing key is optional.
 //!
 //! # Loading
 //! The runtime loads this config from the path stored in [`ENV_TOOLKIT_CONFIG_PATH`].
@@ -21,7 +21,7 @@
 //! If the config includes a `signed_http` section in `required` mode, the runtime:
 //! - Rejects any `/invoke` request that does not carry valid signature headers.
 //! - Rejects any request signed by a Leader not present in the local allowlist.
-//! - Signs the exact ordered BCS Tool output bytes so they can be reconstructed from typed fields onchain.
+//! - Signs the exact ordered BCS Tool output bytes when a response signing key is configured.
 //!
 //! Operational note: if you run tools behind a gateway/proxy, ensure it forwards the `X-Nexus-Sig-*`
 //! headers. If these headers are stripped, signed HTTP will fail closed.
@@ -29,17 +29,16 @@
 //! The signature protocol itself lives in `nexus-sdk` under
 //! [`nexus_sdk::signed_http::v3`](nexus_sdk::signed_http::v3).
 //!
-//! # Example config (v2)
+//! # Example config
 //! ```json
 //! {
-//!   "version": 2,
 //!   "invoke_max_body_bytes": 10485760,
 //!   "signed_http": {
 //!     "mode": "required",
 //!     "allowed_leaders_path": "./allowed_leaders.json",
 //!     "tools": {
 //!       "xyz.dummy.tool@1": {
-//!         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000"
+//!         "response_signing_key": "0000000000000000000000000000000000000000000000000000000000000000"
 //!       }
 //!     }
 //!   }
@@ -66,12 +65,11 @@
 //! tools.insert(
 //!     tool_id.to_string(),
 //!     json!({
-//!         "tool_signing_key": tool_sk_hex,
+//!         "response_signing_key": tool_sk_hex,
 //!     }),
 //! );
 //!
 //! let cfg_json = serde_json::to_string_pretty(&json!({
-//!     "version": 2,
 //!     "invoke_max_body_bytes": 123,
 //!     "signed_http": {
 //!         "mode": "required",
@@ -149,7 +147,12 @@ pub(crate) struct SignedHttpRuntimeConfig {
 
 #[derive(Clone)]
 pub(crate) struct SignedHttpToolRuntimeConfig {
-    pub(crate) tool_signing_key: SigningKey,
+    /// Key used to attest successful Tool results.
+    ///
+    /// Request authentication does not depend on this key. When it is absent,
+    /// the runtime still requires a valid signature from an allowed Leader and
+    /// returns the successful result without a Tool signature.
+    pub(crate) response_signing_key: Option<SigningKey>,
     pub(crate) replay_cache_ttl_ms: u64,
 }
 
@@ -170,7 +173,7 @@ impl ToolkitRuntimeConfig {
         let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
         let mut cfg = Self::from_json_bytes(&bytes).with_context(|| {
             format!(
-                "failed to parse {} (expected ToolkitRuntimeConfig v2 JSON)",
+                "failed to parse toolkit runtime config at {}",
                 path.display()
             )
         })?;
@@ -180,7 +183,7 @@ impl ToolkitRuntimeConfig {
 
     /// Parse config from JSON bytes.
     pub fn from_json_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
-        let file: ToolkitRuntimeConfigFileV2 =
+        let file: ToolkitRuntimeConfigFile =
             serde_json::from_slice(bytes).context("invalid JSON")?;
         Self::try_from(file)
     }
@@ -200,7 +203,7 @@ impl ToolkitRuntimeConfig {
         self.signed_http.is_some()
     }
 
-    /// True if `tool_id` has a signing key configured in the current config.
+    /// Returns whether signed HTTP configuration exists for `tool_id`.
     pub fn has_tool(&self, tool_id: &str) -> bool {
         self.signed_http
             .as_ref()
@@ -226,17 +229,16 @@ impl ToolkitRuntimeConfig {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ToolkitRuntimeConfigFileV2 {
-    pub version: u8,
+struct ToolkitRuntimeConfigFile {
     #[serde(default)]
     pub invoke_max_body_bytes: Option<u64>,
     #[serde(default)]
-    pub signed_http: Option<SignedHttpConfigFileV2>,
+    pub signed_http: Option<SignedHttpConfigFile>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SignedHttpConfigFileV2 {
+struct SignedHttpConfigFile {
     /// Defaults to `required` when omitted.
     #[serde(default)]
     pub mode: SignedHttpMode,
@@ -249,32 +251,29 @@ struct SignedHttpConfigFileV2 {
     #[serde(default)]
     pub allowed_leaders: Option<AllowedLeadersFileV1>,
 
-    /// Per-tool signing material, keyed by `tool_id` string.
+    /// Per Tool authentication and response configuration, keyed by Tool id.
     #[serde(default)]
-    pub tools: BTreeMap<String, SignedHttpToolConfigFileV2>,
+    pub tools: BTreeMap<String, SignedHttpToolConfigFile>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SignedHttpToolConfigFileV2 {
-    /// Hex or base64 encoding of a 32-byte Ed25519 private key.
+struct SignedHttpToolConfigFile {
+    /// Optional hex or base64 encoding of a 32 byte Ed25519 private key.
     ///
     /// This also accepts Sui keytool encoding: base64 of `0x00 || sk32`.
-    pub tool_signing_key: String,
+    #[serde(default)]
+    pub response_signing_key: Option<String>,
 
     /// Completed replay-entry lifetime in milliseconds. Defaults to five minutes.
     #[serde(default)]
     pub replay_cache_ttl_ms: Option<u64>,
 }
 
-impl TryFrom<ToolkitRuntimeConfigFileV2> for ToolkitRuntimeConfig {
+impl TryFrom<ToolkitRuntimeConfigFile> for ToolkitRuntimeConfig {
     type Error = anyhow::Error;
 
-    fn try_from(file: ToolkitRuntimeConfigFileV2) -> Result<Self, Self::Error> {
-        if file.version != 2 {
-            anyhow::bail!("unsupported config version {}, expected 2", file.version);
-        }
-
+    fn try_from(file: ToolkitRuntimeConfigFile) -> Result<Self, Self::Error> {
         let invoke_max_body_bytes = file
             .invoke_max_body_bytes
             .unwrap_or(DEFAULT_INVOKE_MAX_BODY_BYTES);
@@ -293,9 +292,7 @@ impl TryFrom<ToolkitRuntimeConfigFileV2> for ToolkitRuntimeConfig {
     }
 }
 
-fn load_signed_http_config(
-    file: SignedHttpConfigFileV2,
-) -> anyhow::Result<SignedHttpRuntimeConfig> {
+fn load_signed_http_config(file: SignedHttpConfigFile) -> anyhow::Result<SignedHttpRuntimeConfig> {
     let allowed_leaders = match (file.allowed_leaders, file.allowed_leaders_path) {
         (Some(inline), _) => AllowedLeaders::try_from(inline).map_err(anyhow::Error::new)?,
         (None, Some(path)) => AllowedLeaders::from_path(path).map_err(anyhow::Error::new)?,
@@ -319,13 +316,20 @@ fn load_signed_http_config(
                 "invalid signed_http.tools[\"{tool_id}\"].replay_cache_ttl_ms: must be greater than zero"
             );
         }
-        let signing_key = parse_ed25519_signing_key(&tool.tool_signing_key).map_err(|e| {
-            anyhow::anyhow!("invalid signed_http.tools[\"{tool_id}\"].tool_signing_key: {e}")
-        })?;
+        let response_signing_key = tool
+            .response_signing_key
+            .as_deref()
+            .map(parse_ed25519_signing_key)
+            .transpose()
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "invalid signed_http.tools[\"{tool_id}\"].response_signing_key: {e}"
+                )
+            })?;
         tools.insert(
             tool_id,
             SignedHttpToolRuntimeConfig {
-                tool_signing_key: signing_key,
+                response_signing_key,
                 replay_cache_ttl_ms,
             },
         );
@@ -517,12 +521,11 @@ mod tests {
         tools.insert(
             tool_id.to_string(),
             json!({
-                "tool_signing_key": tool_sk_hex,
+                "response_signing_key": tool_sk_hex,
             }),
         );
 
         serde_json::to_string(&json!({
-            "version": 2,
             "invoke_max_body_bytes": 123,
             "signed_http": {
                 "mode": "required",
@@ -555,6 +558,9 @@ mod tests {
         assert_eq!(cfg.invoke_max_body_bytes(), 123);
         assert!(cfg.signed_http_is_required());
         assert!(cfg.has_tool(tool_id));
+        assert!(cfg.signed_http().unwrap().tools[tool_id]
+            .response_signing_key
+            .is_some());
 
         assert!(cfg
             .signed_http()
@@ -562,6 +568,40 @@ mod tests {
             .allowed_leaders
             .source_path()
             .is_none());
+    }
+
+    #[test]
+    fn parse_verification_only_tool_config() {
+        let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
+        let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
+        let tool_id = "xyz.demo.tool@1";
+        let cfg_json = serde_json::to_string(&json!({
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": {
+                    "version": 1,
+                    "leaders": [{
+                        "leader_id": "0x1111",
+                        "keys": [{
+                            "kid": 0,
+                            "public_key": leader_pk_hex,
+                        }],
+                    }],
+                },
+                "tools": {
+                    tool_id: {
+                        "replay_cache_ttl_ms": 60_000,
+                    },
+                },
+            },
+        }))
+        .unwrap();
+
+        let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
+        let tool = &cfg.signed_http().unwrap().tools[tool_id];
+
+        assert!(tool.response_signing_key.is_none());
+        assert_eq!(tool.replay_cache_ttl_ms, 60_000);
     }
 
     #[test]
@@ -593,13 +633,12 @@ mod tests {
         fs::write(&path, allowlist_json).unwrap();
 
         let cfg_json = serde_json::to_string(&json!({
-            "version": 2,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders_path": path.display().to_string(),
                 "tools": {
                     "xyz.demo.tool@1": {
-                        "tool_signing_key": tool_sk_hex,
+                        "response_signing_key": tool_sk_hex,
                     },
                 },
             },
@@ -618,7 +657,6 @@ mod tests {
     #[test]
     fn signed_http_disabled_is_ignored() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 2,
             "signed_http": {
                 "mode": "disabled",
             },
@@ -631,13 +669,10 @@ mod tests {
     #[test]
     fn signed_http_requires_allowlist() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 2,
             "signed_http": {
                 "mode": "required",
                 "tools": {
-                    "demo": {
-                        "tool_signing_key": "00",
-                    },
+                    "demo": {},
                 },
             },
         }))
@@ -648,7 +683,6 @@ mod tests {
     #[test]
     fn signed_http_requires_tool_entries() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 2,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders": {
@@ -664,7 +698,6 @@ mod tests {
     #[test]
     fn removed_signed_http_claim_fields_are_rejected() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 2,
             "signed_http": {
                 "mode": "disabled",
                 "max_clock_skew_ms": 10,
@@ -674,14 +707,13 @@ mod tests {
         assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
 
         let cfg_json = serde_json::to_string(&json!({
-            "version": 2,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders": { "version": 1, "leaders": [] },
                 "tools": {
                     "demo": {
                         "tool_kid": 0,
-                        "tool_signing_key": hex::encode([7; 32]),
+                        "response_signing_key": hex::encode([7; 32]),
                     },
                 },
             },
@@ -691,7 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_config_version() {
+    fn rejects_obsolete_top_level_version() {
         let cfg_json = serde_json::to_string(&json!({
             "version": 1,
         }))
@@ -759,10 +791,7 @@ mod tests {
 
     #[test]
     fn from_json_str_has_no_source_path() {
-        let cfg_json = serde_json::to_string(&json!({
-            "version": 2,
-        }))
-        .unwrap();
+        let cfg_json = serde_json::to_string(&json!({})).unwrap();
         let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
 
         // Config loaded from string has no source path
@@ -858,7 +887,6 @@ mod tests {
 
         // Update the config file with new values
         let new_cfg_json = serde_json::to_string(&json!({
-            "version": 2,
             "invoke_max_body_bytes": 456,
             "signed_http": {
                 "mode": "required",
@@ -874,7 +902,7 @@ mod tests {
                 },
                 "tools": {
                     "xyz.demo.tool@1": {
-                        "tool_signing_key": tool_sk_hex,
+                        "response_signing_key": tool_sk_hex,
                     },
                 },
             },

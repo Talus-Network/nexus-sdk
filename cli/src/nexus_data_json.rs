@@ -11,6 +11,10 @@ const WALRUS_BLOB_ID_LENGTH: usize = 44;
 const SHA256_DIGEST_LENGTH: usize = 32;
 
 pub(crate) fn nexus_data_from_json_value(data: Value) -> anyhow::Result<NexusData> {
+    if is_canonical_nexus_data(&data) {
+        return NexusData::from_json_value(&data);
+    }
+
     match data {
         Value::Array(values) => NexusData::inline_data_many(
             values
@@ -19,6 +23,20 @@ pub(crate) fn nexus_data_from_json_value(data: Value) -> anyhow::Result<NexusDat
                 .collect::<Result<Vec<_>, _>>()?,
         ),
         value => NexusData::inline_data(serde_json::to_vec(&value)?),
+    }
+}
+
+fn is_canonical_nexus_data(value: &Value) -> bool {
+    let Some(object) = value.as_object().filter(|object| object.len() == 1) else {
+        return false;
+    };
+
+    match (object.get("one"), object.get("many")) {
+        (Some(value), None) => value.get("kind").is_some(),
+        (None, Some(Value::Array(values))) => {
+            values.iter().all(|value| value.get("kind").is_some())
+        }
+        _ => false,
     }
 }
 
@@ -186,6 +204,50 @@ mod tests {
         let data = nexus_data_from_json_value(original.clone()).unwrap();
 
         assert_eq!(nexus_data_to_json_value(&data), original);
+    }
+
+    #[test]
+    fn ordinary_one_property_object_remains_inline_data() {
+        let original = serde_json::json!({ "one": { "nested": true } });
+        let data = nexus_data_from_json_value(original.clone()).unwrap();
+
+        assert!(data.is_data());
+        assert_eq!(nexus_data_to_json_value(&data), original);
+    }
+
+    #[test]
+    fn canonical_one_object_preserves_object_kind() {
+        let data = nexus_data_from_json_value(serde_json::json!({
+            "one": { "kind": "object", "id": "0x42" }
+        }))
+        .unwrap();
+
+        assert!(data.is_one());
+        assert!(data.values().unwrap()[0].is_object());
+    }
+
+    #[test]
+    fn canonical_many_objects_preserve_object_kind() {
+        let data = nexus_data_from_json_value(serde_json::json!({
+            "many": [
+                { "kind": "object", "id": "0x42" },
+                { "kind": "object", "id": "0x43" }
+            ]
+        }))
+        .unwrap();
+
+        assert!(data.is_many());
+        assert!(data.values().unwrap().iter().all(|value| value.is_object()));
+    }
+
+    #[test]
+    fn malformed_canonical_object_is_rejected() {
+        let error = nexus_data_from_json_value(serde_json::json!({
+            "one": { "kind": "object", "id": "not-an-object" }
+        }))
+        .unwrap_err();
+
+        assert!(error.to_string().contains("invalid Object ID"));
     }
 
     #[test]

@@ -576,9 +576,7 @@ mod tests {
         let error = parse_dag_spec(&serde_json::to_string(&document).unwrap()).unwrap_err();
 
         assert!(
-            error
-                .to_string()
-                .contains("cannot contain both 'one' and 'many'"),
+            error.to_string().contains("exactly one of 'one' or 'many'"),
             "unexpected parse error: {error}"
         );
     }

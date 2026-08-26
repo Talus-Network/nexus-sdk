@@ -545,7 +545,7 @@ impl EventQuery for FailingQuery {
         sui::grpc::FieldMask::default()
     }
 
-    fn decode(&self, _event: sui::grpc::Event) -> Result<Option<Self::Output>, Self::Error> {
+    async fn decode(&self, _event: sui::grpc::Event) -> Result<Option<Self::Output>, Self::Error> {
         self.decode_calls.fetch_add(1, Ordering::SeqCst);
         Err(std::io::Error::other("unsupported event shape"))
     }

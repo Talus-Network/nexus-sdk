@@ -2,11 +2,19 @@ use {
     crate::{
         move_bindings::{
             interface::{
-                agent::SkillDagBinding,
+                agent::{Agent, AgentInnerV1, SkillDagBinding},
+                era::V1 as InterfaceWitnessV1,
                 meta_schema::{MetaSchema, PortSchema, ValueKind},
             },
-            scheduler::task::{Task, TaskController, TaskStateV2},
+            scheduler::{
+                era::V1 as SchedulerWitnessV1,
+                task::{Task, TaskController, TaskInnerV1},
+            },
             sui_framework::clock::Clock,
+            workflow::{
+                era::V1 as WorkflowWitnessV1,
+                execution::{DAGExecution, DAGExecutionInnerV1},
+            },
         },
         move_boundary,
         nexus::{
@@ -35,24 +43,36 @@ use {
             PreparedTask,
             ResolvedAuthority,
         },
+        types::{NexusContext, SharedRoot},
     },
     anyhow::Context as _,
-    std::collections::BTreeMap,
+    std::{collections::BTreeMap, sync::Arc},
 };
 
+pub(super) struct FetchedTask {
+    pub(super) context: Arc<NexusContext>,
+    pub(super) object: Response<TaskInnerV1>,
+}
+
 pub(super) struct ResolvedTask {
-    pub(super) object: Response<TaskStateV2>,
+    pub(super) context: Arc<NexusContext>,
+    pub(super) object: Response<TaskInnerV1>,
     pub(super) authority: ResolvedAuthority,
 }
 
 pub(crate) async fn prepare_task(
     client: &NexusClient,
+    context: &NexusContext,
     task: &TaskSpec,
 ) -> Result<PreparedTask, SchedulerError> {
-    preflight_task_inputs(client, task).await?;
+    let dag_id = preflight_task_inputs(client, context, task).await?;
+    let dag = client
+        .object_reference(dag_id)
+        .await
+        .map_err(SchedulerError::from)?;
     let sender = client.owner().map_err(SchedulerError::from)?;
     let agent = match task.operation().agent_id() {
-        Some(agent_id) => Some(agent_input(client, agent_id).await?),
+        Some(agent_id) => Some(agent_input(client, context, agent_id).await?),
         None => None,
     };
     let funding = match task.funding() {
@@ -76,6 +96,7 @@ pub(crate) async fn prepare_task(
 
     Ok(PreparedTask {
         operation: task.operation().clone(),
+        dag,
         agent,
         entry_group: task.entry_group().to_owned(),
         inputs: task.inputs().clone(),
@@ -87,20 +108,22 @@ pub(crate) async fn prepare_task(
 
 pub(super) async fn preflight_task_inputs(
     client: &NexusClient,
+    context: &NexusContext,
     task: &TaskSpec,
-) -> Result<(), SchedulerError> {
+) -> Result<crate::sui::types::Address, SchedulerError> {
     task.validate()?;
-    let dag_id = effective_task_dag_id(client, task.operation()).await?;
-    let dag = workflow::fetch_dag_snapshot(client.crawler(), dag_id)
+    let dag_id = effective_task_dag_id(client, context, task.operation()).await?;
+    let dag = workflow::fetch_dag_snapshot(client, context, dag_id)
         .await
         .with_context(|| format!("could not inspect Task DAG '{dag_id}'"))
         .map_err(SchedulerError::transport)?;
     validate_task_inputs(&dag, task.entry_group(), task.inputs())?;
-    Ok(())
+    Ok(dag_id)
 }
 
 async fn effective_task_dag_id(
     client: &NexusClient,
+    context: &NexusContext,
     operation: &TaskOperation,
 ) -> Result<crate::sui::types::Address, SchedulerError> {
     match operation {
@@ -111,12 +134,8 @@ async fn effective_task_dag_id(
             selected_dag,
             ..
         } => {
-            let objects = client.get_nexus_objects();
             let target = tap::fetch_configured_active_tap_skill_execution_target(
-                client.crawler(),
-                &objects,
-                *agent_id,
-                *skill_id,
+                client, context, *agent_id, *skill_id,
             )
             .await
             .with_context(|| {
@@ -303,32 +322,57 @@ pub(super) async fn prepare_recurrence(
 pub(super) async fn fetch_task(
     client: &NexusClient,
     task_id: crate::sui::types::Address,
-) -> Result<Response<TaskStateV2>, SchedulerError> {
-    let anchor = client
+) -> Result<FetchedTask, SchedulerError> {
+    fetch_task_with_roots(client, task_id, &[]).await
+}
+
+pub(super) async fn fetch_task_with_roots(
+    client: &NexusClient,
+    task_id: crate::sui::types::Address,
+    required_roots: &[SharedRoot],
+) -> Result<FetchedTask, SchedulerError> {
+    client
         .crawler()
         .get_optional_object::<Task>(task_id)
         .await
         .map_err(SchedulerError::transport)?
         .ok_or(SchedulerError::TaskNotFound { task_id })?;
-    client
-        .crawler()
-        .load_versioned_payload(anchor, 2)
+
+    let context = if required_roots.is_empty() {
+        client.context_for_object(task_id).await
+    } else {
+        client
+            .context_for_object_with_roots(task_id, required_roots)
+            .await
+    }
+    .map_err(SchedulerError::from)?;
+    let object = client
+        .state_resolver()
+        .load_inner::<Task, SchedulerWitnessV1, TaskInnerV1>(task_id, &context)
         .await
-        .map_err(SchedulerError::transport)
+        .map_err(SchedulerError::from)?;
+
+    Ok(FetchedTask { context, object })
 }
 
 pub(super) async fn resolve_task(
     client: &NexusClient,
     task_id: crate::sui::types::Address,
+    required_roots: &[SharedRoot],
 ) -> Result<ResolvedTask, SchedulerError> {
-    let object = fetch_task(client, task_id).await?;
-    let authority = resolve_authority(client, &object).await?;
-    Ok(ResolvedTask { object, authority })
+    let task = fetch_task_with_roots(client, task_id, required_roots).await?;
+    let authority = resolve_authority(client, &task.context, &task.object).await?;
+    Ok(ResolvedTask {
+        context: task.context,
+        object: task.object,
+        authority,
+    })
 }
 
 async fn resolve_authority(
     client: &NexusClient,
-    task: &Response<TaskStateV2>,
+    context: &NexusContext,
+    task: &Response<TaskInnerV1>,
 ) -> Result<ResolvedAuthority, SchedulerError> {
     match &task.data.controller {
         TaskController::Address { pos0 } => {
@@ -344,15 +388,21 @@ async fn resolve_authority(
             Ok(ResolvedAuthority::Address)
         }
         TaskController::Agent { pos0 } => Ok(ResolvedAuthority::Agent(
-            agent_input(client, pos0.bytes).await?,
+            agent_input(client, context, pos0.bytes).await?,
         )),
     }
 }
 
 async fn agent_input(
     client: &NexusClient,
+    context: &NexusContext,
     agent_id: crate::types::AgentId,
 ) -> Result<crate::transactions::agent_input::AgentInput, SchedulerError> {
+    client
+        .state_resolver()
+        .validate_state_pair::<Agent, InterfaceWitnessV1, AgentInnerV1>(agent_id, context)
+        .await
+        .map_err(SchedulerError::from)?;
     let metadata = client
         .crawler()
         .get_object_metadata(agent_id)
@@ -362,6 +412,27 @@ async fn agent_input(
         object_id: agent_id,
         message: error.to_string(),
     })
+}
+
+pub(super) async fn fetch_execution(
+    client: &NexusClient,
+    context: &NexusContext,
+    execution_id: crate::sui::types::Address,
+) -> Result<Option<Response<DAGExecutionInnerV1>>, SchedulerError> {
+    let Some(_) = client
+        .crawler()
+        .get_optional_object::<DAGExecution>(execution_id)
+        .await
+        .map_err(SchedulerError::transport)?
+    else {
+        return Ok(None);
+    };
+    let execution = client
+        .state_resolver()
+        .load_inner::<DAGExecution, WorkflowWitnessV1, DAGExecutionInnerV1>(execution_id, context)
+        .await
+        .map_err(SchedulerError::from)?;
+    Ok(Some(execution))
 }
 
 async fn clock_timestamp_ms(client: &NexusClient) -> Result<u64, SchedulerError> {
@@ -458,7 +529,7 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::{
-                    dag::{DAGStateV2, DAG},
+                    dag::{DAGInnerV1, DAG},
                     graph,
                 },
                 move_std::option::Option as MoveOption,
@@ -467,7 +538,6 @@ mod tests {
                     object::UID,
                     table::Table,
                     vec_map::{Entry as VecMapEntry, VecMap},
-                    versioned::Versioned,
                 },
             },
             nexus::{client::AddressBalanceGas, workflow::DagSnapshot},
@@ -482,7 +552,6 @@ mod tests {
     fn dag_snapshot() -> DagSnapshot {
         DagSnapshot {
             dag_id: crate::sui::types::Address::from_static("0xd"),
-            minimum_protocol_version: 1,
             vertex_count: 1,
             entry_groups: BTreeMap::from([(
                 "_default_group".to_owned(),
@@ -618,7 +687,7 @@ mod tests {
         schema.input_ports[0].is_many = true;
         inputs.get_mut("sum").unwrap().insert(
             "0".to_owned(),
-            crate::types::NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new()),
+            crate::types::NexusData::Many { values: Vec::new() },
         );
         assert!(matches!(
             validate_task_inputs(&dag, "_default_group", &inputs),
@@ -631,7 +700,7 @@ mod tests {
             }) if vertex == "sum"
                 && port == "0"
                 && expected.as_ref() == "many/object"
-                && received.as_ref() == "one/empty"
+                && received.as_ref() == "many/empty"
         ));
     }
 
@@ -670,7 +739,10 @@ mod tests {
         ));
     }
 
-    async fn test_client(mocks: sui_mocks::grpc::ServerMocks) -> NexusClient {
+    async fn test_client(
+        mocks: sui_mocks::grpc::ServerMocks,
+        objects: &crate::types::NexusObjects,
+    ) -> NexusClient {
         let rpc_url = sui_mocks::grpc::mock_server(mocks);
         let private_key = crate::sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
 
@@ -678,7 +750,7 @@ mod tests {
             .with_private_key(private_key)
             .with_rpc_url(&rpc_url)
             .with_address_balance_gas_config(AddressBalanceGas::new(1_000))
-            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .with_nexus_objects(objects.clone())
             .build()
             .await
             .expect("client builds")
@@ -686,17 +758,15 @@ mod tests {
 
     fn mock_dag(
         ledger: &mut sui_mocks::grpc::MockLedgerService,
+        state_service: &mut sui_mocks::grpc::MockStateService,
+        context: &NexusContext,
         dag_id: crate::sui::types::Address,
         entry_group: &str,
     ) {
         let dag_ref = sui_mocks::object_ref_for_id(dag_id);
-        let state_id = dag_id.derive_dynamic_child_id(
-            &crate::sui::types::TypeTag::U64,
-            &bcs::to_bytes(&u64::MAX).expect("the state key serializes"),
-        );
-        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 2));
-        let state = DAGStateV2::new(
-            1,
+        let dag = DAG::new(UID::new(dag_id));
+        let state = DAGInnerV1::new(
+            true,
             LinkedTable::new(dag_id, 0),
             VecMap {
                 contents: vec![VecMapEntry {
@@ -709,17 +779,20 @@ mod tests {
             Table::new(dag_id, 0),
             MoveOption::from_option(None::<graph::PostFailureAction>),
         );
-        sui_mocks::grpc::mock_get_object_bcs(
+        sui_mocks::grpc::mock_object_state::<DAG, InterfaceWitnessV1, DAGInnerV1>(
             ledger,
+            state_service,
+            context,
             dag_ref,
-            crate::sui::types::Owner::Shared(1),
-            bcs::to_bytes(&dag).expect("the DAG anchor serializes"),
+            crate::sui::types::Owner::Immutable,
+            dag,
+            state,
         );
-        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 2, state);
     }
 
     #[tokio::test]
     async fn mixed_schedule_uses_one_clock_snapshot() {
+        let context = sui_mocks::mock_nexus_context();
         let clock_ms = 1_000;
         let clock_ref = sui_mocks::object_ref_for_id(move_boundary::CLOCK_OBJECT_ID);
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -730,10 +803,13 @@ mod tests {
             bcs::to_bytes(&Clock::new(move_boundary::CLOCK_OBJECT_ID, clock_ms))
                 .expect("Clock serializes"),
         );
-        let client = test_client(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            ..Default::default()
-        })
+        let client = test_client(
+            sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service_mock),
+                ..Default::default()
+            },
+            context.objects(),
+        )
         .await;
         let recurrence = Recurrence::new(Occurrence::after_ms(30), 100)
             .expect("recurrence is valid")
@@ -772,7 +848,8 @@ mod tests {
 
     #[tokio::test]
     async fn absolute_schedule_preparation_does_not_read_the_clock() {
-        let client = test_client(sui_mocks::grpc::ServerMocks::default()).await;
+        let context = sui_mocks::mock_nexus_context();
+        let client = test_client(sui_mocks::grpc::ServerMocks::default(), context.objects()).await;
         let occurrence = Occurrence::at_ms(2_000)
             .deadline_at_ms(2_500)
             .expect("deadline follows start");
@@ -820,12 +897,31 @@ mod tests {
     #[tokio::test]
     async fn address_funded_task_preparation_preserves_authored_values() {
         let dag_id = crate::sui::types::Address::from_static("0x31");
+        let context = sui_mocks::mock_nexus_context();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        mock_dag(&mut ledger_service_mock, dag_id, "main");
-        let client = test_client(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            ..Default::default()
-        })
+        let mut package_service_mock = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        mock_dag(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &context,
+            dag_id,
+            "main",
+        );
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service_mock,
+            &mut package_service_mock,
+            context.packages(),
+        );
+        let client = test_client(
+            sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service_mock),
+                package_service_mock: Some(package_service_mock),
+                state_service_mock: Some(state_service_mock),
+                ..Default::default()
+            },
+            context.objects(),
+        )
         .await;
         let refund_recipient = crate::sui::types::Address::from_static("0x32");
         let task = TaskSpec::new(
@@ -837,7 +933,7 @@ mod tests {
         .expect("Task is valid")
         .with_failure_policy(crate::scheduler::FailurePolicy::Pause);
 
-        let prepared = prepare_task(&client, &task)
+        let prepared = prepare_task(&client, &context, &task)
             .await
             .expect("Task preparation succeeds");
 

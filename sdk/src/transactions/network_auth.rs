@@ -8,7 +8,7 @@ use {
         },
         move_boundary,
         sui,
-        types::NexusObjects,
+        types::NexusContext,
     },
     sui::types::{Argument, ProgrammableTransaction},
 };
@@ -41,7 +41,7 @@ fn proof_for_leader(
     leader_cap: Argument,
 ) -> anyhow::Result<Argument> {
     tx.call_target(
-        network_auth_binding::prove_leader_v2_target,
+        network_auth_binding::prove_leader_target,
         vec![leader_registry, leader_cap],
     )
 }
@@ -73,8 +73,8 @@ fn create_binding(
     proof: Argument,
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<Argument> {
-    let network_auth = tx.objects().network_auth.clone();
-    let network_auth = tx.shared_object(&network_auth, true)?;
+    let network_auth = tx.objects().network_auth;
+    let network_auth = tx.shared_root(&network_auth, true)?;
     let description = description_option(tx, description)?;
 
     tx.call_target(
@@ -83,7 +83,10 @@ fn create_binding(
     )
 }
 
-fn share_binding(tx: &mut move_boundary::NexusPtbBuilder, binding: Argument) -> anyhow::Result<()> {
+pub(super) fn share_binding(
+    tx: &mut move_boundary::NexusPtbBuilder,
+    binding: Argument,
+) -> anyhow::Result<()> {
     tx.call_target(
         transfer_binding::public_share_object_target::<network_auth_binding::KeyBinding>,
         vec![binding],
@@ -91,7 +94,10 @@ fn share_binding(tx: &mut move_boundary::NexusPtbBuilder, binding: Argument) -> 
     Ok(())
 }
 
-/// Composes a new tool binding and its initial key into the current transaction.
+/// Composes a new Tool binding and its initial key without sharing the binding.
+///
+/// The caller may use the live binding to configure verifier support before
+/// [`share_binding`] completes the transaction.
 pub(super) fn create_tool_binding_and_register_key(
     tx: &mut move_boundary::NexusPtbBuilder,
     tool: Argument,
@@ -99,13 +105,13 @@ pub(super) fn create_tool_binding_and_register_key(
     public_key: [u8; 32],
     pop_signature: [u8; 64],
     description: Option<Vec<u8>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Argument> {
     let proof_for_binding = proof_for_offchain_tool(tx, tool, owner_cap)?;
     let binding = create_binding(tx, proof_for_binding, description)?;
 
     let proof_for_key = proof_for_offchain_tool(tx, tool, owner_cap)?;
     register_key(tx, binding, proof_for_key, public_key, pop_signature)?;
-    share_binding(tx, binding)
+    Ok(binding)
 }
 
 /// Create a new off chain tool key binding and register the first key.
@@ -113,7 +119,7 @@ pub(super) fn create_tool_binding_and_register_key(
 /// This is used when the binding object does not yet exist.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn create_tool_binding_and_register_key_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
@@ -123,14 +129,15 @@ pub(crate) fn create_tool_binding_and_register_key_ptb(
     move_boundary::ptb(objects, |tx| {
         let tool = tx.shared_object(tool, false)?;
         let owner_cap = tx.owned_object(owner_cap_over_tool)?;
-        create_tool_binding_and_register_key(
+        let binding = create_tool_binding_and_register_key(
             tx,
             tool,
             owner_cap,
             public_key,
             pop_signature,
             description,
-        )
+        )?;
+        share_binding(tx, binding)
     })
 }
 
@@ -139,7 +146,7 @@ pub(crate) fn create_tool_binding_and_register_key_ptb(
 /// This is used for rotation when the `KeyBinding` already exists.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn register_tool_key_on_existing_binding_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     binding: &sui::types::ObjectReference,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
@@ -161,14 +168,14 @@ pub(crate) fn register_tool_key_on_existing_binding_ptb(
 /// This is used when the binding object does not yet exist.
 #[allow(clippy::too_many_arguments)]
 pub fn create_leader_binding_and_register_key_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
         let proof_for_binding = proof_for_leader(tx, leader_registry, leader_cap)?;
@@ -185,7 +192,7 @@ pub fn create_leader_binding_and_register_key_ptb(
 /// This is used for rotation when the `KeyBinding` already exists.
 #[allow(clippy::too_many_arguments)]
 pub fn register_leader_key_on_existing_binding_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     binding: &sui::types::ObjectReference,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
@@ -193,7 +200,7 @@ pub fn register_leader_key_on_existing_binding_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let binding = tx.shared_object(binding, true)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
         let proof = proof_for_leader(tx, leader_registry, leader_cap)?;
@@ -207,7 +214,7 @@ mod tests {
 
     #[test]
     fn tool_binding_composition_matches_the_standalone_builder() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
         let public_key = [3u8; 32];
@@ -226,14 +233,15 @@ mod tests {
         let actual = move_boundary::ptb(&objects, |tx| {
             let tool = tx.shared_object(&tool, false)?;
             let owner_cap = tx.owned_object(&owner_cap)?;
-            create_tool_binding_and_register_key(
+            let binding = create_tool_binding_and_register_key(
                 tx,
                 tool,
                 owner_cap,
                 public_key,
                 pop_signature,
                 description,
-            )
+            )?;
+            share_binding(tx, binding)
         })
         .unwrap();
 

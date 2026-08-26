@@ -2,6 +2,11 @@
 
 use {
     anyhow::Context as _,
+    hyper_util::{
+        rt::{TokioExecutor, TokioIo},
+        server::conn::auto,
+        service::TowerToHyperService,
+    },
     std::{
         io,
         net::SocketAddr,
@@ -92,7 +97,13 @@ fn load_server_config(cert_path: &Path, key_path: &Path) -> anyhow::Result<Serve
 
     let private_key = PrivateKeyDer::from_pem_file(key_path)
         .with_context(|| format!("failed to read TLS private key file {}", key_path.display()))?;
-    let mut config = ServerConfig::builder()
+    // The toolkit owns the server transport, so it must select its provider
+    // explicitly. Tool dependencies may enable another rustls provider and
+    // make process wide inference ambiguous.
+    let provider = Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
+    let mut config = ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .context("failed to select safe TLS protocol versions")?
         .with_no_client_auth()
         .with_single_cert(certificates, private_key)
         .context("failed to build TLS server configuration")?;
@@ -147,6 +158,36 @@ pub async fn bind(
     Ok((address, incoming))
 }
 
+/// Serves Warp routes over accepted TLS connections.
+pub async fn serve<F, S, I>(routes: F, incoming: S)
+where
+    F: warp::Filter<Error = warp::Rejection> + Clone + Send + Sync + 'static,
+    F::Extract: warp::Reply,
+    S: Stream<Item = io::Result<I>>,
+    I: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+{
+    tokio::pin!(incoming);
+    while let Some(connection) = incoming.next().await {
+        let connection = match connection {
+            Ok(connection) => connection,
+            Err(error) => {
+                log::debug!("TLS listener failed: {error}");
+                continue;
+            }
+        };
+        let service = TowerToHyperService::new(warp::service(routes.clone()));
+        tokio::spawn(async move {
+            let builder = auto::Builder::new(TokioExecutor::new());
+            if let Err(error) = builder
+                .serve_connection_with_upgrades(TokioIo::new(connection), service)
+                .await
+            {
+                log::debug!("TLS connection failed: {error}");
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -169,9 +210,7 @@ mod tests {
         let (address, incoming) = bind(([127, 0, 0, 1], 0).into(), cert_path, key_path)
             .await
             .unwrap();
-        let server = tokio::spawn(
-            warp::serve(warp::path("health").map(|| StatusCode::OK)).run_incoming(incoming),
-        );
+        let server = tokio::spawn(serve(warp::path("health").map(|| StatusCode::OK), incoming));
         let stalled_connection = TcpStream::connect(address).await.unwrap();
 
         let root = reqwest::Certificate::from_pem(cert_pem.as_bytes()).unwrap();

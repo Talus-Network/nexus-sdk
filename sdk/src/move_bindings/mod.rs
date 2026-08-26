@@ -10,17 +10,47 @@ pub(crate) mod protocol_limits {
 }
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 use self::registry::network_auth::IdentityKey;
+#[cfg(feature = "walrus")]
 pub(crate) use extensions::canonical_walrus_blob_id;
-pub use extensions::VersionedAnchor;
 #[cfg(feature = "transactions")]
 pub use sui_move_ptb::CLOCK_OBJECT_ID;
 use {
     self::interface::graph::RuntimeVertex,
     crate::{
         sui,
-        types::{NexusObjects, PackageVersion},
+        types::{NexusContext, PackageVersion, TypeOrigins},
     },
 };
+
+/// Canonical finite credit account for one Tool and payment beneficiary.
+pub type FiniteCredits =
+    tool::tool_cashier::PolicyAccount<tool::finite_credits::Policy, tool::finite_credits::State>;
+
+/// Canonical time pass account for one Tool and payment beneficiary.
+pub type TimePass =
+    tool::tool_cashier::PolicyAccount<tool::time_pass::Policy, tool::time_pass::State>;
+
+fn package_scope(
+    package: Option<&PackageVersion>,
+) -> (sui::types::Address, sui::types::Address, &TypeOrigins) {
+    static EMPTY_ORIGINS: std::sync::LazyLock<TypeOrigins> =
+        std::sync::LazyLock::new(TypeOrigins::new);
+
+    package.map_or(
+        (
+            sui::types::Address::ZERO,
+            sui::types::Address::ZERO,
+            &EMPTY_ORIGINS,
+        ),
+        |package| {
+            (
+                package.storage_id,
+                package.initial_id,
+                &package.type_origins,
+            )
+        },
+    )
+}
 
 fn derive_object_id<T: sui::traits::ToBcs>(
     parent: sui::types::Address,
@@ -30,11 +60,25 @@ fn derive_object_id<T: sui::traits::ToBcs>(
     Ok(parent.derive_object_id(tag, &key.to_bcs()?))
 }
 
-/// Run `f` with all Nexus generated bindings scoped to the package IDs in `objects`.
+/// Runs `f` with generated bindings scoped to the packages in `context`.
 ///
-/// Storage IDs are used for Move call targets. Exact datatype origins are
-/// used for type identity, including types introduced by later upgrades.
-pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R) -> R {
+/// Storage IDs select Move call targets and exact datatype origins select type
+/// identity. An absent role receives an inert zero scope; transaction builders
+/// must reject calls for roles absent from [`NexusContext::packages`].
+pub(crate) fn with_nexus_scope<R>(context: &NexusContext, f: impl FnOnce() -> R) -> R {
+    let (primitives_storage, primitives_initial, primitives_origins) =
+        package_scope(context.packages().primitives.as_ref());
+    let (interface_storage, interface_initial, interface_origins) =
+        package_scope(context.packages().interface.as_ref());
+    let (tool_storage, tool_initial, tool_origins) =
+        package_scope(context.packages().tool.as_ref());
+    let (registry_storage, registry_initial, registry_origins) =
+        package_scope(context.packages().registry.as_ref());
+    let (workflow_storage, workflow_initial, workflow_origins) =
+        package_scope(context.packages().workflow.as_ref());
+    let (scheduler_storage, scheduler_initial, scheduler_origins) =
+        package_scope(context.packages().scheduler.as_ref());
+
     move_std::with_packages(
         sui::types::Address::from_static("0x1"),
         sui::types::Address::from_static("0x1"),
@@ -44,56 +88,38 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
                 sui::types::Address::from_static("0x2"),
                 || {
                     talus::with_packages(
-                        objects.us_token.package_id,
-                        objects.us_token.package_id,
+                        context.us_token.package_id,
+                        context.us_token.package_id,
                         || {
                             primitives::with_package_context(
-                                objects.packages.primitives.storage_id,
-                                objects.packages.primitives.initial_id,
-                                &objects.packages.primitives.type_origins,
+                                primitives_storage,
+                                primitives_initial,
+                                primitives_origins,
                                 || {
                                     interface::with_package_context(
-                                        objects.packages.interface.storage_id,
-                                        objects.packages.interface.initial_id,
-                                        &objects.packages.interface.type_origins,
+                                        interface_storage,
+                                        interface_initial,
+                                        interface_origins,
                                         || {
                                             tool::with_package_context(
-                                                objects.packages.tool.storage_id,
-                                                objects.packages.tool.initial_id,
-                                                &objects.packages.tool.type_origins,
+                                                tool_storage,
+                                                tool_initial,
+                                                tool_origins,
                                                 || {
                                                     registry::with_package_context(
-                                                        objects.packages.registry.storage_id,
-                                                        objects.packages.registry.initial_id,
-                                                        &objects.packages.registry.type_origins,
+                                                        registry_storage,
+                                                        registry_initial,
+                                                        registry_origins,
                                                         || {
                                                             workflow::with_package_context(
-                                                                objects
-                                                                    .packages
-                                                                    .workflow
-                                                                    .storage_id,
-                                                                objects
-                                                                    .packages
-                                                                    .workflow
-                                                                    .initial_id,
-                                                                &objects
-                                                                    .packages
-                                                                    .workflow
-                                                                    .type_origins,
+                                                                workflow_storage,
+                                                                workflow_initial,
+                                                                workflow_origins,
                                                                 || {
                                                                     scheduler::with_package_context(
-                                                                        objects
-                                                                            .packages
-                                                                            .scheduler
-                                                                            .storage_id,
-                                                                        objects
-                                                                            .packages
-                                                                            .scheduler
-                                                                            .initial_id,
-                                                                        &objects
-                                                                            .packages
-                                                                            .scheduler
-                                                                            .type_origins,
+                                                                        scheduler_storage,
+                                                                        scheduler_initial,
+                                                                        scheduler_origins,
                                                                         f,
                                                                     )
                                                                 },
@@ -114,29 +140,15 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
     )
 }
 
-/// Build the canonical Move type tag for `T` in a [`NexusObjects`] deployment.
+/// Builds the canonical Move type tag for `T` in a [`NexusContext`].
 ///
 /// The generated binding scope resolves datatype origins across package
 /// upgrades before constructing the tag.
-pub fn type_tag<T>(objects: &NexusObjects) -> sui::types::TypeTag
+pub fn type_tag<T>(context: &NexusContext) -> sui::types::TypeTag
 where
     T: sui_move::MoveType,
 {
-    with_nexus_scope(objects, T::type_tag_static)
-}
-
-/// Build a generated registry type tag from one resolved [`PackageVersion`].
-#[cfg(feature = "nexus")]
-pub(crate) fn registry_type_tag<T>(registry: &PackageVersion) -> sui::types::TypeTag
-where
-    T: sui_move::MoveType,
-{
-    self::registry::with_package_context(
-        registry.storage_id,
-        registry.initial_id,
-        &registry.type_origins,
-        T::type_tag_static,
-    )
+    with_nexus_scope(context, T::type_tag_static)
 }
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
@@ -154,19 +166,19 @@ where
 }
 
 /// Build a generated Move struct tag scoped to this Nexus deployment.
-pub fn struct_tag<T>(objects: &NexusObjects) -> sui::types::StructTag
+pub fn struct_tag<T>(context: &NexusContext) -> sui::types::StructTag
 where
     T: sui_move::MoveStruct,
 {
-    with_nexus_scope(objects, T::struct_tag_static)
+    with_nexus_scope(context, T::struct_tag_static)
 }
 
 /// Return whether `tag` matches the generated struct `T` identity scoped to this deployment.
-pub fn struct_tag_matches<T>(objects: &NexusObjects, tag: &sui::types::StructTag) -> bool
+pub fn struct_tag_matches<T>(context: &NexusContext, tag: &sui::types::StructTag) -> bool
 where
     T: sui_move::MoveStruct,
 {
-    let expected = struct_tag::<T>(objects);
+    let expected = struct_tag::<T>(context);
     tag.address() == expected.address()
         && tag.module() == expected.module()
         && tag.name() == expected.name()
@@ -216,6 +228,26 @@ pub fn derive_tool_cashier_id(
     derive_object_id(tool, &key, &tool::tool_cashier::ToolCashierKey::new(false))
 }
 
+/// Derive the canonical finite credit account for one [interface::payment::PaymentSourceKind].
+pub fn derive_finite_credits_id(
+    context: &NexusContext,
+    cashier: sui::types::Address,
+    beneficiary: interface::payment::PaymentSourceKind,
+) -> anyhow::Result<sui::types::Address> {
+    type Key = tool::tool_cashier::PolicyAccountKey<tool::finite_credits::Policy>;
+    derive_object_id(cashier, &type_tag::<Key>(context), &Key::new(beneficiary))
+}
+
+/// Derive the canonical time pass account for one [interface::payment::PaymentSourceKind].
+pub fn derive_time_pass_id(
+    context: &NexusContext,
+    cashier: sui::types::Address,
+    beneficiary: interface::payment::PaymentSourceKind,
+) -> anyhow::Result<sui::types::Address> {
+    type Key = tool::tool_cashier::PolicyAccountKey<tool::time_pass::Policy>;
+    derive_object_id(cashier, &type_tag::<Key>(context), &Key::new(beneficiary))
+}
+
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 pub(crate) fn derive_network_auth_binding_id(
     registry_type_origin_pkg_id: sui::types::Address,
@@ -228,8 +260,8 @@ pub(crate) fn derive_network_auth_binding_id(
 
 /// Derive the task ID associated with a walk execution request event.
 ///
-/// Pass [`NexusObjects::interface_type_origin_pkg_id`] so the derived ID
-/// remains stable after an interface package upgrade.
+/// Pass the defining Interface package so the derived ID remains stable after
+/// an Interface package upgrade.
 pub fn derive_walk_execution_event_task_id(
     interface_type_origin_pkg_id: sui::types::Address,
     execution: sui::types::Address,
@@ -371,19 +403,60 @@ pub mod workflow {
 mod tests {
     use {
         super::{
+            derive_finite_credits_id,
             derive_task_execution_id,
+            derive_time_pass_id,
             derive_tool_cashier_id,
             derive_walk_execution_event_task_id,
             interface::graph::RuntimeVertex,
             registry,
         },
-        crate::sui,
+        crate::{
+            move_bindings::interface::payment::PaymentSourceKind,
+            sui,
+            test_utils::sui_mocks::mock_nexus_context,
+        },
         sui_move::MoveType,
     };
     #[test]
     fn generated_bindings_expose_calls() {
         let _ = registry::leader::claim_unstaked_for_self_target;
         let _ = super::talus::us::US::type_tag_static;
+    }
+
+    #[test]
+    fn committed_ir_exposes_only_leader_authorized_invocation_admission() {
+        for (package, source) in [
+            ("scheduler", include_str!("ir/scheduler.json")),
+            ("workflow", include_str!("ir/workflow.json")),
+        ] {
+            let ir: serde_json::Value =
+                serde_json::from_str(source).expect("committed binding IR must be valid JSON");
+            let functions = ir["modules"]["invocation_adapter"]["functions"]
+                .as_array()
+                .expect("Invocation adapter functions must be an array");
+            let public_admissions: Vec<_> = functions
+                .iter()
+                .filter(|function| {
+                    function["visibility"] == "Public"
+                        && function["name"]
+                            .as_str()
+                            .is_some_and(|name| name.starts_with("lock_and_request"))
+                })
+                .collect();
+
+            assert_eq!(
+                public_admissions.len(),
+                1,
+                "{package} must expose one public Invocation admission"
+            );
+            assert_eq!(public_admissions[0]["name"], "lock_and_request");
+            assert!(public_admissions[0]["parameters"]
+                .as_array()
+                .expect("Invocation admission parameters must be an array")
+                .iter()
+                .any(|parameter| parameter["name"] == "leader_cap"));
+        }
     }
 
     #[test]
@@ -434,5 +507,19 @@ mod tests {
         );
 
         assert_eq!(derive_tool_cashier_id(package, tool).unwrap(), expected);
+    }
+
+    #[test]
+    fn policy_account_ids_are_deterministic_and_policy_scoped() {
+        let context = mock_nexus_context();
+        let cashier = sui::types::Address::from_static("0x71");
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0x72"));
+
+        let credits = derive_finite_credits_id(&context, cashier, beneficiary.clone()).unwrap();
+        let repeated = derive_finite_credits_id(&context, cashier, beneficiary.clone()).unwrap();
+        let pass = derive_time_pass_id(&context, cashier, beneficiary).unwrap();
+
+        assert_eq!(credits, repeated);
+        assert_ne!(credits, pass);
     }
 }

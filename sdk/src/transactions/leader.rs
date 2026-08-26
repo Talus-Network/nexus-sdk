@@ -8,7 +8,7 @@ use {
         },
         move_boundary,
         sui,
-        types::NexusObjects,
+        types::NexusContext,
     },
     sui::types::ProgrammableTransaction,
 };
@@ -16,20 +16,55 @@ use {
 type OverNetworkCap = owner_cap::CloneableOwnerCap<leader_cap::OverNetwork>;
 
 /// Struct tag for the shared `CloneableOwnerCap<OverNetwork>` capability.
-pub fn over_network_cap_struct_tag(objects: &NexusObjects) -> sui::types::StructTag {
+pub fn over_network_cap_struct_tag(objects: &NexusContext) -> sui::types::StructTag {
     crate::move_bindings::struct_tag::<OverNetworkCap>(objects)
+}
+
+/// Configures every leader registry policy value atomically.
+///
+/// Atomic updates prevent mixed policy observations. [`sui::types::Owner`]
+/// preserves the administration capability ownership form.
+pub fn configure_registry_ptb(
+    objects: &NexusContext,
+    admin_cap: &sui::types::ObjectReference,
+    admin_owner: &sui::types::Owner,
+    unbonding_duration_ms: u64,
+    min_stake_us: u64,
+    max_transaction_budget_mist: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let leader_registry = tx.shared_root(&objects.leader_registry, true)?;
+        let admin_cap = tx.object_from_owner(admin_cap, admin_owner, true)?;
+        let unbonding_duration_ms = tx.arg(&unbonding_duration_ms)?;
+        let min_stake_us = tx.arg(&min_stake_us)?;
+        let max_transaction_budget_mist = tx.arg(&max_transaction_budget_mist)?;
+
+        tx.call_target(
+            leader_binding::set_unbonding_duration_ms_target,
+            vec![leader_registry, admin_cap, unbonding_duration_ms],
+        )?;
+        tx.call_target(
+            leader_binding::set_min_stake_us_target,
+            vec![leader_registry, admin_cap, min_stake_us],
+        )?;
+        tx.call_target(
+            leader_binding::set_max_transaction_budget_target,
+            vec![leader_registry, admin_cap, max_transaction_budget_mist],
+        )?;
+        Ok(())
+    })
 }
 
 /// Register the transaction sender as a leader using part of an owned Talus `$US` coin.
 ///
 /// The coin remains owned by the sender with any balance above `stake_us`.
 pub fn register_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     stake_coin: &sui::types::ObjectReference,
     stake_us: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let leader_registry = tx.shared_object(&objects.leader_registry, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, true)?;
         let pay_with = tx.owned_object(stake_coin)?;
         let amount = tx.arg(&stake_us)?;
         let metadata = tx.call_target(leader_binding::empty_metadata_target, vec![])?;
@@ -46,11 +81,11 @@ pub fn register_for_self_ptb(
 
 /// Activate this leader and claim ownership with the transaction digest token.
 pub fn activate_and_claim_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     leader_cap_over_network: &sui::types::ObjectReference,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let leader_registry = tx.shared_object(&objects.leader_registry, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, true)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
         tx.call_target(
@@ -63,12 +98,12 @@ pub fn activate_and_claim_for_self_ptb(
 
 /// Suspend this leader only if `token` still matches the active claim token.
 pub fn suspend_if_token_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     leader_cap_over_network: &sui::types::ObjectReference,
     token: Vec<u8>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let leader_registry = tx.shared_object(&objects.leader_registry, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, true)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
         let token = tx.arg(&token)?;
 
@@ -84,7 +119,7 @@ pub fn suspend_if_token_for_self_ptb(
 mod tests {
     use {
         super::*,
-        crate::types::{DefaultDagExecutorTarget, UsTokenConfig},
+        crate::{test_utils::sui_mocks, types::PackageRole},
         sui::types::{Argument, Command, Input, MoveCall},
     };
 
@@ -100,32 +135,8 @@ mod tests {
         )
     }
 
-    fn nexus_objects() -> NexusObjects {
-        NexusObjects {
-            protocol_version: 1,
-            protocol: object_ref("0x18", 1, 18),
-            packages: crate::types::NexusPackages::first_publication(
-                addr("0x2"),
-                addr("0x3"),
-                addr("0x5"),
-                addr("0x13"),
-                addr("0x1"),
-                addr("0x11"),
-            ),
-            config_hash: vec![0; 32],
-            network_id: addr("0x4"),
-            tool_registry: object_ref("0x6", 1, 6),
-            network_auth: object_ref("0x8", 1, 8),
-            agent_registry: object_ref("0xc", 1, 12),
-            default_dag_executor: DefaultDagExecutorTarget {
-                agent_id: addr("0xa1"),
-                skill_id: 177,
-            },
-            leader_registry: object_ref("0xe", 1, 14),
-            priority_fee_vault: object_ref("0xf", 1, 15),
-            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
-            us_token: UsTokenConfig::new(addr("0x12")),
-        }
+    fn nexus_objects() -> crate::types::NexusContext {
+        sui_mocks::mock_nexus_context()
     }
 
     fn move_call(command: &Command) -> &MoveCall {
@@ -147,7 +158,13 @@ mod tests {
         assert_eq!(input_stake_coin, &stake_coin);
 
         let register = move_call(&ptb.commands[1]);
-        assert_eq!(register.package, objects.registry_pkg_id());
+        assert_eq!(
+            register.package,
+            objects
+                .require_package(PackageRole::Registry)
+                .unwrap()
+                .storage_id
+        );
         assert_eq!(register.module.as_str(), "leader");
         assert_eq!(register.function.as_str(), "register");
         assert_eq!(register.arguments.len(), 5);
@@ -156,6 +173,54 @@ mod tests {
             ptb.commands.len(),
             2,
             "the registration coin must remain owned so any unused balance is preserved"
+        );
+    }
+
+    #[test]
+    fn registry_configuration_is_atomic_and_preserves_admin_ownership() {
+        let objects = nexus_objects();
+        let admin_cap = object_ref("0x30", 9, 30);
+        let admin_owner = sui::types::Owner::ConsensusAddress {
+            start_version: 4,
+            owner: addr("0x31"),
+        };
+
+        let ptb = configure_registry_ptb(
+            &objects,
+            &admin_cap,
+            &admin_owner,
+            86_400_000,
+            1_000_000_000,
+            10_000_000_000,
+        )
+        .expect("leader registry configuration PTB");
+
+        assert!(ptb.inputs.iter().any(|input| {
+            matches!(
+                input,
+                Input::Shared(shared)
+                    if shared.object_id() == *admin_cap.object_id()
+                        && shared.version() == 4
+                        && shared.mutability().is_mutable()
+            )
+        }));
+        let calls = ptb
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                Command::MoveCall(call) if call.module.as_str() == "leader" => {
+                    Some(call.function.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            calls,
+            [
+                "set_unbonding_duration_ms",
+                "set_min_stake_us",
+                "set_max_transaction_budget",
+            ]
         );
     }
 }

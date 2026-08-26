@@ -5,12 +5,21 @@
 //! duplicate that shape; it only adds SDK projections that are not part of the
 //! ABI itself.
 
-pub use tool_registry::{Tool as ToolAnchor, ToolRef, ToolStateV2};
-/// Current logical Tool state.
+pub use tool_registry::{Tool as ToolAnchor, ToolInnerV1, ToolRef};
+/// Complete supported view of one [`ToolAnchor`].
 ///
-/// [`ToolAnchor`] is the stable object shell. Most callers operate on the
-/// selected state payload, so this alias preserves the public Tool model.
-pub type Tool = ToolStateV2;
+/// [`ToolInnerV1`] is stored below the Tool anchor. This view pairs the stable
+/// object ID with that current logical state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolState {
+    /// Stable Tool object ID.
+    pub object_id: sui::types::Address,
+    /// Current supported Tool inner layout.
+    pub inner: ToolInnerV1,
+}
+
+/// Current supported [`ToolState`] view.
+pub type Tool = ToolState;
 use {
     crate::{
         move_bindings::{move_std::ascii, tool::tool_registry},
@@ -36,7 +45,12 @@ impl ToolAnchor {
     }
 }
 
-impl ToolStateV2 {
+impl ToolState {
+    /// Creates a complete supported Tool view.
+    pub fn new(object_id: sui::types::Address, inner: ToolInnerV1) -> Self {
+        Self { object_id, inner }
+    }
+
     /// Derive a [`ToolAnchor`] object ID from the ToolRegistry ID and tool FQN.
     pub fn derive_id(
         registry_id: sui::types::Address,
@@ -46,11 +60,11 @@ impl ToolStateV2 {
     }
 
     pub fn registry_id(&self) -> sui::types::Address {
-        self.registry.address()
+        self.inner.registry.address()
     }
 
     pub fn fqn_string(&self) -> anyhow::Result<String> {
-        ascii_string(&self.fqn).context("Tool FQN is not UTF-8")
+        ascii_string(&self.inner.fqn).context("Tool FQN is not UTF-8")
     }
 
     pub fn parsed_fqn(&self) -> anyhow::Result<ToolFqn> {
@@ -61,32 +75,27 @@ impl ToolStateV2 {
     }
 
     pub fn reference(&self) -> &ToolRef {
-        &self.r#ref
+        &self.inner.r#ref
     }
 
     pub fn description_string(&self) -> anyhow::Result<String> {
-        std::str::from_utf8(&self.description)
+        std::str::from_utf8(&self.inner.description)
             .map(str::to_owned)
             .context("Tool description is not UTF-8")
     }
 
     pub fn registered_at_datetime(&self) -> anyhow::Result<DateTime<Utc>> {
-        timestamp_millis_to_datetime(self.registered_at_ms, "registered_at_ms")
+        timestamp_millis_to_datetime(self.inner.registered_at_ms, "registered_at_ms")
     }
 
     pub fn unregistered_at_datetime(&self) -> anyhow::Result<Option<DateTime<Utc>>> {
-        match self.unregistered_at_ms.vec.as_slice() {
-            [] => Ok(None),
-            [millis] => timestamp_millis_to_datetime(*millis, "unregistered_at_ms").map(Some),
-            values => bail!(
-                "Tool unregistered_at_ms is not a valid Move option: {} values",
-                values.len()
-            ),
-        }
+        self.unregistered_at_millis()?
+            .map(|millis| timestamp_millis_to_datetime(millis, "closed_at_ms"))
+            .transpose()
     }
 
     pub fn unregistered_at_millis(&self) -> anyhow::Result<Option<u64>> {
-        match self.unregistered_at_ms.vec.as_slice() {
+        match self.inner.unregistered_at_ms.vec.as_slice() {
             [] => Ok(None),
             [millis] => Ok(Some(*millis)),
             values => bail!(
@@ -183,29 +192,27 @@ mod tests {
         ascii::String::from(value)
     }
 
-    fn fixture_tool(reference: ToolRef) -> ToolStateV2 {
-        ToolStateV2 {
-            minimum_protocol_version: 1,
-            registry: crate::move_bindings::sui_framework::object::ID::new(
-                sui_mocks::mock_sui_address(),
+    fn fixture_tool(reference: ToolRef) -> ToolState {
+        let object_id = sui_mocks::mock_sui_address();
+        ToolState::new(
+            object_id,
+            ToolInnerV1::new(
+                crate::move_bindings::sui_framework::object::ID::new(sui_mocks::mock_sui_address()),
+                ascii("xyz.taluslabs.math.i64.add@1"),
+                reference,
+                b"A test tool".to_vec(),
+                crate::move_bindings::interface::meta_schema::MetaSchema::new(vec![], vec![]),
+                false,
+                sui_framework::balance::Balance {
+                    value: 0,
+                    phantom_t0: std::marker::PhantomData,
+                },
+                true,
+                0,
+                0,
+                MoveOption::from(None),
             ),
-            fqn: ascii("xyz.taluslabs.math.i64.add@1"),
-            r#ref: reference,
-            description: b"A test tool".to_vec(),
-            meta_schema: crate::move_bindings::interface::meta_schema::MetaSchema::new(
-                vec![],
-                vec![],
-            ),
-            verified: false,
-            vault: sui_framework::balance::Balance {
-                value: 0,
-                phantom_t0: std::marker::PhantomData,
-            },
-            workflow_authorization_cap_first: true,
-            lock_duration_ms: 0,
-            registered_at_ms: 0,
-            unregistered_at_ms: MoveOption::from(None),
-        }
+        )
     }
 
     #[test]
@@ -228,14 +235,16 @@ mod tests {
     }
 
     #[test]
-    fn generated_tool_bcs_roundtrips_and_preserves_meta_schema() {
+    fn generated_tool_parts_round_trip_and_preserve_meta_schema() {
         let tool = fixture_tool(ToolRef::Http {
             url: b"https://example.com/tool".to_vec(),
         });
 
-        let bytes = bcs::to_bytes(&tool).expect("generated Tool serializes as BCS");
-        let decoded: ToolStateV2 =
-            bcs::from_bytes(&bytes).expect("generated Tool state deserializes as BCS");
+        let inner_bytes = bcs::to_bytes(&tool.inner).expect("generated inner serializes as BCS");
+        let decoded = ToolState::new(
+            tool.object_id,
+            bcs::from_bytes(&inner_bytes).expect("generated inner decodes"),
+        );
 
         assert_eq!(
             decoded.fqn_string().unwrap(),
@@ -246,7 +255,7 @@ mod tests {
             decoded.registered_at_datetime().unwrap(),
             DateTime::<Utc>::from_timestamp(0, 0).unwrap()
         );
-        assert_eq!(decoded.meta_schema, tool.meta_schema);
+        assert_eq!(decoded.inner.meta_schema, tool.inner.meta_schema);
     }
 
     #[test]

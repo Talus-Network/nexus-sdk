@@ -8,7 +8,7 @@ use crate::{
     move_bindings::{
         interface::graph::{PostFailureAction, RuntimeVertex},
         workflow::{
-            execution::{DAGExecution, DAGWalk},
+            execution::{DAGExecution, DAGExecutionInnerV1, DAGWalk},
             execution_events::RequestWalkExecutionEvent,
             execution_failure::WorkflowFailureClass,
         },
@@ -65,6 +65,13 @@ impl std::fmt::Display for WorkflowFailureClass {
 }
 
 impl DAGExecution {
+    /// Returns the stable execution object ID.
+    pub fn object_id(&self) -> sui::types::Address {
+        self.id.id.bytes
+    }
+}
+
+impl DAGExecutionInnerV1 {
     pub fn dag_id(&self) -> sui::types::Address {
         self.dag.bytes
     }

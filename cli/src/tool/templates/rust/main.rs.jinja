@@ -43,6 +43,10 @@ impl NexusTool for {{ name_pascal_case }} {
         ""
     }
 
+    fn description() -> &'static str {
+        {{ description_literal }}
+    }
+
     async fn health(&self) -> AnyResult<StatusCode> {
         // The health endpoint should perform health checks on its dependencies.
 

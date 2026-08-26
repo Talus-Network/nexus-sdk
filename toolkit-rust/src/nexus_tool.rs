@@ -104,10 +104,12 @@ pub trait NexusTool: Send + Sync + 'static {
     fn path() -> &'static str {
         ""
     }
-    /// Returns the description of the tool. This defaults to an empty string.
-    fn description() -> &'static str {
-        ""
-    }
+    /// Returns a concise description of the Tool's observable behavior.
+    ///
+    /// This value is part of the durable registry metadata that users and
+    /// Agent developers rely on when selecting a Tool. Implementations must
+    /// provide meaningful text. SDK registration rejects blank descriptions.
+    fn description() -> &'static str;
     /// Construct a new instance of the tool. This is mainly here so that
     /// dependencies can be injected for testing purposes.
     fn new() -> impl Future<Output = Self> + Send;

@@ -31,6 +31,7 @@ const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("workflow", "0xa4"),
     ("scheduler", "0xa5"),
 ];
+const KERNEL_PACKAGE: (&str, &str) = ("kernel", "0xa0");
 const TALUS_PACKAGE: (&str, &str) = ("talus", "0xa6");
 const SUI_FRAMEWORK_PACKAGE: (&str, &str) = ("sui_framework", "0x2");
 const SUI_FRAMEWORK_MODULES: &[&str] = &[
@@ -63,7 +64,6 @@ const PROTOCOL_LIMIT_MODULES: &[(&str, &str, &str, &[&str])] = &[
             "MAX_IDENTIFIER_BYTES",
             "MAX_INPUT_PORTS",
             "MAX_META_SCHEMA_BYTES",
-            "MAX_NEXUS_DATA_BYTES",
             "MAX_OUTPUT_VARIANTS",
             "MAX_PORTS_PER_OUTPUT_VARIANT",
             "MAX_RAW_OUTPUT_BYTES",
@@ -91,7 +91,7 @@ type ProtocolLimits = BTreeMap<String, BTreeMap<String, BTreeMap<String, u64>>>;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Inputs {
-    objects_file: PathBuf,
+    metadata_file: PathBuf,
     grpc_url: String,
     source_root: Option<PathBuf>,
 }
@@ -107,21 +107,23 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
         .as_deref()
         .or_else(|| {
             inputs
-                .objects_file
+                .metadata_file
                 .is_dir()
-                .then_some(inputs.objects_file.as_path())
+                .then_some(inputs.metadata_file.as_path())
         })
         .ok_or_else(|| {
             anyhow!(
                 "Nexus Move source root is required to regenerate authoritative protocol limits"
             )
         })?;
-    let objects_file = if inputs.objects_file.is_dir() {
-        inputs.objects_file.join("bin/target/objects.localnet.toml")
+    let metadata_file = if inputs.metadata_file.is_dir() {
+        inputs
+            .metadata_file
+            .join("bin/target/deployment.localnet.json")
     } else {
-        inputs.objects_file.clone()
+        inputs.metadata_file.clone()
     };
-    let package_ids = packages_from_objects_file(&objects_file)?;
+    let package_ids = packages_from_metadata_file(&metadata_file)?;
     let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(IR_DIR);
     fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
     let protocol_limits = extract_protocol_limits(source_root)?;
@@ -143,6 +145,9 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
     let limits_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(PROTOCOL_LIMITS_FILE);
     write_protocol_limits(&limits_path, &protocol_limits)?;
     for (name, package) in packages {
+        if name == KERNEL_PACKAGE.0 {
+            continue;
+        }
         let module_count = package.modules.len();
         let path = write_package_ir(&out_dir, &name, &package)?;
         println!("wrote {} ({} modules)", path.display(), module_count);
@@ -291,6 +296,7 @@ fn canonicalize_sdk_ir(packages: &mut [(String, NormalizedPackage)]) {
             .iter()
             .find(|(package_name, _)| package_name == name)
             .map(|(_, canonical_id)| *canonical_id)
+            .or_else(|| (name == KERNEL_PACKAGE.0).then_some(KERNEL_PACKAGE.1))
             .or_else(|| (name == TALUS_PACKAGE.0).then_some(TALUS_PACKAGE.1));
         let Some(canonical_id) = canonical_id else {
             continue;
@@ -330,46 +336,97 @@ impl Inputs {
         }
 
         match positional.as_slice() {
-            [objects_file] => Ok(Self {
-                objects_file: PathBuf::from(objects_file),
+            [metadata_file] => Ok(Self {
+                metadata_file: PathBuf::from(metadata_file),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
                 source_root,
             }),
-            [objects_file, grpc_url] => Ok(Self {
-                objects_file: PathBuf::from(objects_file),
+            [metadata_file, grpc_url] => Ok(Self {
+                metadata_file: PathBuf::from(metadata_file),
                 grpc_url: grpc_url.to_string(),
                 source_root,
             }),
             _ => bail!(
-                "expected: regenerate_bindings <objects_toml> [grpc_url] [--source-root <path>]"
+                "expected: regenerate_bindings <deployment_or_candidate_json> [grpc_url] \
+                 [--source-root <path>]"
             ),
         }
     }
 }
 
-fn packages_from_objects_file(path: &Path) -> Result<Vec<(String, Address)>> {
+fn packages_from_metadata_file(path: &Path) -> Result<Vec<(String, Address)>> {
     let text = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    packages_from_objects_toml(&text, &path.display().to_string())
+    let metadata: serde_json::Value =
+        serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+    packages_from_metadata(&metadata, path)
 }
 
-fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, Address)>> {
-    let parsed: toml::Value = toml::from_str(text).with_context(|| format!("parse {source}"))?;
+fn packages_from_metadata(
+    metadata: &serde_json::Value,
+    path: &Path,
+) -> Result<Vec<(String, Address)>> {
+    let source = path.display();
+    let kind = metadata
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow!("{source} is missing kind"))?;
+    let mut deployment = metadata.clone();
+    if kind == "candidate" {
+        let base = metadata
+            .get("base_deployment")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("{source} is missing base_deployment"))?;
+        let base_path = PathBuf::from(base);
+        let base_path = if base_path.is_absolute() {
+            base_path
+        } else {
+            path.parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(base_path)
+        };
+        let text = fs::read_to_string(&base_path)
+            .with_context(|| format!("read {}", base_path.display()))?;
+        deployment = serde_json::from_str(&text)
+            .with_context(|| format!("parse {}", base_path.display()))?;
+        if deployment.get("kind").and_then(serde_json::Value::as_str) != Some("deployment") {
+            bail!("{} is not a deployment document", base_path.display());
+        }
+        let changed = metadata
+            .get("packages")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| anyhow!("{source} is missing packages"))?;
+        let packages = deployment
+            .get_mut("packages")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| anyhow!("{} is missing packages", base_path.display()))?;
+        for (name, package) in changed {
+            packages.insert(name.clone(), package.clone());
+        }
+    } else if kind != "deployment" {
+        bail!("{source} has unsupported metadata kind '{kind}'");
+    }
 
     let mut packages = Vec::new();
     for (package, _) in NEXUS_PACKAGES {
-        let id = parsed
+        let id = deployment
             .get("packages")
             .and_then(|value| value.get(package))
             .and_then(|value| value.get("storage_id"))
-            .and_then(toml::Value::as_str)
+            .and_then(serde_json::Value::as_str)
             .ok_or_else(|| anyhow!("{source} is missing packages.{package}.storage_id"))?;
         packages.push(((*package).to_string(), parse_address(id)?));
     }
-    let talus_id = parsed
-        .get("us_token")
+    let kernel_id = deployment
+        .get("kernel")
         .and_then(|value| value.get("package_id"))
-        .and_then(toml::Value::as_str)
-        .ok_or_else(|| anyhow!("{source} is missing us_token.package_id"))?;
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow!("{source} is missing kernel.package_id"))?;
+    packages.push((KERNEL_PACKAGE.0.to_string(), parse_address(kernel_id)?));
+    let talus_id = deployment
+        .get("external_us")
+        .and_then(|value| value.get("package_id"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow!("{source} is missing external_us.package_id"))?;
     packages.push((TALUS_PACKAGE.0.to_string(), parse_address(talus_id)?));
     packages.push((
         SUI_FRAMEWORK_PACKAGE.0.to_string(),
@@ -504,25 +561,21 @@ mod tests {
 
     #[test]
     fn parses_required_rebind_packages() {
-        let objects = [
-            r#"[packages.primitives]"#,
-            r#"storage_id = "0x11""#,
-            r#"[packages.interface]"#,
-            r#"storage_id = "0x12""#,
-            r#"[packages.registry]"#,
-            r#"storage_id = "0x13""#,
-            r#"[packages.workflow]"#,
-            r#"storage_id = "0x14""#,
-            r#"[packages.scheduler]"#,
-            r#"storage_id = "0x15""#,
-            r#"[packages.tool]"#,
-            r#"storage_id = "0x17""#,
-            r#"[us_token]"#,
-            r#"package_id = "0x16""#,
-        ]
-        .join("\n");
-        let packages = packages_from_objects_toml(&objects, "objects.localnet.toml")
-            .expect("objects TOML parses");
+        let deployment = serde_json::json!({
+            "kind": "deployment",
+            "packages": {
+                "primitives": {"storage_id": "0x11"},
+                "interface": {"storage_id": "0x12"},
+                "registry": {"storage_id": "0x13"},
+                "workflow": {"storage_id": "0x14"},
+                "scheduler": {"storage_id": "0x15"},
+                "tool": {"storage_id": "0x17"}
+            },
+            "kernel": {"package_id": "0x18"},
+            "external_us": {"package_id": "0x16"}
+        });
+        let packages = packages_from_metadata(&deployment, Path::new("deployment.json"))
+            .expect("deployment JSON parses");
 
         assert_eq!(
             packages,
@@ -533,6 +586,7 @@ mod tests {
                 ("registry".to_string(), Address::from_str("0x13").unwrap()),
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
+                ("kernel".to_string(), Address::from_str("0x18").unwrap()),
                 ("talus".to_string(), Address::from_str("0x16").unwrap()),
                 (
                     "sui_framework".to_string(),
@@ -595,35 +649,32 @@ mod tests {
     }
 
     #[test]
-    fn rejects_objects_without_talus_package() {
-        let objects = [
-            r#"[packages.primitives]"#,
-            r#"storage_id = "0x11""#,
-            r#"[packages.interface]"#,
-            r#"storage_id = "0x12""#,
-            r#"[packages.registry]"#,
-            r#"storage_id = "0x13""#,
-            r#"[packages.workflow]"#,
-            r#"storage_id = "0x14""#,
-            r#"[packages.scheduler]"#,
-            r#"storage_id = "0x15""#,
-            r#"[packages.tool]"#,
-            r#"storage_id = "0x17""#,
-        ]
-        .join("\n");
+    fn rejects_deployment_without_talus_package() {
+        let deployment = serde_json::json!({
+            "kind": "deployment",
+            "packages": {
+                "primitives": {"storage_id": "0x11"},
+                "interface": {"storage_id": "0x12"},
+                "registry": {"storage_id": "0x13"},
+                "workflow": {"storage_id": "0x14"},
+                "scheduler": {"storage_id": "0x15"},
+                "tool": {"storage_id": "0x17"}
+            },
+            "kernel": {"package_id": "0x18"}
+        });
 
-        let error = packages_from_objects_toml(&objects, "objects.toml")
+        let error = packages_from_metadata(&deployment, Path::new("deployment.json"))
             .expect_err("Talus package metadata is required");
 
-        assert!(error.to_string().contains("us_token.package_id"));
+        assert!(error.to_string().contains("external_us.package_id"));
     }
 
     #[test]
-    fn accepts_objects_file_and_optional_grpc_url() {
+    fn accepts_metadata_file_and_optional_grpc_url() {
         assert_eq!(
             Inputs::from_args(["objects.toml".to_string()]).unwrap(),
             Inputs {
-                objects_file: PathBuf::from("objects.toml"),
+                metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
                 source_root: None,
             }
@@ -636,7 +687,7 @@ mod tests {
             ])
             .unwrap(),
             Inputs {
-                objects_file: PathBuf::from("objects.toml"),
+                metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: "http://localhost:9000".to_string(),
                 source_root: None,
             }
@@ -653,7 +704,7 @@ mod tests {
             ])
             .unwrap(),
             Inputs {
-                objects_file: PathBuf::from("objects.toml"),
+                metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
                 source_root: Some(PathBuf::from("../nexus/sui")),
             }
@@ -668,7 +719,7 @@ mod tests {
             ])
             .unwrap(),
             Inputs {
-                objects_file: PathBuf::from("objects.toml"),
+                metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: "http://localhost:9000".to_string(),
                 source_root: Some(PathBuf::from("../nexus/sui")),
             }
@@ -764,29 +815,34 @@ mod tests {
         }
 
         let mut first = vec![
+            ("kernel".to_string(), package("0x01", "0x01", "0x20")),
             ("primitives".to_string(), package("0x11", "0x10", "0x20")),
             ("interface".to_string(), package("0x21", "0x20", "0x10")),
             ("talus".to_string(), package("0x31", "0x30", "0x10")),
         ];
         let mut second = vec![
+            ("kernel".to_string(), package("0x001", "0x001", "0x220")),
             ("primitives".to_string(), package("0x111", "0x110", "0x220")),
             ("interface".to_string(), package("0x221", "0x220", "0x110")),
             ("talus".to_string(), package("0x331", "0x330", "0x110")),
         ];
-        second[0].1.version = 7;
-        second[1].1.version = 9;
-        second[2].1.version = 11;
+        second[0].1.version = 5;
+        second[1].1.version = 7;
+        second[2].1.version = 9;
+        second[3].1.version = 11;
 
         canonicalize_sdk_ir(&mut first);
         canonicalize_sdk_ir(&mut second);
 
         assert_eq!(first, second);
-        assert_eq!(first[0].1.storage_id, "0xa1");
-        assert_eq!(first[0].1.original_id.as_deref(), Some("0xa1"));
-        assert_eq!(first[2].1.storage_id, "0xa6");
-        assert_eq!(first[2].1.original_id.as_deref(), Some("0xa6"));
+        assert_eq!(first[0].1.storage_id, "0xa0");
+        assert_eq!(first[0].1.original_id.as_deref(), Some("0xa0"));
+        assert_eq!(first[1].1.storage_id, "0xa1");
+        assert_eq!(first[1].1.original_id.as_deref(), Some("0xa1"));
+        assert_eq!(first[3].1.storage_id, "0xa6");
+        assert_eq!(first[3].1.original_id.as_deref(), Some("0xa6"));
         assert_eq!(
-            first[0].1.modules["m"].functions[0].parameters[0].ty,
+            first[1].1.modules["m"].functions[0].parameters[0].ty,
             TypeRef::Datatype {
                 type_name: TypeName::parse("0xa2::m::Obj").unwrap(),
                 type_arguments: vec![],

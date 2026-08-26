@@ -5,11 +5,10 @@
 
 use {
     anyhow::Context as _,
-    http::header::{HeaderValue, CONTENT_TYPE},
     portpicker::pick_unused_port,
-    std::time::Duration,
+    std::time::{Duration, Instant},
     testcontainers::{
-        core::{client, ports::ContainerPort, wait::HttpWaitStrategy, ContainerRequest, WaitFor},
+        core::{client, ports::ContainerPort, ContainerRequest},
         runners::AsyncRunner,
         ContainerAsync,
         GenericImage,
@@ -25,12 +24,13 @@ pub type RedisContainer = ContainerAsync<Redis>;
 pub type ExecCommand = testcontainers::core::ExecCommand;
 
 const SUI_TOOLS_IMAGE: &str = "mysten/sui-tools";
-const SUI_TOOLS_TAG_AMD64: &str = "testnet-v1.76.0";
-const SUI_TOOLS_TAG_ARM64: &str = "testnet-v1.76.0-arm64";
+const SUI_TOOLS_TAG_AMD64: &str = "testnet-v1.77.2";
+const SUI_TOOLS_TAG_ARM64: &str = "testnet-v1.77.2-arm64";
 const SUI_RPC_PORT: ContainerPort = ContainerPort::Tcp(9000);
 const SUI_FAUCET_PORT: ContainerPort = ContainerPort::Tcp(9123);
 const SUI_GRAPHQL_PORT: ContainerPort = ContainerPort::Tcp(9125);
-const SUI_READY_REQUEST: &str = r#"{"jsonrpc":"2.0","method":"sui_getChainIdentifier","id":1}"#;
+const SUI_GRPC_READY_TIMEOUT: Duration = Duration::from_secs(60);
+const SUI_GRPC_READY_INTERVAL: Duration = Duration::from_millis(100);
 
 /// A running Sui test network and its mapped service ports.
 pub struct SuiInstance {
@@ -75,21 +75,45 @@ fn sui_request(
         command.push(duration_ms.to_string());
     }
 
-    let ready = HttpWaitStrategy::new("/")
-        .with_port(SUI_RPC_PORT)
-        .with_method("POST".parse().expect("POST is a valid HTTP method"))
-        .with_body(SUI_READY_REQUEST)
-        .with_header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-        .with_expected_status_code(200_u16);
-
     Ok(GenericImage::new(SUI_TOOLS_IMAGE, tag)
         .with_entrypoint("sui")
         .with_exposed_port(SUI_RPC_PORT)
         .with_exposed_port(SUI_FAUCET_PORT)
         .with_exposed_port(SUI_GRAPHQL_PORT)
-        .with_wait_for(WaitFor::http(ready))
         .with_env_var("RUST_LOG", "warning,sui_node=info")
         .with_cmd(command))
+}
+
+async fn wait_for_sui_grpc(rpc_port: u16) -> anyhow::Result<()> {
+    let rpc_url = format!("http://127.0.0.1:{rpc_port}");
+    let started = Instant::now();
+    let mut last_error = None;
+
+    while started.elapsed() < SUI_GRPC_READY_TIMEOUT {
+        match crate::sui::grpc::Client::new(&rpc_url) {
+            Ok(mut client) => match client
+                .ledger_client()
+                .get_service_info(crate::sui::grpc::GetServiceInfoRequest::default())
+                .await
+            {
+                Ok(response) => {
+                    if response.into_inner().chain_id.is_some() {
+                        return Ok(());
+                    }
+                    last_error = Some("service info omitted the chain id".to_owned());
+                }
+                Err(error) => last_error = Some(error.to_string()),
+            },
+            Err(error) => last_error = Some(error.to_string()),
+        }
+        tokio::time::sleep(SUI_GRPC_READY_INTERVAL).await;
+    }
+
+    anyhow::bail!(
+        "Sui gRPC did not become ready at {rpc_url} within {:?}: {}",
+        SUI_GRPC_READY_TIMEOUT,
+        last_error.unwrap_or_else(|| "no response".to_owned())
+    )
 }
 
 /// Starts a Sui container with the default epoch duration.
@@ -149,6 +173,7 @@ pub async fn try_setup_sui_instance(
         .with_mapped_port(faucet_host_port, SUI_FAUCET_PORT);
 
     let container = sui_request.start().await.context("start Sui container")?;
+    wait_for_sui_grpc(rpc_host_port).await?;
 
     Ok(SuiInstance {
         container,
@@ -227,7 +252,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(command, vec!["start", "--force-regenesis", "--with-faucet"]);
-        assert_eq!(request.descriptor(), "mysten/sui-tools:testnet-v1.76.0");
+        assert_eq!(request.descriptor(), "mysten/sui-tools:testnet-v1.77.2");
         assert_eq!(request.entrypoint(), Some("sui"));
         assert_eq!(
             request.image().expose_ports(),
@@ -237,9 +262,6 @@ mod tests {
             environment,
             vec![("RUST_LOG".to_owned(), "warning,sui_node=info".to_owned())]
         );
-        assert!(matches!(
-            request.image().ready_conditions().as_slice(),
-            [WaitFor::Http(_)]
-        ));
+        assert!(request.image().ready_conditions().is_empty());
     }
 }

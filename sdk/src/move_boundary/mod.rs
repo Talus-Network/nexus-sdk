@@ -1,7 +1,7 @@
 //! SDK boundary helpers for generated Move bindings.
 //!
 //! Generated package bindings carry the package IDs from committed IR. Production SDK code scopes
-//! those bindings with the deployment specific package IDs from [`NexusObjects`] before creating
+//! those bindings with the operation specific package IDs from [`NexusContext`] before creating
 //! call targets or type tags.
 
 #[cfg(feature = "transactions")]
@@ -17,7 +17,7 @@ use crate::sui;
 #[cfg(feature = "transactions")]
 use crate::{
     move_bindings::{interface, move_std, primitives, sui_framework},
-    types::{NexusData, NexusObjects},
+    types::{NexusContext, NexusData, NexusObjects, SharedRoot},
 };
 #[cfg(feature = "transactions")]
 use std::{
@@ -60,29 +60,33 @@ pub(crate) fn publish_dependency_ids_or_framework_defaults(
     }
 }
 
-/// A PTB builder bound to one Nexus deployment.
+/// A PTB builder bound to one [`NexusContext`].
 ///
-/// The builder owns the canonical [`PtbBuilder`] and the [`NexusObjects`] that
-/// define package identity. Generated call targets and generic Move types are
-/// resolved through that same deployment.
+/// The builder owns the canonical [`PtbBuilder`] and the exact package graph
+/// that defines authority for this operation.
 #[cfg(feature = "transactions")]
 pub struct NexusPtbBuilder {
-    objects: Arc<NexusObjects>,
+    context: Arc<NexusContext>,
     tx: PtbBuilder,
 }
 
 #[cfg(feature = "transactions")]
 impl NexusPtbBuilder {
-    pub(crate) fn new(objects: Arc<NexusObjects>) -> Self {
+    pub(crate) fn new(context: Arc<NexusContext>) -> Self {
         Self {
-            objects,
+            context,
             tx: PtbBuilder::new(),
         }
     }
 
-    /// Deployment object/package IDs associated with this PTB.
+    /// Stable environment identities associated with this PTB.
     pub fn objects(&self) -> &NexusObjects {
-        self.objects.as_ref()
+        self.context.objects()
+    }
+
+    /// Operation context associated with this PTB.
+    pub fn context(&self) -> &NexusContext {
+        self.context.as_ref()
     }
 
     /// Add a generated Move call target to this PTB.
@@ -91,8 +95,59 @@ impl NexusPtbBuilder {
         target: impl FnOnce() -> Result<CallTarget, sui_move_call::CallSpecError>,
         arguments: Vec<Argument>,
     ) -> anyhow::Result<Argument> {
-        let target = crate::move_bindings::with_nexus_scope(self.objects.as_ref(), target)?;
+        let target = crate::move_bindings::with_nexus_scope(self.context.as_ref(), target)?;
+        let allowed = target.package == sui::types::Address::from_static("0x1")
+            || target.package == sui::types::Address::from_static("0x2")
+            || target.package == self.context.us_token.package_id
+            || self
+                .context
+                .packages()
+                .all()
+                .any(|package| package.storage_id == target.package);
+        if !allowed {
+            anyhow::bail!(
+                "Generated call '{}::{}::{}' uses a package role absent from the operation graph",
+                target.package,
+                target.module,
+                target.function
+            );
+        }
         Ok(self.tx.call_target(target, arguments)?)
+    }
+
+    /// Adds a canonical shared root from its stable identity.
+    pub fn shared_root<M: Into<sui::types::Mutability>>(
+        &mut self,
+        root: &SharedRoot,
+        mutability: M,
+    ) -> Result<Argument, BuildError> {
+        self.tx
+            .shared_object_by_id(root.object_id, root.initial_shared_version, mutability)
+    }
+
+    /// Add the fixed runtime authority root.
+    ///
+    /// Protocol effect calls borrow this root before entering the Scheduler
+    /// facade. Keeping the input construction here makes the authority edge
+    /// explicit and identical across every transaction builder.
+    pub fn runtime_authority<M: Into<sui::types::Mutability>>(
+        &mut self,
+        mutability: M,
+    ) -> Result<Argument, BuildError> {
+        let authority = self.objects().runtime_authority;
+        self.shared_root(&authority, mutability)
+    }
+
+    /// Add an immutable object reference.
+    ///
+    /// Sui encodes immutable and address owned objects through the same PTB
+    /// input form. This name records the stronger protocol invariant at call
+    /// sites such as finalized DAG reads.
+    pub fn immutable_object(
+        &mut self,
+        object: &sui::types::ObjectReference,
+    ) -> Result<Argument, BuildError> {
+        self.tx.owned_object(object)
     }
 
     /// Add an already built Move call target to this PTB.
@@ -185,7 +240,7 @@ impl NexusPtbBuilder {
     /// be built.
     pub fn withdraw_sui_coin(&mut self, amount: u64) -> Result<Argument, BuildError> {
         let sui_type =
-            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects.as_ref());
+            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.context.as_ref());
         self.withdraw_coin_from_address_balance(sui_type, amount)
     }
 
@@ -221,7 +276,7 @@ impl NexusPtbBuilder {
         recipient: sui::types::Address,
     ) -> anyhow::Result<()> {
         let sui_type =
-            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects.as_ref());
+            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.context.as_ref());
         self.send_coin_to_address_balance(sui_type, coin, recipient)
     }
 
@@ -329,10 +384,10 @@ impl NexusPtbBuilder {
         self.call_target(target, vec![])
     }
 
-    /// Build one generated `primitives::data::NexusValue` witness.
+    /// Build one generated `primitives::data::NexusValue`.
     pub(crate) fn nexus_value(&mut self, value: &NexusValue) -> anyhow::Result<Argument> {
         if !value.is_well_formed() {
-            anyhow::bail!("cannot build malformed NexusValue witness");
+            anyhow::bail!("cannot build malformed NexusValue");
         }
         match value {
             NexusValue::Object { id } => {
@@ -344,30 +399,38 @@ impl NexusPtbBuilder {
                 self.call_target(primitives::data::inline_data_value_target, vec![bytes])
             }
             NexusValue::WalrusData {
-                storage_key,
+                blob_id,
                 content_digest,
             } => {
-                let storage_key = self.byte_vector(storage_key)?;
+                let blob_id = self.byte_vector(blob_id)?;
                 let content_digest = self.byte_vector(content_digest)?;
                 self.call_target(
                     primitives::data::walrus_data_value_target,
-                    vec![storage_key, content_digest],
+                    vec![blob_id, content_digest],
                 )
             }
         }
     }
 
-    /// Build a schema port's exact ordered `NexusValue` witness group.
-    pub(crate) fn nexus_value_witnesses(&mut self, value: &NexusData) -> anyhow::Result<Argument> {
+    /// Build one direct generated `primitives::data::NexusData` value.
+    pub(crate) fn nexus_data(&mut self, value: &NexusData) -> anyhow::Result<Argument> {
         if !value.is_well_formed() {
-            anyhow::bail!("cannot build malformed NexusData witnesses");
+            anyhow::bail!("cannot build malformed NexusData");
         }
-        let values = value.values()?;
-        let values = values
-            .iter()
-            .map(|value| self.nexus_value(value))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(self.move_vector::<NexusValue>(values)?)
+        match value {
+            NexusData::One { value } => {
+                let value = self.nexus_value(value)?;
+                self.call_target(primitives::data::one_target, vec![value])
+            }
+            NexusData::Many { values } => {
+                let values = values
+                    .iter()
+                    .map(|value| self.nexus_value(value))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let values = self.move_vector::<NexusValue>(values)?;
+                self.call_target(primitives::data::many_target, vec![values])
+            }
+        }
     }
 
     /// Build a generated immutable `interface::meta_schema::MetaSchema`.
@@ -442,7 +505,7 @@ impl NexusPtbBuilder {
     where
         T: sui_move::MoveType,
     {
-        let element_type = crate::move_bindings::type_tag::<T>(self.objects.as_ref());
+        let element_type = crate::move_bindings::type_tag::<T>(self.context.as_ref());
         self.tx.make_move_vector(Some(element_type), elements)
     }
 
@@ -451,7 +514,7 @@ impl NexusPtbBuilder {
     where
         T: sui_move::MoveType,
     {
-        crate::move_bindings::with_nexus_scope(self.objects.as_ref(), || {
+        crate::move_bindings::with_nexus_scope(self.context.as_ref(), || {
             option::<T>(&mut self.tx, value)
         })
     }
@@ -469,11 +532,11 @@ impl NexusPtbBuilder {
 /// finalization.
 #[cfg(feature = "transactions")]
 pub fn ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     build: impl FnOnce(&mut NexusPtbBuilder) -> anyhow::Result<()>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    let mut tx = NexusPtbBuilder::new(Arc::new(objects.clone()));
-    crate::move_bindings::with_nexus_scope(objects, || build(&mut tx))?;
+    let mut tx = NexusPtbBuilder::new(Arc::new(context.clone()));
+    crate::move_bindings::with_nexus_scope(context, || build(&mut tx))?;
     Ok(tx.finish())
 }
 
@@ -519,10 +582,11 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::agent::FixedTool,
-                tool::tool_cashier::{settle_payment_vertex_target, ToolCashier},
+                tool::tool_cashier::{send_deposit_target, ToolCashier},
             },
             sui,
-            types::{DefaultDagExecutorTarget, UsTokenConfig},
+            test_utils::sui_mocks,
+            types::{NexusContext, NexusPackages, PackageRole, PackageVersion},
         },
         sui_move::MoveStruct,
         sui_move_call::CallArg,
@@ -530,10 +594,6 @@ mod tests {
 
     fn addr(byte: u8) -> sui::types::Address {
         sui::types::Address::new([byte; 32])
-    }
-
-    fn obj(byte: u8) -> sui::types::ObjectReference {
-        sui::types::ObjectReference::new(addr(byte), 1, sui::types::Digest::new([byte; 32]))
     }
 
     #[test]
@@ -594,67 +654,33 @@ mod tests {
         );
     }
 
-    fn objects() -> NexusObjects {
-        NexusObjects {
-            protocol_version: 1,
-            protocol: obj(10),
-            packages: crate::types::NexusPackages {
-                primitives: crate::types::PackageVersion::new(
-                    addr(0x10),
-                    addr(0x11),
-                    2,
-                    Default::default(),
-                ),
-                interface: crate::types::PackageVersion::new(
-                    addr(0x20),
-                    addr(0x22),
-                    2,
-                    Default::default(),
-                ),
-                tool: crate::types::PackageVersion::new(
-                    addr(0x80),
-                    addr(0x88),
-                    2,
-                    Default::default(),
-                ),
-                registry: crate::types::PackageVersion::new(
-                    addr(0x30),
-                    addr(0x33),
-                    2,
-                    Default::default(),
-                ),
-                workflow: crate::types::PackageVersion::new(
-                    addr(0x40),
-                    addr(0x44),
-                    2,
-                    Default::default(),
-                ),
-                scheduler: crate::types::PackageVersion::new(
-                    addr(0x50),
-                    addr(0x55),
-                    2,
-                    Default::default(),
-                ),
-            },
-            config_hash: vec![0; 32],
-            network_id: addr(0x77),
-            tool_registry: obj(1),
-            network_auth: obj(3),
-            agent_registry: obj(4),
-            default_dag_executor: DefaultDagExecutorTarget {
-                agent_id: addr(5),
-                skill_id: 1,
-            },
-            leader_registry: obj(7),
-            priority_fee_vault: obj(8),
-            priority_fee_vault_owner_cap: obj(9),
-            us_token: UsTokenConfig::new(addr(0x66)),
+    fn objects() -> NexusContext {
+        fn package(initial: u8, storage: u8) -> PackageVersion {
+            PackageVersion::new(
+                addr(initial),
+                addr(storage),
+                2,
+                Default::default(),
+                Default::default(),
+            )
         }
+
+        NexusContext::new(
+            Arc::new(sui_mocks::mock_nexus_objects()),
+            NexusPackages {
+                primitives: Some(package(0x10, 0x11)),
+                interface: Some(package(0x20, 0x22)),
+                tool: Some(package(0x80, 0x88)),
+                registry: Some(package(0x30, 0x33)),
+                workflow: Some(package(0x40, 0x44)),
+                scheduler: Some(package(0x50, 0x55)),
+            },
+        )
     }
 
     fn nexus_value_constructors(value: &NexusData) -> Vec<String> {
         let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
-        transaction.nexus_value_witnesses(value).unwrap();
+        transaction.nexus_data(value).unwrap();
         transaction
             .finish()
             .commands
@@ -682,33 +708,36 @@ mod tests {
     }
 
     #[test]
-    fn nexus_data_one_builds_one_inline_witness() {
+    fn nexus_data_one_builds_direct_inline_value() {
         let value = NexusData::inline_data(b"one").expect("fixture is bounded");
 
-        assert_eq!(nexus_value_constructors(&value), ["inline_data_value"]);
+        assert_eq!(
+            nexus_value_constructors(&value),
+            ["inline_data_value", "one"]
+        );
     }
 
     #[test]
-    fn nexus_data_many_builds_each_inline_witness() {
+    fn nexus_data_many_builds_direct_inline_values() {
         let value = NexusData::inline_data_many([b"one".to_vec(), b"two".to_vec()])
             .expect("fixture shape matches");
 
         assert_eq!(
             nexus_value_constructors(&value),
-            ["inline_data_value", "inline_data_value"]
+            ["inline_data_value", "inline_data_value", "many"]
         );
     }
 
     #[test]
     fn nexus_data_empty_many_builds_no_ptb_inputs_or_commands() {
-        let value = NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new());
+        let value = NexusData::Many { values: Vec::new() };
         let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
 
         assert!(transaction
-            .nexus_value_witnesses(&value)
+            .nexus_data(&value)
             .unwrap_err()
             .to_string()
-            .contains("cannot build malformed NexusData witnesses"));
+            .contains("cannot build malformed NexusData"));
         let transaction = transaction.finish();
         assert!(transaction.inputs.is_empty());
         assert!(transaction.commands.is_empty());
@@ -723,10 +752,10 @@ mod tests {
                 .expect("fixture is valid");
 
         transaction
-            .nexus_value_witnesses(&object)
+            .nexus_data(&object)
             .expect("typed Object should build");
         transaction
-            .nexus_value_witnesses(&walrus)
+            .nexus_data(&walrus)
             .expect("typed Walrus Data should build");
         let functions = transaction
             .finish()
@@ -746,7 +775,7 @@ mod tests {
         let value = NexusData::inline_data(vec![0; 61_440]).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
-        builder.nexus_value_witnesses(&value).unwrap();
+        builder.nexus_data(&value).unwrap();
 
         assert_sui_protocol_limits(&builder.finish());
     }
@@ -756,7 +785,7 @@ mod tests {
         let value = NexusData::inline_data_many((0..256).map(|_| vec![0; 240])).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
-        builder.nexus_value_witnesses(&value).unwrap();
+        builder.nexus_data(&value).unwrap();
 
         assert_sui_protocol_limits(&builder.finish());
     }
@@ -768,7 +797,7 @@ mod tests {
             NexusData::walrus_data_many((0..256).map(|_| (blob_id.to_vec(), vec![0; 32]))).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
-        builder.nexus_value_witnesses(&value).unwrap();
+        builder.nexus_data(&value).unwrap();
 
         assert_sui_protocol_limits(&builder.finish());
     }
@@ -817,13 +846,14 @@ mod tests {
 
         let (target, tag) = crate::move_bindings::with_nexus_scope(&objects, || {
             (
-                settle_payment_vertex_target().unwrap(),
+                send_deposit_target().unwrap(),
                 ToolCashier::struct_tag_static(),
             )
         });
 
-        assert_eq!(target.package, objects.tool_pkg_id());
-        assert_eq!(*tag.address(), objects.tool_cashier_type_origin_pkg_id());
+        let tool = objects.require_package(PackageRole::Tool).unwrap();
+        assert_eq!(target.package, tool.storage_id);
+        assert_eq!(*tag.address(), tool.initial_id);
     }
 
     #[test]
@@ -844,7 +874,10 @@ mod tests {
 
         assert_eq!(
             *element_type.address(),
-            objects.interface_type_origin_pkg_id()
+            objects
+                .require_package(PackageRole::Interface)
+                .unwrap()
+                .initial_id
         );
 
         let sui::types::Command::MoveCall(option) = &transaction.commands[1] else {
@@ -856,7 +889,10 @@ mod tests {
 
         assert_eq!(
             *element_type.address(),
-            objects.interface_type_origin_pkg_id()
+            objects
+                .require_package(PackageRole::Interface)
+                .unwrap()
+                .initial_id
         );
     }
 

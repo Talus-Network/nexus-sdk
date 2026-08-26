@@ -1,8 +1,20 @@
 use {
     crate::{
         sui,
-        types::{DefaultDagExecutorTarget, NexusObjects, NexusPackages, UsTokenConfig},
+        types::{
+            NexusContext,
+            NexusObjects,
+            NexusPackages,
+            ObjectIdentity,
+            PackageLink,
+            PackageLinkage,
+            PackageVersion,
+            SharedRoot,
+            TypeOrigins,
+            UsTokenConfig,
+        },
     },
+    std::sync::Arc,
     sui_transaction_builder as tx,
 };
 
@@ -38,32 +50,164 @@ pub fn mock_sui_address() -> sui::types::Address {
 /// Creates random [`NexusObjects`].
 pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
+    let shared_root = || {
+        let object = mock_sui_object_ref();
+        SharedRoot::new(*object.object_id(), object.version())
+    };
+    let identity = || ObjectIdentity::new(sui::types::Address::generate(rand::thread_rng()));
 
     NexusObjects {
-        protocol_version: 1,
-        protocol: mock_sui_object_ref(),
-        packages: NexusPackages::first_publication(
-            sui::types::Address::generate(&mut rng),
-            sui::types::Address::generate(&mut rng),
-            sui::types::Address::generate(&mut rng),
+        chain_id: sui::types::Digest::ZERO.to_string(),
+        network_id: sui::types::Address::generate(&mut rng),
+        tool_registry: shared_root(),
+        network_auth: shared_root(),
+        agent_registry: shared_root(),
+        leader_registry: shared_root(),
+        priority_fee_vault: shared_root(),
+        runtime_authority: shared_root(),
+        leader_admin_cap: identity(),
+        tool_registry_admin_cap: identity(),
+        slashing_cap: identity(),
+        priority_fee_vault_owner_cap: identity(),
+        initial_leader_cap: identity(),
+        runtime_authority_cap: identity(),
+        us_token: UsTokenConfig::new(
             sui::types::Address::generate(&mut rng),
             sui::types::Address::generate(&mut rng),
             sui::types::Address::generate(&mut rng),
         ),
-        config_hash: vec![0; 32],
-        network_id: sui::types::Address::generate(&mut rng),
-        tool_registry: mock_sui_object_ref(),
-        network_auth: mock_sui_object_ref(),
-        agent_registry: mock_sui_object_ref(),
-        default_dag_executor: DefaultDagExecutorTarget {
-            agent_id: sui::types::Address::generate(&mut rng),
-            skill_id: 1,
-        },
-        leader_registry: mock_sui_object_ref(),
-        priority_fee_vault: mock_sui_object_ref(),
-        priority_fee_vault_owner_cap: mock_sui_object_ref(),
-        us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
     }
+}
+
+/// Creates the package graph used by SDK unit tests.
+pub fn mock_nexus_packages() -> NexusPackages {
+    fn package(
+        address: &'static str,
+        datatypes: &[(&str, &str)],
+        dependencies: &[&'static str],
+    ) -> PackageVersion {
+        let address = sui::types::Address::from_static(address);
+        let mut origins = TypeOrigins::new();
+        for (module, datatype) in datatypes {
+            origins
+                .entry((*module).to_owned())
+                .or_default()
+                .insert((*datatype).to_owned(), address);
+        }
+        let linkage = dependencies
+            .iter()
+            .map(|dependency| {
+                let dependency = sui::types::Address::from_static(dependency);
+                (
+                    dependency,
+                    PackageLink {
+                        storage_id: dependency,
+                        version: 1,
+                    },
+                )
+            })
+            .collect::<PackageLinkage>();
+        PackageVersion::new(address, address, 1, origins, linkage)
+    }
+
+    NexusPackages {
+        primitives: Some(package(
+            "0xa1",
+            &[
+                ("object_state", "Inner"),
+                ("object_state", "Witness"),
+                ("event", "EventWrapper"),
+                ("proof_of_uid", "ProofOfUID"),
+                ("tagged_output", "TaggedOutput"),
+            ],
+            &[],
+        )),
+        interface: Some(package(
+            "0xa2",
+            &[
+                ("era", "V1"),
+                ("agent", "Agent"),
+                ("agent", "AgentInnerV1"),
+                ("agent", "AgentPaymentVault"),
+                ("agent", "AgentPaymentVaultInnerV1"),
+                ("authorization", "AgentSkillAuthorization"),
+                ("authorization", "AgentSkillAuthorizationInnerV1"),
+                ("dag", "DAG"),
+                ("dag", "DAGInnerV1"),
+                ("graph", "Vertex"),
+                ("graph", "VertexEvaluations"),
+                ("graph", "VertexEvaluationsInnerV1"),
+                ("onchain_tool_result", "OnchainToolResult"),
+                ("onchain_tool_result", "OnchainToolResultInnerV1"),
+                ("payment", "ExecutionPayment"),
+                ("payment", "ExecutionPaymentInnerV1"),
+                ("payment", "TaskPaymentReserve"),
+                ("payment", "TaskPaymentReserveInnerV1"),
+                ("verifier", "VerificationVerdict"),
+            ],
+            &["0xa1"],
+        )),
+        tool: Some(package(
+            "0xa7",
+            &[
+                ("era", "V1"),
+                ("tool_registry", "ToolRegistry"),
+                ("tool_registry", "ToolRegistryInnerV1"),
+                ("tool_registry", "Tool"),
+                ("tool_registry", "ToolInnerV1"),
+                ("tool_cashier", "ToolCashier"),
+                ("tool_cashier", "ToolCashierInnerV1"),
+                ("tool_cashier", "ToolCashierKey"),
+                ("finite_credits", "Policy"),
+                ("fixed_price", "Policy"),
+                ("time_pass", "Policy"),
+            ],
+            &["0xa1", "0xa2"],
+        )),
+        registry: Some(package(
+            "0xa3",
+            &[
+                ("era", "V1"),
+                ("agent_registry", "AgentRegistry"),
+                ("agent_registry", "AgentRegistryInnerV1"),
+                ("leader", "LeaderRegistry"),
+                ("leader", "LeaderRegistryInnerV1"),
+                ("network_auth", "NetworkAuth"),
+                ("network_auth", "NetworkAuthInnerV1"),
+                ("network_auth", "IdentityKey"),
+                ("network_auth", "KeyBinding"),
+                ("network_auth", "KeyBindingInnerV1"),
+                ("priority_fee_vault", "PriorityFeeVault"),
+                ("priority_fee_vault", "PriorityFeeVaultInnerV1"),
+            ],
+            &["0xa1", "0xa2", "0xa7"],
+        )),
+        workflow: Some(package(
+            "0xa4",
+            &[
+                ("era", "V1"),
+                ("execution", "DAGExecution"),
+                ("execution", "DAGExecutionInnerV1"),
+            ],
+            &["0xa1", "0xa2", "0xa7", "0xa3"],
+        )),
+        scheduler: Some(package(
+            "0xa5",
+            &[("era", "V1"), ("task", "Task"), ("task", "TaskInnerV1")],
+            &["0xa1", "0xa2", "0xa7", "0xa3", "0xa4"],
+        )),
+    }
+}
+
+/// Creates an operation context for `objects` using the test package graph.
+pub fn mock_nexus_context_for(objects: &NexusObjects) -> NexusContext {
+    NexusContext::new(Arc::new(objects.clone()), mock_nexus_packages())
+}
+
+/// Creates stable environment identity and an operation package graph.
+pub fn mock_nexus_context() -> NexusContext {
+    let objects = mock_nexus_objects();
+    mock_nexus_context_for(&objects)
 }
 
 /// Generate a mock [`sui::types::Event`]
@@ -105,13 +249,19 @@ pub mod grpc {
         super::*,
         crate::{
             events::NexusEventKind,
-            move_bindings::primitives::{data::NexusData, event as event_move},
+            move_bindings::{
+                move_std::{option::Option as MoveOption, type_name::TypeName},
+                primitives::{data::NexusData, event as event_move},
+                sui_framework::object::{ID, UID},
+            },
+            types::PackageRole,
         },
         mockall::mock,
         serde::Serialize,
         std::time::SystemTime,
         sui_rpc::proto::sui::rpc::v2::{
             ledger_service_server::{LedgerService, LedgerServiceServer},
+            move_package_service_server::{MovePackageService, MovePackageServiceServer},
             state_service_server::{StateService, StateServiceServer},
             subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
             transaction_execution_service_server::{
@@ -201,6 +351,18 @@ pub mod grpc {
                 &self,
                 request: Request<ListBalancesRequest>,
             ) -> Result<Response<ListBalancesResponse>, Status>;
+        }
+    }
+
+    mock! {
+        pub MovePackageService {}
+
+        #[tonic::async_trait]
+        impl MovePackageService for MovePackageService {
+            async fn get_package(
+                &self,
+                request: Request<GetPackageRequest>,
+            ) -> Result<Response<GetPackageResponse>, Status>;
         }
     }
 
@@ -318,13 +480,16 @@ pub mod grpc {
 
     #[derive(Default)]
     pub struct ServerMocks {
+        /// Chain identity reported by the mock Sui service.
+        pub chain_id: sui::types::Digest,
         pub ledger_service_mock: Option<MockLedgerService>,
+        pub package_service_mock: Option<MockMovePackageService>,
         pub execution_service_mock: Option<MockTransactionExecutionService>,
         pub subscription_service_mock: Option<MockSubscriptionService>,
         pub state_service_mock: Option<MockStateService>,
     }
 
-    pub fn mock_server(mocks: ServerMocks) -> String {
+    pub fn mock_server(mut mocks: ServerMocks) -> String {
         // Bind a listener first so the returned URL is immediately connectable.
         //
         // This avoids flaky tests under parallel execution where `pick_unused_port` can race and
@@ -336,7 +501,20 @@ pub mod grpc {
             tokio::net::TcpListener::from_std(listener).expect("tokio listener from std");
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
-        let ledger_service = mocks.ledger_service_mock.map(LedgerServiceServer::new);
+        let mut ledger_service = mocks.ledger_service_mock.take().unwrap_or_default();
+        let chain_id = mocks.chain_id;
+        ledger_service
+            .expect_get_service_info()
+            .times(0..)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetServiceInfoResponse::default();
+                response.chain_id = Some(chain_id.to_string());
+                Ok(tonic::Response::new(response))
+            });
+        let ledger_service = Some(LedgerServiceServer::new(ledger_service));
+        let package_service = mocks
+            .package_service_mock
+            .map(MovePackageServiceServer::new);
         let execution_service = mocks
             .execution_service_mock
             .map(TransactionExecutionServiceServer::new);
@@ -348,6 +526,7 @@ pub mod grpc {
         tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_optional_service(ledger_service)
+                .add_optional_service(package_service)
                 .add_optional_service(execution_service)
                 .add_optional_service(subscription_service)
                 .add_optional_service(state_service)
@@ -357,6 +536,171 @@ pub mod grpc {
         });
 
         format!("http://{}", addr)
+    }
+
+    /// Serve immutable package metadata for one test operation graph.
+    pub fn mock_nexus_package_graph(
+        ledger_service: &mut MockLedgerService,
+        package_service: &mut MockMovePackageService,
+        packages: &NexusPackages,
+    ) {
+        mock_package_versions(ledger_service, package_service, packages.all().cloned());
+    }
+
+    #[derive(Serialize)]
+    struct RuntimeAuthorityFixture {
+        id: UID,
+        scheduler_upgrade_cap: MoveOption<ID>,
+        current_runtime: MoveOption<TypeName>,
+        current_runtime_package: MoveOption<ID>,
+        paused: bool,
+    }
+
+    /// Serve the fixed runtime root bound to the Scheduler package in `context`.
+    pub fn mock_runtime_authority(
+        ledger_service: &mut MockLedgerService,
+        context: &NexusContext,
+        paused: bool,
+    ) {
+        let root = context.runtime_authority;
+        let runtime_package = context
+            .require_package(PackageRole::Scheduler)
+            .expect("mock context contains Scheduler")
+            .storage_id;
+        let state = RuntimeAuthorityFixture {
+            id: UID::new(root.object_id()),
+            scheduler_upgrade_cap: MoveOption::from_option(Some(ID::new(runtime_package))),
+            current_runtime: MoveOption::from_option(Some(TypeName::new(&format!(
+                "{runtime_package}::era::RuntimeV1"
+            )))),
+            current_runtime_package: MoveOption::from_option(Some(ID::new(runtime_package))),
+            paused,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            object_ref_for_id(root.object_id()),
+            sui::types::Owner::Shared(root.initial_shared_version),
+            bcs::to_bytes(&state).expect("RuntimeAuthority fixture serializes as BCS"),
+        );
+    }
+
+    /// Serve the fixed runtime root before its one time Scheduler binding.
+    pub fn mock_unbound_runtime_authority(
+        ledger_service: &mut MockLedgerService,
+        context: &NexusContext,
+    ) {
+        let root = context.runtime_authority;
+        let state = RuntimeAuthorityFixture {
+            id: UID::new(root.object_id()),
+            scheduler_upgrade_cap: MoveOption::from_option(None),
+            current_runtime: MoveOption::from_option(None),
+            current_runtime_package: MoveOption::from_option(None),
+            paused: false,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            object_ref_for_id(root.object_id()),
+            sui::types::Owner::Shared(root.initial_shared_version),
+            bcs::to_bytes(&state).expect("RuntimeAuthority fixture serializes as BCS"),
+        );
+    }
+
+    /// Serve immutable metadata for the supplied [`crate::types::PackageVersion`] values.
+    pub fn mock_package_versions(
+        ledger_service: &mut MockLedgerService,
+        package_service: &mut MockMovePackageService,
+        packages: impl IntoIterator<Item = crate::types::PackageVersion>,
+    ) {
+        let packages = packages
+            .into_iter()
+            .map(|package| {
+                let mut grpc_package = sui::grpc::Package::default();
+                grpc_package.set_storage_id(package.storage_id);
+                grpc_package.set_original_id(package.initial_id);
+                grpc_package.set_version(package.version);
+                grpc_package.type_origins = package
+                    .type_origins
+                    .iter()
+                    .flat_map(|(module, datatypes)| {
+                        datatypes.iter().map(move |(datatype, package_id)| {
+                            let mut origin = sui::grpc::TypeOrigin::default();
+                            origin.set_module_name(module.clone());
+                            origin.set_datatype_name(datatype.clone());
+                            origin.set_package_id(*package_id);
+                            origin
+                        })
+                    })
+                    .collect();
+                grpc_package.linkage = package
+                    .linkage
+                    .iter()
+                    .map(|(lineage, link)| {
+                        let mut linkage = sui::grpc::Linkage::default();
+                        linkage.set_original_id(*lineage);
+                        linkage.set_upgraded_id(link.storage_id);
+                        linkage.set_upgraded_version(link.version);
+                        linkage
+                    })
+                    .collect();
+                (package.storage_id, grpc_package)
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+
+        let service_packages = packages.clone();
+        package_service
+            .expect_get_package()
+            .times(0..)
+            .returning(move |request| {
+                let package_id = request
+                    .get_ref()
+                    .package_id
+                    .as_deref()
+                    .and_then(|value| value.parse::<sui::types::Address>().ok())
+                    .ok_or_else(|| tonic::Status::invalid_argument("missing package ID"))?;
+                let package = service_packages
+                    .get(&package_id)
+                    .cloned()
+                    .ok_or_else(|| tonic::Status::not_found("package is absent"))?;
+                let mut response = sui::grpc::GetPackageResponse::default();
+                response.set_package(package);
+                Ok(tonic::Response::new(response))
+            });
+
+        let package_ids = packages
+            .keys()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        ledger_service
+            .expect_get_object()
+            .withf(move |request| {
+                request
+                    .get_ref()
+                    .object_id
+                    .as_deref()
+                    .and_then(|value| value.parse::<sui::types::Address>().ok())
+                    .is_some_and(|package_id| package_ids.contains(&package_id))
+            })
+            .times(0..)
+            .returning(move |request| {
+                let package_id = request
+                    .get_ref()
+                    .object_id
+                    .as_deref()
+                    .and_then(|value| value.parse::<sui::types::Address>().ok())
+                    .ok_or_else(|| tonic::Status::invalid_argument("missing package ID"))?;
+                let package = packages
+                    .get(&package_id)
+                    .cloned()
+                    .ok_or_else(|| tonic::Status::not_found("package is absent"))?;
+                let mut object = sui::grpc::Object::default();
+                object.set_object_id(package_id);
+                object.set_version(package.version());
+                object.set_object_type("package");
+                object.set_package(package);
+                let mut response = sui::grpc::GetObjectResponse::default();
+                response.set_object(object);
+                Ok(tonic::Response::new(response))
+            });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -591,13 +935,11 @@ pub mod grpc {
             });
     }
 
-    /// Configures the epoch and service information used by address balance
-    /// transaction construction.
+    /// Configures the epoch used by address balance transaction construction.
     pub fn mock_submission_context(
         ledger_service: &mut MockLedgerService,
         reference_gas_price: u64,
         epoch_number: u64,
-        chain: sui::types::Digest,
     ) {
         ledger_service
             .expect_get_epoch()
@@ -608,14 +950,6 @@ pub mod grpc {
                 epoch.set_epoch(epoch_number);
                 epoch.set_reference_gas_price(reference_gas_price);
                 response.set_epoch(epoch);
-                Ok(tonic::Response::new(response))
-            });
-        ledger_service
-            .expect_get_service_info()
-            .times(1)
-            .returning(move |_request| {
-                let mut response = sui::grpc::GetServiceInfoResponse::default();
-                response.chain_id = Some(chain.to_string());
                 Ok(tonic::Response::new(response))
             });
     }
@@ -641,6 +975,37 @@ pub mod grpc {
                 let mut grpc_object = sui::grpc::Object::default();
                 grpc_object.set_owner(sui::grpc::Owner::from(owner));
                 grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_version(object_ref.version());
+                grpc_object.set_balance(balance.unwrap_or(0));
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_object_metadata_exact(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        balance: Option<u64>,
+    ) {
+        let expected_id = object_ref.object_id().to_string();
+        ledger_service
+            .expect_get_object()
+            .withf(move |request| {
+                let request = request.get_ref();
+                request.object_id.as_deref() == Some(expected_id.as_str())
+                    && request
+                        .read_mask
+                        .as_ref()
+                        .is_none_or(|mask| !mask.paths.iter().any(|path| path == "contents"))
+            })
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_object_id(*object_ref.object_id());
                 grpc_object.set_version(object_ref.version());
                 grpc_object.set_balance(balance.unwrap_or(0));
                 response.set_object(grpc_object);
@@ -790,37 +1155,206 @@ pub mod grpc {
         );
     }
 
-    /// Mock the dynamic field selected by a `sui::versioned::Versioned` value.
-    pub fn mock_versioned_payload<T>(
+    fn mock_object_state_metadata<A, W, V>(
         ledger_service: &mut MockLedgerService,
-        state_id: sui::types::Address,
-        state_schema: u64,
-        value: T,
+        state_service: &mut MockStateService,
+        context: &NexusContext,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        anchor: A,
+    ) -> (
+        sui::types::Address,
+        crate::move_bindings::primitives::object_state::Inner,
+        sui::types::StructTag,
+    )
+    where
+        A: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
+        W: sui_move::MoveStruct,
+        V: sui_move::MoveStruct,
+    {
+        use crate::move_bindings::primitives::object_state::{Inner, Witness};
+
+        let object_id = *object_ref.object_id();
+        let anchor_type = crate::move_bindings::struct_tag::<A>(context);
+        let witness_key = Witness::new(false);
+        let inner_key = Inner::new(false);
+        let witness_key_type = crate::move_bindings::type_tag::<Witness>(context);
+        let inner_key_type = crate::move_bindings::type_tag::<Inner>(context);
+        let witness_type = crate::move_bindings::type_tag::<W>(context);
+        let inner_type = crate::move_bindings::type_tag::<V>(context);
+        let witness_field_id = object_id.derive_dynamic_child_id(
+            &witness_key_type,
+            &bcs::to_bytes(&witness_key).expect("Witness key serializes"),
+        );
+        let inner_field_id = object_id.derive_dynamic_child_id(
+            &inner_key_type,
+            &bcs::to_bytes(&inner_key).expect("Inner key serializes"),
+        );
+
+        let dynamic_field_type = |key: sui::types::TypeTag, value: sui::types::TypeTag| {
+            sui::types::StructTag::new(
+                sui::types::Address::from_static("0x2"),
+                sui::types::Identifier::new("dynamic_field").unwrap(),
+                sui::types::Identifier::new("Field").unwrap(),
+                vec![key, value],
+            )
+        };
+        let witness_field_type = dynamic_field_type(witness_key_type, witness_type.clone());
+        let inner_field_type = dynamic_field_type(inner_key_type, inner_type.clone());
+
+        let expected_parent = object_id.to_string();
+        let listed_inner_field_type = inner_field_type.clone();
+        state_service
+            .expect_list_dynamic_fields()
+            .withf(move |request| request.get_ref().parent_opt() == Some(expected_parent.as_str()))
+            .times(1..)
+            .returning(move |_request| {
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                let mut witness_field = sui::grpc::DynamicField::default();
+                witness_field.set_field_id(witness_field_id);
+                witness_field.set_child_id(witness_field_id);
+                witness_field.set_value_type(witness_type.to_string());
+                let mut witness_object = sui::grpc::Object::default();
+                witness_object.set_object_type(witness_field_type.to_string());
+                witness_field.set_field_object(witness_object);
+
+                let mut inner_field = sui::grpc::DynamicField::default();
+                inner_field.set_field_id(inner_field_id);
+                inner_field.set_child_id(inner_field_id);
+                inner_field.set_value_type(inner_type.to_string());
+                let mut inner_object = sui::grpc::Object::default();
+                inner_object.set_object_type(listed_inner_field_type.to_string());
+                inner_field.set_field_object(inner_object);
+                response.set_dynamic_fields(vec![witness_field, inner_field]);
+                Ok(tonic::Response::new(response))
+            });
+
+        let expected_anchor_id = object_id.to_string();
+        let anchor_contents = bcs::to_bytes(&anchor).expect("Anchor serializes");
+        let anchor_owner = owner;
+        ledger_service
+            .expect_get_object()
+            .withf(move |request| {
+                let request = request.get_ref();
+                request.object_id.as_deref() == Some(expected_anchor_id.as_str())
+                    && request.version.is_none()
+                    && request.read_mask.as_ref().is_none_or(|mask| {
+                        !mask.paths.iter().any(|path| path == "previous_transaction")
+                    })
+            })
+            .times(1..)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut object = sui::grpc::Object::default();
+                object.set_object_id(object_id);
+                object.set_owner(sui::grpc::Owner::from(anchor_owner));
+                object.set_version(object_ref.version());
+                object.set_digest(*object_ref.digest());
+                object.set_object_type(anchor_type.to_string());
+                let mut contents = sui::grpc::Bcs::default();
+                contents.set_name(anchor_type.to_string());
+                contents.set_value(anchor_contents.clone());
+                object.set_contents(contents);
+                response.set_object(object);
+                Ok(tonic::Response::new(response))
+            });
+
+        (inner_field_id, inner_key, inner_field_type)
+    }
+
+    /// Mock an object anchor and its typed state field metadata.
+    ///
+    /// Use this for operations that validate the state pair without decoding
+    /// the stored value. Reads may repeat without encoding RPC call counts in
+    /// the test.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mock_object_state_observation<A, W, V>(
+        ledger_service: &mut MockLedgerService,
+        state_service: &mut MockStateService,
+        context: &NexusContext,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        anchor: A,
     ) where
-        T: Serialize + Clone + Send + 'static,
+        A: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
+        W: sui_move::MoveStruct,
+        V: sui_move::MoveStruct,
+    {
+        let _ = mock_object_state_metadata::<A, W, V>(
+            ledger_service,
+            state_service,
+            context,
+            object_ref,
+            owner,
+            anchor,
+        );
+    }
+
+    /// Mock one object anchor and its typed object state fields.
+    ///
+    /// The anchor and field metadata may be read repeatedly. The
+    /// [`Witness`](crate::move_bindings::primitives::object_state::Witness)
+    /// value is not fetched because package authority is selected from its
+    /// exact field type.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mock_object_state<A, W, V>(
+        ledger_service: &mut MockLedgerService,
+        state_service: &mut MockStateService,
+        context: &NexusContext,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        anchor: A,
+        inner: V,
+    ) where
+        A: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
+        W: sui_move::MoveStruct,
+        V: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
     {
         #[derive(Clone, Serialize)]
-        struct VersionedField<T> {
+        struct DynamicFieldValue<K, V> {
             id: sui::types::Address,
-            name: u64,
-            value: T,
+            name: K,
+            value: V,
         }
 
-        let field_id = state_id.derive_dynamic_child_id(
-            &sui::types::TypeTag::U64,
-            &bcs::to_bytes(&state_schema).expect("schema key serializes"),
-        );
-        let field = VersionedField {
-            id: field_id,
-            name: state_schema,
-            value,
-        };
-        mock_get_object_bcs(
+        let object_id = *object_ref.object_id();
+        let (inner_field_id, inner_key, inner_field_type) = mock_object_state_metadata::<A, W, V>(
             ledger_service,
-            super::object_ref_for_id(field_id),
-            sui::types::Owner::Object(state_id),
-            bcs::to_bytes(&field).expect("versioned payload serializes"),
+            state_service,
+            context,
+            object_ref,
+            owner,
+            anchor,
         );
+
+        let inner_field = DynamicFieldValue {
+            id: inner_field_id,
+            name: inner_key,
+            value: inner,
+        };
+        let inner_contents = bcs::to_bytes(&inner_field).expect("Inner field serializes");
+        let expected_inner_id = inner_field_id.to_string();
+        ledger_service
+            .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(expected_inner_id.as_str())
+            })
+            .times(0..)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut object = sui::grpc::Object::default();
+                object.set_object_id(inner_field_id);
+                object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Object(object_id)));
+                object.set_version(1);
+                object.set_digest(sui::types::Digest::from([1; 32]));
+                object.set_object_type(inner_field_type.to_string());
+                let mut contents = sui::grpc::Bcs::default();
+                contents.set_name(inner_field_type.to_string());
+                contents.set_value(inner_contents.clone());
+                object.set_contents(contents);
+                response.set_object(object);
+                Ok(tonic::Response::new(response))
+            });
     }
 
     pub fn mock_get_objects_bcs(
@@ -1170,6 +1704,35 @@ pub mod grpc {
             });
     }
 
+    /// Expect a dynamic field listing for one exact parent object.
+    pub fn mock_list_dynamic_fields_for<T: Serialize + Clone + Send + 'static>(
+        state_service: &mut MockStateService,
+        parent_id: sui::types::Address,
+        fields: Vec<(T, sui::types::Address)>,
+    ) {
+        let expected_parent = parent_id.to_string();
+        state_service
+            .expect_list_dynamic_fields()
+            .withf(move |request| request.get_ref().parent_opt() == Some(expected_parent.as_str()))
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                let dynamic_fields = fields
+                    .clone()
+                    .into_iter()
+                    .map(|(key, id)| {
+                        let mut field = sui::grpc::DynamicField::default();
+                        field.set_child_id(id);
+                        field.set_field_id(id);
+                        field.set_name(key.to_bcs().expect("Cannot serialize BCS key"));
+                        field
+                    })
+                    .collect();
+                response.set_dynamic_fields(dynamic_fields);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
     pub fn mock_empty_dynamic_fields(state_service: &mut MockStateService, times: usize) {
         state_service
             .expect_list_dynamic_fields()
@@ -1211,6 +1774,7 @@ pub mod grpc {
         nexus_events: Vec<NexusEventKind>,
         cp: u64,
     ) {
+        let context = mock_nexus_context_for(&objects);
         ledger_service
             .expect_get_checkpoint()
             .returning(move |_request| {
@@ -1244,10 +1808,16 @@ pub mod grpc {
                 }
 
                 for event in nexus_events.clone() {
+                    let interface = context
+                        .require_package(crate::types::PackageRole::Interface)
+                        .expect("test context contains Interface");
+                    let workflow = context
+                        .require_package(crate::types::PackageRole::Workflow)
+                        .expect("test context contains Workflow");
                     let (event_pkg_id, event_type_origin, event_module, event_name) = match event {
                         NexusEventKind::DAGCreated(_) => (
-                            objects.interface_pkg_id(),
-                            objects.interface_type_origin_pkg_id(),
+                            interface.storage_id,
+                            interface.initial_id,
                             "dag",
                             event.name(),
                         ),
@@ -1255,8 +1825,8 @@ pub mod grpc {
                         | NexusEventKind::EndStateReached(_)
                         | NexusEventKind::ExecutionFinished(_)
                         | NexusEventKind::TerminalErrEvalRecorded(_) => (
-                            objects.workflow_pkg_id(),
-                            objects.workflow_type_origin_pkg_id(),
+                            workflow.storage_id,
+                            workflow.initial_id,
                             "execution_events",
                             event.name(),
                         ),
@@ -1264,10 +1834,10 @@ pub mod grpc {
                     };
                     let wrapper_tag = crate::move_bindings::struct_tag::<
                         event_move::EventWrapper<NexusData>,
-                    >(&objects);
+                    >(&context);
                     let t = format!(
                         "{}::{}::{}<{}::{}::{}>",
-                        objects.primitives_type_origin_pkg_id(),
+                        wrapper_tag.address(),
                         wrapper_tag.module(),
                         wrapper_tag.name(),
                         event_type_origin,

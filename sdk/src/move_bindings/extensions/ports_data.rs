@@ -4,13 +4,13 @@
 //! generated [`crate::move_bindings::interface::graph::InputPort`] and
 //! [`crate::move_bindings::interface::graph::OutputPort`] values. SDK callers usually operate on
 //! [`std::collections::HashMap`] names, so this module projects both stored
-//! [`crate::move_bindings::primitives::data::NexusData`] and transient resolved value vectors.
+//! [`crate::move_bindings::primitives::data::NexusData`] values.
 
 use {
     crate::move_bindings::{
         interface::graph::{InputPort, OutputPort},
         move_std::ascii::String as MoveString,
-        primitives::data::{NexusData, NexusValue},
+        primitives::data::NexusData,
         sui_framework::vec_map::{Entry as VecMapEntry, VecMap},
     },
     std::collections::HashMap,
@@ -62,35 +62,12 @@ impl VecMap<OutputPort, NexusData> {
     }
 }
 
-impl VecMap<InputPort, Vec<NexusValue>> {
-    pub fn into_map(self) -> HashMap<String, Vec<NexusValue>> {
-        self.contents
-            .into_iter()
-            .map(|entry| (String::from(entry.key.name), entry.value))
-            .collect()
-    }
-}
-
-impl VecMap<OutputPort, Vec<NexusValue>> {
-    pub fn into_map(self) -> HashMap<String, Vec<NexusValue>> {
-        self.contents
-            .into_iter()
-            .map(|entry| (String::from(entry.key.name), entry.value))
-            .collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn inline_bytes(value: &'static [u8]) -> NexusData {
-        let value = NexusValue::inline_data(value).expect("fixture is bounded");
-        NexusData::new(
-            b"nexus_value".to_vec(),
-            bcs::to_bytes(&value).expect("fixture should encode"),
-            Vec::new(),
-        )
+        NexusData::inline_data(value).expect("fixture is bounded")
     }
 
     fn sample_ports_data() -> VecMap<InputPort, NexusData> {

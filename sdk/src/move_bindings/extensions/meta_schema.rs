@@ -10,14 +10,16 @@ use {
     crate::{
         move_bindings::{
             interface::meta_schema::{MetaSchema, OutputVariantSchema, PortSchema, ValueKind},
-            protocol_limits::interface::meta_schema::{
-                MAX_IDENTIFIER_BYTES,
-                MAX_INPUT_PORTS,
-                MAX_META_SCHEMA_BYTES,
-                MAX_NEXUS_DATA_BYTES,
-                MAX_OUTPUT_VARIANTS,
-                MAX_PORTS_PER_OUTPUT_VARIANT,
-                MAX_RAW_OUTPUT_BYTES,
+            protocol_limits::{
+                interface::meta_schema::{
+                    MAX_IDENTIFIER_BYTES,
+                    MAX_INPUT_PORTS,
+                    MAX_META_SCHEMA_BYTES,
+                    MAX_OUTPUT_VARIANTS,
+                    MAX_PORTS_PER_OUTPUT_VARIANT,
+                    MAX_RAW_OUTPUT_BYTES,
+                },
+                primitives::data::MAX_NEXUS_DATA_BYTES,
             },
         },
         types::{NexusData, NexusValue, OffchainToolOutput},

@@ -2,33 +2,33 @@
 
 use crate::{
     move_bindings::{
-        registry::priority_fee_vault::{self as priority_fee_vault_binding, PriorityFeeDepositV2},
+        registry::priority_fee_vault::{self as priority_fee_vault_binding, PriorityFeeDeposit},
         sui_framework::transfer::Receiving,
     },
     move_boundary,
     sui,
-    types::NexusObjects,
+    types::NexusContext,
 };
 
-/// Receive and account for one non-empty batch of priority-fee deposit children.
+/// Receive and account for one nonempty batch of priority fee deposit children.
 pub fn collect_priority_fee_deposits(
-    objects: &NexusObjects,
+    context: &NexusContext,
     deposits: &[sui::types::ObjectReference],
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     if deposits.is_empty() {
         anyhow::bail!("priority fee deposit collection requires at least one deposit");
     }
 
-    move_boundary::ptb(objects, |transaction| {
-        let vault = transaction.shared_object(&objects.priority_fee_vault, true)?;
-        let leader_registry = transaction.shared_object(&objects.leader_registry, false)?;
+    move_boundary::ptb(context, |transaction| {
+        let vault = transaction.shared_root(&context.priority_fee_vault, true)?;
+        let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
         let deposits = deposits
             .iter()
-            .map(|deposit| transaction.receiving_object::<PriorityFeeDepositV2>(deposit))
+            .map(|deposit| transaction.receiving_object::<PriorityFeeDeposit>(deposit))
             .collect::<Result<Vec<_>, _>>()?;
-        let deposits = transaction.move_vector::<Receiving<PriorityFeeDepositV2>>(deposits)?;
+        let deposits = transaction.move_vector::<Receiving<PriorityFeeDeposit>>(deposits)?;
         transaction.call_target(
-            priority_fee_vault_binding::collect_deposits_v2_target,
+            priority_fee_vault_binding::collect_deposits_target,
             vec![vault, leader_registry, deposits],
         )?;
         Ok(())
@@ -37,12 +37,13 @@ pub fn collect_priority_fee_deposits(
 
 /// Configure the `$US` priority fee vault exchange rate.
 pub fn configure_priority_fee_vault(
-    objects: &NexusObjects,
+    context: &NexusContext,
+    owner_cap: &sui::types::ObjectReference,
     exchange_rate_million_mists_us: u64,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(objects, |transaction| {
-        let vault = transaction.shared_object(&objects.priority_fee_vault, true)?;
-        let owner_cap = transaction.owned_object(&objects.priority_fee_vault_owner_cap)?;
+    move_boundary::ptb(context, |transaction| {
+        let vault = transaction.shared_root(&context.priority_fee_vault, true)?;
+        let owner_cap = transaction.owned_object(owner_cap)?;
         let exchange_rate = transaction.arg(&exchange_rate_million_mists_us)?;
         transaction.call_target(
             priority_fee_vault_binding::configure_target,
@@ -54,13 +55,13 @@ pub fn configure_priority_fee_vault(
 
 /// Swap an owned `Coin<US>` for vault SUI.
 pub fn swap_us_for_sui(
-    objects: &NexusObjects,
+    context: &NexusContext,
     us_coin: &sui::types::ObjectReference,
     min_sui_out: u64,
     recipient: sui::types::Address,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(objects, |transaction| {
-        let vault = transaction.shared_object(&objects.priority_fee_vault, true)?;
+    move_boundary::ptb(context, |transaction| {
+        let vault = transaction.shared_root(&context.priority_fee_vault, true)?;
         let us_coin = transaction.owned_object(us_coin)?;
         let min_sui_out = transaction.arg(&min_sui_out)?;
         let result = transaction.call_target(
@@ -77,15 +78,16 @@ pub fn swap_us_for_sui(
 
 /// Withdraw a leader's priority fee share from the network vault.
 pub fn withdraw_priority_fee(
-    objects: &NexusObjects,
+    context: &NexusContext,
     leader_cap: &sui::types::ObjectReference,
+    leader_cap_owner: &sui::types::Owner,
     share_to_withdraw: u64,
     recipient: sui::types::Address,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    move_boundary::ptb(objects, |transaction| {
-        let vault = transaction.shared_object(&objects.priority_fee_vault, true)?;
-        let leader_registry = transaction.shared_object(&objects.leader_registry, false)?;
-        let leader_cap = transaction.owned_object(leader_cap)?;
+    move_boundary::ptb(context, |transaction| {
+        let vault = transaction.shared_root(&context.priority_fee_vault, true)?;
+        let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
+        let leader_cap = transaction.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let share = transaction.arg(&share_to_withdraw)?;
         let us_out = transaction.call_target(
             priority_fee_vault_binding::withdraw_priority_fee_target,
@@ -101,7 +103,7 @@ pub fn withdraw_priority_fee(
 mod tests {
     use {
         super::*,
-        crate::types::{DefaultDagExecutorTarget, NexusPackages, UsTokenConfig},
+        crate::test_utils::sui_mocks,
         sui::types::{Command, Input},
     };
 
@@ -117,32 +119,8 @@ mod tests {
         )
     }
 
-    fn nexus_objects() -> NexusObjects {
-        NexusObjects {
-            protocol_version: 1,
-            protocol: object_ref("0x18", 1, 18),
-            packages: NexusPackages::first_publication(
-                address("0x2"),
-                address("0x3"),
-                address("0x5"),
-                address("0x13"),
-                address("0x1"),
-                address("0x11"),
-            ),
-            config_hash: vec![0; 32],
-            network_id: address("0x4"),
-            tool_registry: object_ref("0x6", 1, 6),
-            network_auth: object_ref("0x8", 1, 8),
-            agent_registry: object_ref("0xc", 1, 12),
-            default_dag_executor: DefaultDagExecutorTarget {
-                agent_id: address("0xa1"),
-                skill_id: 177,
-            },
-            leader_registry: object_ref("0xe", 1, 14),
-            priority_fee_vault: object_ref("0xf", 1, 15),
-            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
-            us_token: UsTokenConfig::new(address("0x12")),
-        }
+    fn nexus_objects() -> crate::types::NexusContext {
+        sui_mocks::mock_nexus_context()
     }
 
     #[test]
@@ -165,7 +143,7 @@ mod tests {
             matches!(
                 input,
                 Input::Shared(shared)
-                    if shared.object_id() == *objects.priority_fee_vault.object_id()
+                    if shared.object_id() == objects.priority_fee_vault.object_id()
                         && shared.mutability().is_mutable()
             )
         }));
@@ -173,7 +151,7 @@ mod tests {
             matches!(
                 input,
                 Input::Shared(shared)
-                    if shared.object_id() == *objects.leader_registry.object_id()
+                    if shared.object_id() == objects.leader_registry.object_id()
                         && !shared.mutability().is_mutable()
             )
         }));
@@ -189,7 +167,7 @@ mod tests {
         assert_eq!(
             vector.type_,
             Some(crate::move_bindings::type_tag::<
-                Receiving<PriorityFeeDepositV2>,
+                Receiving<PriorityFeeDeposit>,
             >(&objects))
         );
         assert_eq!(vector.elements.len(), 2);
@@ -200,7 +178,7 @@ mod tests {
             .find_map(|command| match command {
                 Command::MoveCall(call)
                     if call.module.as_str() == "priority_fee_vault"
-                        && call.function.as_str() == "collect_deposits_v2" =>
+                        && call.function.as_str() == "collect_deposits" =>
                 {
                     Some(call)
                 }
@@ -215,5 +193,29 @@ mod tests {
         let error = collect_priority_fee_deposits(&nexus_objects(), &[])
             .expect_err("empty batch must be rejected");
         assert!(error.to_string().contains("at least one deposit"));
+    }
+
+    #[test]
+    fn priority_fee_withdrawal_preserves_consensus_address_ownership() {
+        let objects = nexus_objects();
+        let leader_cap = object_ref("0x30", 9, 30);
+        let leader_cap_owner = sui::types::Owner::ConsensusAddress {
+            start_version: 4,
+            owner: address("0x31"),
+        };
+
+        let ptb =
+            withdraw_priority_fee(&objects, &leader_cap, &leader_cap_owner, 5, address("0x31"))
+                .expect("consensus address owned cap is a valid input");
+
+        assert!(ptb.inputs.iter().any(|input| {
+            matches!(
+                input,
+                Input::Shared(shared)
+                    if shared.object_id() == *leader_cap.object_id()
+                        && shared.version() == 4
+                        && !shared.mutability().is_mutable()
+            )
+        }));
     }
 }

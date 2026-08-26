@@ -3,25 +3,18 @@ use {
         move_bindings::{
             interface::{
                 dag as dag_binding,
-                graph::{
-                    self as graph_binding,
-                    PostFailureAction,
-                    RuntimeVertex,
-                    Vertex as GraphVertex,
-                },
+                graph::{self as graph_binding, PostFailureAction, RuntimeVertex},
                 meta_schema::MetaSchema,
                 verifier::{self as verifier_binding, RegisteredKeyAuxiliary, ToolVerifierMode},
             },
             move_std::option::Option as MoveOption,
             primitives::tagged_output as tagged_output_binding,
             registry::registered_key_verifier as registered_key_verifier_binding,
-            sui_framework::transfer as transfer_binding,
-            tool::tool_registry as tool_registry_binding,
-            workflow::{
+            scheduler::{
                 execution_settlement as execution_settlement_binding,
                 execution_submission as execution_submission_binding,
-                tool_cashier_adapter as tool_cashier_adapter_binding,
             },
+            tool::tool_registry as tool_registry_binding,
         },
         move_boundary,
         sui,
@@ -35,13 +28,13 @@ use {
             DagVertex,
             DagVertexKind,
             ExternalVerifierRuntimeCall,
+            NexusContext,
             NexusData,
-            NexusObjects,
             OffchainToolOutput,
             DEFAULT_ENTRY_GROUP,
         },
     },
-    std::collections::{HashMap, HashSet},
+    std::collections::HashMap,
     sui::types::ProgrammableTransaction,
 };
 
@@ -57,7 +50,7 @@ fn vertex_kind_arg(
     }
 }
 
-fn runtime_vertex_arg(
+pub(crate) fn runtime_vertex_arg(
     tx: &mut move_boundary::NexusPtbBuilder,
     runtime_vertex: &RuntimeVertex,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -99,18 +92,11 @@ struct RuntimeToolResultWorksheet {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct RuntimeToolResultWorksheetInputs {
-    pub dag: (sui::types::Address, sui::types::Version),
+    pub dag: sui::types::ObjectReference,
     pub execution: (sui::types::Address, sui::types::Version),
     pub leader_registry: sui::types::Argument,
     pub leader_cap: sui::types::Argument,
     pub walk_index: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RuntimeToolCashierRef {
-    pub vertex: GraphVertex,
-    pub object_id: sui::types::Address,
-    pub version: sui::types::Version,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -149,7 +135,7 @@ pub enum OnchainToolArgument {
         initial_shared_version: sui::types::Version,
         mutable: bool,
     },
-    ImmutableObject(sui::types::ObjectReference),
+    Object(sui::types::ObjectReference),
     Vector {
         type_tag: Option<sui::types::TypeTag>,
         elements: Vec<OnchainToolArgument>,
@@ -179,23 +165,23 @@ pub struct BrokenOnchainToolResultCleanupInput {
 
 fn build_runtime_tool_result_worksheet(
     tx: &mut move_boundary::NexusPtbBuilder,
-    agent_registry_ref: &sui::types::ObjectReference,
     inputs: RuntimeToolResultWorksheetInputs,
-    input_witnesses: &[NexusData],
 ) -> anyhow::Result<RuntimeToolResultWorksheet> {
-    let tool_registry_ref = tx.objects().tool_registry.clone();
-    let network_auth_ref = tx.objects().network_auth.clone();
-    let agent_registry = tx.shared_object(agent_registry_ref, false)?;
-    let tool_registry = tx.shared_object(&tool_registry_ref, false)?;
-    let network_auth = tx.shared_object(&network_auth_ref, false)?;
-    let dag = tx.shared_object_by_id(inputs.dag.0, inputs.dag.1, false)?;
+    let agent_registry_ref = tx.objects().agent_registry;
+    let tool_registry_ref = tx.objects().tool_registry;
+    let network_auth_ref = tx.objects().network_auth;
+    let agent_registry = tx.shared_root(&agent_registry_ref, false)?;
+    let tool_registry = tx.shared_root(&tool_registry_ref, false)?;
+    let network_auth = tx.shared_root(&network_auth_ref, false)?;
+    let dag = tx.immutable_object(&inputs.dag)?;
     let execution = tx.shared_object_by_id(inputs.execution.0, inputs.execution.1, true)?;
     let clock = tx.clock()?;
     let walk_index = tx.arg(&inputs.walk_index)?;
-    let input_witnesses = nexus_data_witness_groups(tx, input_witnesses)?;
+    let runtime_authority = tx.runtime_authority(false)?;
     let prepared = tx.call_target(
-        execution_submission_binding::prepare_tool_result_submission_worksheet_v2_target,
+        execution_submission_binding::prepare_tool_result_submission_worksheet_target,
         vec![
+            runtime_authority,
             dag,
             agent_registry,
             tool_registry,
@@ -204,7 +190,6 @@ fn build_runtime_tool_result_worksheet(
             execution,
             inputs.leader_cap,
             walk_index,
-            input_witnesses,
             clock,
         ],
     )?;
@@ -219,17 +204,6 @@ fn build_runtime_tool_result_worksheet(
         tool_registry,
         network_auth,
     })
-}
-
-fn nexus_data_witness_groups(
-    tx: &mut move_boundary::NexusPtbBuilder,
-    values: &[NexusData],
-) -> anyhow::Result<sui::types::Argument> {
-    let witness_groups = values
-        .iter()
-        .map(|value| tx.nexus_value_witnesses(value))
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    Ok(tx.move_vector::<Vec<crate::move_bindings::primitives::data::NexusValue>>(witness_groups)?)
 }
 
 #[derive(Clone, Copy)]
@@ -251,12 +225,10 @@ fn empty(tx: &mut move_boundary::NexusPtbBuilder) -> anyhow::Result<NewDagArgume
 pub(crate) fn publish(
     tx: &mut move_boundary::NexusPtbBuilder,
     dag: sui::types::Argument,
-) -> sui::types::Argument {
-    tx.call_target(
-        transfer_binding::public_share_object_target::<crate::move_bindings::interface::dag::DAG>,
-        vec![dag],
-    )
-    .expect("generated transfer::public_share_object<DAG> target is valid")
+    owner_cap: sui::types::Argument,
+) -> anyhow::Result<()> {
+    tx.call_target(dag_binding::finalize_target, vec![dag, owner_cap])?;
+    Ok(())
 }
 
 /// PTB template to publish a full [`DagSpec`].
@@ -353,17 +325,14 @@ pub(crate) fn create(
 
 /// Build a PTB that publishes a full [`DagSpec`].
 pub(crate) fn publish_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     dag: DagSpec,
-    owner: sui::types::Address,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let new_dag = empty(tx)?;
         let mut dag_arg = new_dag.dag;
         dag_arg = create(tx, dag_arg, new_dag.owner_cap, dag)?;
-        publish(tx, dag_arg);
-        let owner = tx.arg(&owner)?;
-        tx.transfer_objects(vec![new_dag.owner_cap], owner)?;
+        publish(tx, dag_arg, new_dag.owner_cap)?;
         Ok(())
     })
 }
@@ -371,8 +340,8 @@ pub(crate) fn publish_ptb(
 fn tool_registry_arg(
     tx: &mut move_boundary::NexusPtbBuilder,
 ) -> anyhow::Result<sui::types::Argument> {
-    let tool_registry = tx.objects().tool_registry.clone();
-    Ok(tx.shared_object(&tool_registry, false)?)
+    let tool_registry = tx.objects().tool_registry;
+    Ok(tx.shared_root(&tool_registry, false)?)
 }
 
 /// PTB template for creating one DAG vertex from the current Tool Registry binding.
@@ -445,20 +414,26 @@ fn create_vertex_verifier_mode(
     Ok(())
 }
 
-/// Builds a [`ProgrammableTransaction`] that refills TAP execution payment from
-/// the sender's address balance.
+/// Builds a [`ProgrammableTransaction`] that refills TAP execution payment and
+/// requests every active walk whose payment is ready.
 pub(crate) fn refill_tap_execution_payment_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     amount: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
         let coin = tx.withdraw_sui_coin(amount)?;
+        let runtime_authority = tx.runtime_authority(false)?;
         tx.call_target(
             execution_settlement_binding::refill_tap_execution_payment_target,
-            vec![execution, coin],
+            vec![runtime_authority, execution, coin],
         )?;
+        emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
         Ok(())
     })
 }
@@ -473,8 +448,8 @@ fn offchain_verifier_ptb_objects(
     tx: &mut move_boundary::NexusPtbBuilder,
     bindings: &OffchainVerifierKeyBindings,
 ) -> anyhow::Result<OffchainVerifierPtbObjects> {
-    let network_auth_ref = tx.objects().network_auth.clone();
-    let network_auth = tx.shared_object(&network_auth_ref, false)?;
+    let network_auth_ref = tx.objects().network_auth;
+    let network_auth = tx.shared_root(&network_auth_ref, false)?;
     let leader_key_binding = tx.shared_object(&bindings.leader_key_binding, false)?;
     let tool_key_binding = if bindings.tool_key_binding == bindings.leader_key_binding {
         leader_key_binding
@@ -489,70 +464,7 @@ fn offchain_verifier_ptb_objects(
     })
 }
 
-fn ordered_runtime_tool_cashier_refs(
-    tool_cashiers: &[RuntimeToolCashierRef],
-) -> Vec<&RuntimeToolCashierRef> {
-    let mut ordered = tool_cashiers.iter().collect::<Vec<_>>();
-    ordered.sort_by(|left, right| {
-        left.object_id
-            .to_string()
-            .cmp(&right.object_id.to_string())
-            .then_with(|| left.version.cmp(&right.version))
-            .then_with(|| left.vertex.name.as_str().cmp(right.vertex.name.as_str()))
-    });
-    ordered
-}
-
-fn runtime_tool_cashier_args(
-    tx: &mut move_boundary::NexusPtbBuilder,
-    tool_cashiers: &[RuntimeToolCashierRef],
-    next_vertex: &RuntimeVertex,
-    settle_current_vertex_payment: bool,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    expected_vertex_arg: Option<sui::types::Argument>,
-) -> anyhow::Result<Vec<sui::types::Argument>> {
-    let mut tool_cashier_args = HashMap::new();
-    let mut lock_tool_cashier_args = Vec::new();
-    let mut current_tool_cashier = None;
-
-    for cashier_ref in ordered_runtime_tool_cashier_refs(tool_cashiers) {
-        let key = (cashier_ref.object_id, cashier_ref.version);
-        let tool_cashier = match tool_cashier_args.entry(key) {
-            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                let arg =
-                    tx.shared_object_by_id(cashier_ref.object_id, cashier_ref.version, true)?;
-                lock_tool_cashier_args.push(arg);
-                *entry.insert(arg)
-            }
-        };
-
-        if &cashier_ref.vertex == next_vertex.vertex() {
-            current_tool_cashier = Some(tool_cashier);
-        }
-    }
-
-    if settle_current_vertex_payment {
-        if let Some(tool_cashier) = current_tool_cashier {
-            let expected_vertex = match expected_vertex_arg {
-                Some(expected_vertex) => expected_vertex,
-                None => runtime_vertex_arg(tx, next_vertex)?,
-            };
-            crate::transactions::tool_cashier::settle_payment_state_for_vertex(
-                tx,
-                tool_cashier,
-                dag,
-                execution,
-                expected_vertex,
-            )?;
-        }
-    }
-
-    Ok(lock_tool_cashier_args)
-}
-
-fn prepare_onchain_tool_argument(
+pub(crate) fn prepare_onchain_tool_argument(
     tx: &mut move_boundary::NexusPtbBuilder,
     argument: &OnchainToolArgument,
     pre_allocated: &HashMap<sui::types::Address, sui::types::Argument>,
@@ -575,7 +487,7 @@ fn prepare_onchain_tool_argument(
                 Ok(tx.shared_object_by_id(*object_id, *initial_shared_version, *mutable)?)
             }
         }
-        OnchainToolArgument::ImmutableObject(object) => Ok(tx.owned_object(object)?),
+        OnchainToolArgument::Object(object) => Ok(tx.owned_object(object)?),
         OnchainToolArgument::Vector { type_tag, elements } => {
             let elements = elements
                 .iter()
@@ -599,8 +511,8 @@ fn prepare_onchain_tool_arguments(
 
 #[allow(clippy::too_many_arguments)]
 fn runtime_pre_allocated_objects(
-    objects: &NexusObjects,
-    dag_ref: (sui::types::Address, sui::types::Version),
+    objects: &NexusContext,
+    dag_ref: &sui::types::ObjectReference,
     execution_ref: (sui::types::Address, sui::types::Version),
     agent_registry: sui::types::Argument,
     dag: sui::types::Argument,
@@ -610,12 +522,12 @@ fn runtime_pre_allocated_objects(
     leader_registry: sui::types::Argument,
 ) -> HashMap<sui::types::Address, sui::types::Argument> {
     HashMap::from([
-        (dag_ref.0, dag),
+        (*dag_ref.object_id(), dag),
         (move_boundary::CLOCK_OBJECT_ID, clock),
         (execution_ref.0, execution),
-        (*objects.tool_registry.object_id(), tool_registry),
-        (*objects.leader_registry.object_id(), leader_registry),
-        (*objects.agent_registry.object_id(), agent_registry),
+        (objects.tool_registry.object_id(), tool_registry),
+        (objects.leader_registry.object_id(), leader_registry),
+        (objects.agent_registry.object_id(), agent_registry),
     ])
 }
 
@@ -672,20 +584,17 @@ fn commit_prepared_onchain_tool_execution(
 
 #[allow(clippy::too_many_arguments)]
 pub fn submit_off_chain_tool_result_for_walk_ptb(
-    objects: &NexusObjects,
-    dag: (sui::types::Address, sui::types::Version),
+    objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &[RuntimeToolCashierRef],
     walk_index: u64,
     next_vertex: &RuntimeVertex,
-    settle_current_vertex_payment: bool,
-    input_witnesses: &[NexusData],
     submission: &PreparedOffchainToolResultSubmission,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let leader_cap = tx.shared_object(leader_cap, false)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let RuntimeToolResultWorksheet {
             worksheet,
             stamp,
@@ -697,25 +606,13 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
             network_auth,
         } = build_runtime_tool_result_worksheet(
             tx,
-            &objects.agent_registry,
             RuntimeToolResultWorksheetInputs {
-                dag,
+                dag: dag.clone(),
                 execution,
                 leader_registry,
                 leader_cap,
                 walk_index,
             },
-            input_witnesses,
-        )?;
-
-        let lock_tool_cashier_args = runtime_tool_cashier_args(
-            tx,
-            tool_cashiers,
-            next_vertex,
-            settle_current_vertex_payment,
-            dag,
-            execution,
-            None,
         )?;
 
         let verdict = match submission {
@@ -723,12 +620,8 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
                 result,
                 meta_schema,
             } => {
-                let (result, output_witnesses) =
-                    prepare_offchain_tool_response(tx, result, meta_schema)?;
-                tx.call_target(
-                    verifier_binding::new_none_v2_target,
-                    vec![result, output_witnesses],
-                )?
+                let result = prepare_offchain_tool_response(tx, result, meta_schema)?;
+                tx.call_target(verifier_binding::new_none_target, vec![result])?
             }
             PreparedOffchainToolResultSubmission::RegisteredKeyVerifier {
                 tool_id,
@@ -738,16 +631,14 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
                 bindings,
             } => {
                 let verifier_objects = offchain_verifier_ptb_objects(tx, bindings)?;
-                let (result, output_witnesses) =
-                    prepare_offchain_tool_response(tx, result, meta_schema)?;
+                let result = prepare_offchain_tool_response(tx, result, meta_schema)?;
                 let auxiliary = prepare_registered_key_auxiliary(tx, auxiliary)?;
                 let tool_id = tx.object_id(*tool_id)?;
                 tx.call_target(
-                    registered_key_verifier_binding::verify_v2_target,
+                    registered_key_verifier_binding::verify_target,
                     vec![
                         worksheet,
                         result,
-                        output_witnesses,
                         auxiliary,
                         leader_registry,
                         leader_cap,
@@ -783,23 +674,18 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
             next_vertex,
         )?;
 
-        lock_payment_state_for_tools(tx, lock_tool_cashier_args, dag, execution)?;
-
         Ok(())
     })
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn submit_on_chain_tool_result_for_walk_ptb(
-    objects: &NexusObjects,
-    dag: (sui::types::Address, sui::types::Version),
+    objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &[RuntimeToolCashierRef],
     walk_index: u64,
     next_vertex: &RuntimeVertex,
-    settle_current_vertex_payment: bool,
-    input_witnesses: &[NexusData],
     submission: &PreparedOnchainToolResultSubmission,
 ) -> anyhow::Result<ProgrammableTransaction> {
     let dag_ref = dag;
@@ -808,7 +694,7 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
     move_boundary::ptb(objects, |tx| {
         let leader_cap = tx.shared_object(leader_cap, false)?;
         let expected_vertex = runtime_vertex_arg(tx, next_vertex)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let RuntimeToolResultWorksheet {
             worksheet,
             stamp,
@@ -820,25 +706,13 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
             network_auth: _,
         } = build_runtime_tool_result_worksheet(
             tx,
-            &objects.agent_registry,
             RuntimeToolResultWorksheetInputs {
-                dag: dag_ref,
+                dag: dag_ref.clone(),
                 execution: execution_ref,
                 leader_registry,
                 leader_cap,
                 walk_index,
             },
-            input_witnesses,
-        )?;
-
-        let lock_tool_cashier_args = runtime_tool_cashier_args(
-            tx,
-            tool_cashiers,
-            next_vertex,
-            settle_current_vertex_payment,
-            dag_arg,
-            execution_arg,
-            Some(expected_vertex),
         )?;
 
         let PreparedOnchainToolResultSubmission::Execute(execution_plan) = submission;
@@ -853,7 +727,6 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
             tool_registry,
             leader_registry,
         );
-        lock_payment_state_for_tools(tx, lock_tool_cashier_args, dag_arg, execution_arg)?;
         commit_prepared_onchain_tool_execution(
             tx,
             execution_plan,
@@ -875,15 +748,14 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
 
 #[allow(clippy::too_many_arguments)]
 pub fn consume_on_chain_tool_result_for_walk_ptb(
-    objects: &NexusObjects,
-    dag: (sui::types::Address, sui::types::Version),
+    objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &[RuntimeToolCashierRef],
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
     next_vertex: &RuntimeVertex,
     result: (sui::types::Address, sui::types::Version),
-    output_witnesses: &[NexusData],
     tool_witness_id: sui::types::Address,
     finalize_gas_charge: u64,
     settlement_gas_charge: u64,
@@ -891,12 +763,12 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let leader_cap = tx.shared_object(leader_cap, false)?;
-        let dag = tx.shared_object_by_id(dag.0, dag.1, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object_by_id(execution.0, execution.1, true)?;
-        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, false)?;
         let result = tx.shared_object_by_id(result.0, result.1, true)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_root(&objects.priority_fee_vault, false)?;
         let clock = tx.clock()?;
 
         consume_on_chain_tool_result_for_walk(
@@ -905,7 +777,6 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
             execution,
             tool_registry,
             result,
-            output_witnesses,
             leader_cap,
             leader_registry,
             priority_fee_vault,
@@ -917,13 +788,12 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
             clock,
         )?;
 
-        let tool_cashiers =
-            runtime_tool_cashier_args(tx, tool_cashiers, next_vertex, false, dag, execution, None)?;
-        lock_payment_state_for_tools(tx, tool_cashiers, dag, execution)?;
+        super::invocation::settle(tx, dag, execution, next_vertex, invocation)?;
+
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
         if let Some(task) = task_settlement {
-            scheduler::append_settle_occurrence(tx, task, execution, leader_registry, clock)?;
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
         }
 
         Ok(())
@@ -932,13 +802,12 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
 
 #[allow(clippy::too_many_arguments)]
 pub fn dry_run_on_chain_tool_result_for_walk_ptb(
-    objects: &NexusObjects,
-    dag: (sui::types::Address, sui::types::Version),
+    objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
     walk_index: u64,
     next_vertex: &RuntimeVertex,
-    input_witnesses: &[NexusData],
     execution_plan: &PreparedOnchainToolExecution,
 ) -> anyhow::Result<ProgrammableTransaction> {
     let dag_ref = dag;
@@ -946,7 +815,7 @@ pub fn dry_run_on_chain_tool_result_for_walk_ptb(
 
     move_boundary::ptb(objects, |tx| {
         let leader_cap = tx.shared_object(leader_cap, false)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let RuntimeToolResultWorksheet {
             worksheet,
             stamp,
@@ -958,15 +827,13 @@ pub fn dry_run_on_chain_tool_result_for_walk_ptb(
             network_auth: _,
         } = build_runtime_tool_result_worksheet(
             tx,
-            &objects.agent_registry,
             RuntimeToolResultWorksheetInputs {
-                dag: dag_ref,
+                dag: dag_ref.clone(),
                 execution: execution_ref,
                 leader_registry,
                 leader_cap,
                 walk_index,
             },
-            input_witnesses,
         )?;
         let pre_allocated = runtime_pre_allocated_objects(
             objects,
@@ -998,21 +865,28 @@ pub fn dry_run_on_chain_tool_result_for_walk_ptb(
     })
 }
 
-/// Build a PTB that refills TAP execution payment from an agent vault.
+/// Builds a [`ProgrammableTransaction`] that refills TAP execution payment from
+/// an Agent vault and requests every active walk whose payment is ready.
 pub(crate) fn refill_tap_execution_payment_from_agent_vault_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     agent: AgentInput,
+    dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     amount: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let agent = agent.mutable_ptb_argument(tx)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
         let amount = tx.arg(&amount)?;
+        let runtime_authority = tx.runtime_authority(false)?;
         tx.call_target(
             execution_settlement_binding::refill_tap_execution_payment_from_agent_vault_target,
-            vec![agent, execution, amount],
+            vec![runtime_authority, agent, execution, amount],
         )?;
+        emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
         Ok(())
     })
 }
@@ -1021,7 +895,7 @@ fn prepare_offchain_tool_response(
     tx: &mut move_boundary::NexusPtbBuilder,
     result: &OffchainToolOutput,
     meta_schema: &MetaSchema,
-) -> anyhow::Result<(sui::types::Argument, sui::types::Argument)> {
+) -> anyhow::Result<sui::types::Argument> {
     let ports = meta_schema.canonical_output_ports(result)?;
     prepare_tagged_output(
         tx,
@@ -1053,15 +927,15 @@ fn call_external_verifier(
     auxiliary: &[u8],
     runtime_call: &ExternalVerifierRuntimeCall,
 ) -> anyhow::Result<sui::types::Argument> {
-    let (result, output_witnesses) = prepare_offchain_tool_response(tx, result, meta_schema)?;
+    let result = prepare_offchain_tool_response(tx, result, meta_schema)?;
     let auxiliary = tx.arg(&auxiliary.to_vec())?;
     let verifier_objects = runtime_call
         .immutable_shared_objects
         .iter()
         .map(|object_ref| tx.shared_object(object_ref, false))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut args = Vec::with_capacity(verifier_objects.len() + 4);
-    args.extend([worksheet, result, output_witnesses, auxiliary]);
+    let mut args = Vec::with_capacity(verifier_objects.len() + 3);
+    args.extend([worksheet, result, auxiliary]);
     args.extend(verifier_objects);
     tx.call_function(
         runtime_call.method_id.package_id.bytes,
@@ -1088,10 +962,12 @@ fn commit_off_chain_tool_result_for_walk(
 ) -> anyhow::Result<()> {
     let walk_index = tx.arg(&walk_index)?;
     let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+    let runtime_authority = tx.runtime_authority(false)?;
 
     tx.call_target(
-        execution_submission_binding::commit_off_chain_tool_result_for_walk_v2_target,
+        execution_submission_binding::commit_off_chain_tool_result_for_walk_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             tool_registry,
@@ -1120,9 +996,18 @@ fn release_vertex_authorization_for_onchain_walk(
     walk_index: u64,
 ) -> anyhow::Result<sui::types::Argument> {
     let walk_index = tx.arg(&walk_index)?;
+    let runtime_authority = tx.runtime_authority(false)?;
     tx.call_target(
-        execution_submission_binding::release_vertex_authorization_for_onchain_walk_v2_target,
-        vec![dag, execution, worksheet, stamp, leader_cap, walk_index],
+        execution_submission_binding::release_vertex_authorization_for_onchain_walk_target,
+        vec![
+            runtime_authority,
+            dag,
+            execution,
+            worksheet,
+            stamp,
+            leader_cap,
+            walk_index,
+        ],
     )
 }
 
@@ -1140,10 +1025,12 @@ pub fn create_on_chain_tool_result_for_walk(
     expected_vertex: sui::types::Argument,
 ) -> anyhow::Result<(sui::types::Argument, sui::types::Argument)> {
     let walk_index = tx.arg(&walk_index)?;
+    let runtime_authority = tx.runtime_authority(false)?;
 
     let result = tx.call_target(
-        execution_submission_binding::create_on_chain_tool_result_for_walk_v2_target,
+        execution_submission_binding::create_on_chain_tool_result_for_walk_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             tool_registry,
@@ -1171,7 +1058,6 @@ pub fn consume_on_chain_tool_result_for_walk(
     execution: sui::types::Argument,
     tool_registry: sui::types::Argument,
     result: sui::types::Argument,
-    output_witnesses: &[NexusData],
     leader_cap: sui::types::Argument,
     leader_registry: sui::types::Argument,
     priority_fee_vault: sui::types::Argument,
@@ -1184,19 +1070,19 @@ pub fn consume_on_chain_tool_result_for_walk(
 ) -> anyhow::Result<()> {
     let walk_index = tx.arg(&walk_index)?;
     let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
-    let output_witnesses = nexus_data_witness_groups(tx, output_witnesses)?;
     let tool_witness_id = tx.object_id(tool_witness_id)?;
     let commit_gas_charge = tx.arg(&commit_gas_charge)?;
     let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
+    let runtime_authority = tx.runtime_authority(false)?;
 
     tx.call_target(
-        execution_submission_binding::consume_on_chain_tool_result_for_walk_v2_target,
+        execution_submission_binding::consume_on_chain_tool_result_for_walk_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             tool_registry,
             result,
-            output_witnesses,
             leader_cap,
             leader_registry,
             priority_fee_vault,
@@ -1216,10 +1102,9 @@ fn prepare_tagged_output<'a>(
     tx: &mut move_boundary::NexusPtbBuilder,
     tag: &[u8],
     ports: impl IntoIterator<Item = (&'a [u8], &'a NexusData)>,
-) -> anyhow::Result<(sui::types::Argument, sui::types::Argument)> {
+) -> anyhow::Result<sui::types::Argument> {
     let tag = tx.arg(&tag.to_vec())?;
     let mut output = tx.call_target(tagged_output_binding::new_target, vec![tag])?;
-    let mut output_witnesses = Vec::new();
     for (name, data) in ports {
         let name = tx.arg(&name.to_vec())?;
         output = if data.is_one() {
@@ -1229,25 +1114,25 @@ fn prepare_tagged_output<'a>(
                     .first()
                     .expect("well-formed One contains exactly one value"),
             )?;
-            output_witnesses.push(
-                tx.move_vector::<crate::move_bindings::primitives::data::NexusValue>(vec![value])?,
-            );
             tx.call_target(
-                tagged_output_binding::with_named_payload_v2_target,
+                tagged_output_binding::with_named_payload_target,
                 vec![output, name, value],
             )?
         } else {
-            let values = tx.nexus_value_witnesses(data)?;
-            output_witnesses.push(values);
+            let values = data
+                .values()?
+                .iter()
+                .map(|value| tx.nexus_value(value))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let values =
+                tx.move_vector::<crate::move_bindings::primitives::data::NexusValue>(values)?;
             tx.call_target(
                 tagged_output_binding::with_named_payload_many_target,
                 vec![output, name, values],
             )?
         };
     }
-    let output_witnesses = tx
-        .move_vector::<Vec<crate::move_bindings::primitives::data::NexusValue>>(output_witnesses)?;
-    Ok((output, output_witnesses))
+    Ok(output)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1272,10 +1157,12 @@ fn record_committed_tool_result_gas_charge_by_leader(
     let commit_tx_digest = tx.arg(&commit_tx_digest)?;
     let commit_gas_charge = tx.arg(&commit_gas_charge)?;
     let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
+    let runtime_authority = tx.runtime_authority(false)?;
 
     tx.call_target(
-        execution_settlement_binding::record_committed_tool_result_gas_charge_by_leader_v2_target,
+        execution_settlement_binding::record_committed_tool_result_gas_charge_by_leader_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             leader_registry,
@@ -1294,8 +1181,8 @@ fn record_committed_tool_result_gas_charge_by_leader(
 
 #[allow(clippy::too_many_arguments)]
 pub fn record_committed_tool_result_gas_charge_by_leader_ptb(
-    objects: &NexusObjects,
-    dag: (sui::types::Address, sui::types::Version),
+    objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
     walk_index: u64,
@@ -1306,9 +1193,9 @@ pub fn record_committed_tool_result_gas_charge_by_leader_ptb(
     settlement_gas_charge: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let dag = tx.shared_object_by_id(dag.0, dag.1, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object_by_id(execution.0, execution.1, true)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let leader_cap = tx.shared_object(leader_cap, false)?;
         let clock = tx.clock()?;
 
@@ -1353,10 +1240,12 @@ fn settle_committed_tool_result_for_walk_by_leader(
     let commit_tx_digest = tx.arg(&commit_tx_digest)?;
     let commit_gas_charge = tx.arg(&commit_gas_charge)?;
     let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
+    let runtime_authority = tx.runtime_authority(false)?;
 
     tx.call_target(
-        execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_v2_target,
+        execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             tool_registry,
@@ -1377,11 +1266,11 @@ fn settle_committed_tool_result_for_walk_by_leader(
 
 #[allow(clippy::too_many_arguments)]
 pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
-    objects: &NexusObjects,
-    dag: (sui::types::Address, sui::types::Version),
+    objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     failed_onchain_tool_reason: Option<Vec<u8>>,
@@ -1392,11 +1281,11 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let leader_cap = tx.shared_object(leader_cap, false)?;
-        let dag = tx.shared_object_by_id(dag.0, dag.1, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object_by_id(execution.0, execution.1, true)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, false)?;
+        let priority_fee_vault = tx.shared_root(&objects.priority_fee_vault, false)?;
         let clock = tx.clock()?;
 
         settle_committed_tool_result_for_walk_by_leader(
@@ -1416,36 +1305,36 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
             clock,
         )?;
 
-        let mut tool_cashiers_args = Vec::with_capacity(tool_cashiers.len());
-        for (addr, ver) in tool_cashiers {
-            tool_cashiers_args.push(tx.shared_object_by_id(*addr, *ver, true)?);
-        }
-        lock_payment_state_for_tools(tx, tool_cashiers_args, dag, execution)?;
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
         if let Some(task) = task_settlement {
-            scheduler::append_settle_occurrence(tx, task, execution, leader_registry, clock)?;
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
         }
 
         Ok(())
     })
 }
 
-/// Build a PTB that aborts an expired DAG execution.
+/// Builds a PTB that aborts an expired DAG execution.
+///
+/// When `task_settlement` is supplied, the owning Task is settled after the
+/// execution transition has removed every accounting lock.
 pub fn abort_expired_execution_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     broken_onchain_result_cleanups: &[BrokenOnchainToolResultCleanupInput],
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
 
         if !broken_onchain_result_cleanups.is_empty() {
-            let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-            let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+            let tool_registry = tx.shared_root(&objects.tool_registry, false)?;
 
             for cleanup in broken_onchain_result_cleanups {
                 let result = tx.shared_object(&cleanup.result_ref, true)?;
@@ -1463,33 +1352,46 @@ pub fn abort_expired_execution_for_self_ptb(
             }
         }
 
+        let runtime_authority = tx.runtime_authority(false)?;
         tx.call_target(
             execution_settlement_binding::abort_expired_execution_target,
-            vec![dag, execution, clock],
+            vec![runtime_authority, dag, execution, clock],
         )?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
+        }
         Ok(())
     })
 }
 
-/// Build a PTB that settles a committed tool result for one walk.
+/// Builds a [`ProgrammableTransaction`] that settles a committed Tool result
+/// for one [`RuntimeVertex`].
+///
+/// The exact Invocation is settled and payment ready walks are requested before
+/// the optional owning Task settlement.
 pub fn settle_committed_tool_result_for_walk_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
-        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_root(&objects.priority_fee_vault, false)?;
         let walk_index = tx.arg(&walk_index)?;
         let clock = tx.clock()?;
+        let runtime_authority = tx.runtime_authority(false)?;
 
         tx.call_target(
-            execution_settlement_binding::settle_committed_tool_result_for_walk_v2_target,
+            execution_settlement_binding::settle_committed_tool_result_for_walk_target,
             vec![
+                runtime_authority,
                 dag,
                 execution,
                 tool_registry,
@@ -1499,6 +1401,11 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
                 clock,
             ],
         )?;
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
+        emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
+        }
         Ok(())
     })
 }
@@ -1510,7 +1417,6 @@ pub fn settle_onchain_tool_result_for_walk(
     execution: sui::types::Argument,
     tool_registry: sui::types::Argument,
     result: sui::types::Argument,
-    output_witnesses: &[NexusData],
     leader_registry: sui::types::Argument,
     priority_fee_vault: sui::types::Argument,
     walk_index: u64,
@@ -1520,17 +1426,17 @@ pub fn settle_onchain_tool_result_for_walk(
 ) -> anyhow::Result<()> {
     let walk_index = tx.arg(&walk_index)?;
     let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
-    let output_witnesses = nexus_data_witness_groups(tx, output_witnesses)?;
     let tool_witness_id = tx.object_id(tool_witness_id)?;
+    let runtime_authority = tx.runtime_authority(false)?;
 
     tx.call_target(
-        execution_settlement_binding::settle_onchain_tool_result_for_walk_v2_target,
+        execution_settlement_binding::settle_onchain_tool_result_for_walk_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             tool_registry,
             result,
-            output_witnesses,
             leader_registry,
             priority_fee_vault,
             walk_index,
@@ -1543,25 +1449,28 @@ pub fn settle_onchain_tool_result_for_walk(
     Ok(())
 }
 
-/// Build a PTB that settles a finalized on chain tool result for one walk.
+/// Builds a PTB that settles a finalized on chain Tool result for one [RuntimeVertex].
+///
+/// The exact Invocation is settled before the optional owning Task settlement.
 #[allow(clippy::too_many_arguments)]
 pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
+    invocation: &sui::types::ObjectReference,
     result: &sui::types::ObjectReference,
-    output_witnesses: &[NexusData],
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     tool_witness_id: sui::types::Address,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
-        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, false)?;
         let result = tx.shared_object(result, true)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_root(&objects.priority_fee_vault, false)?;
         let clock = tx.clock()?;
 
         settle_onchain_tool_result_for_walk(
@@ -1570,7 +1479,6 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
             execution,
             tool_registry,
             result,
-            output_witnesses,
             leader_registry,
             priority_fee_vault,
             walk_index,
@@ -1578,6 +1486,11 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
             tool_witness_id,
             clock,
         )?;
+
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
+        }
 
         Ok(())
     })
@@ -1597,10 +1510,12 @@ pub fn cleanup_broken_onchain_tool_result(
 ) -> anyhow::Result<()> {
     let walk_index = tx.arg(&walk_index)?;
     let tool_witness_id = tx.object_id(tool_witness_id)?;
+    let runtime_authority = tx.runtime_authority(false)?;
 
     tx.call_target(
         execution_settlement_binding::cleanup_broken_onchain_tool_result_target,
         vec![
+            runtime_authority,
             dag,
             execution,
             tool_registry,
@@ -1618,12 +1533,13 @@ pub fn cleanup_broken_onchain_tool_result(
 /// Build a PTB that settles a committed tool result with leader gas accounting.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     execution_owner: &sui::types::Owner,
     leader_cap: &sui::types::ObjectReference,
     leader_cap_owner: &sui::types::Owner,
+    invocation: &sui::types::ObjectReference,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     failed_onchain_tool_reason: Option<Vec<u8>>,
@@ -1632,24 +1548,26 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
     settlement_gas_charge: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.object_from_owner(execution, execution_owner, true)?;
-        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_root(&objects.priority_fee_vault, false)?;
         let leader_cap = tx.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let walk_index = tx.arg(&walk_index)?;
-        let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+        let expected_vertex_arg = runtime_vertex_arg(tx, expected_vertex)?;
         let failed_onchain_tool_reason =
             tx.arg(&MoveOption::from_option(failed_onchain_tool_reason))?;
         let commit_tx_digest = tx.arg(&commit_tx_digest)?;
         let commit_gas_charge = tx.arg(&commit_gas_charge)?;
         let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
         let clock = tx.clock()?;
+        let runtime_authority = tx.runtime_authority(false)?;
 
         tx.call_target(
-            execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_v2_target,
+            execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_target,
             vec![
+                runtime_authority,
                 dag,
                 execution,
                 tool_registry,
@@ -1657,7 +1575,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
                 priority_fee_vault,
                 leader_cap,
                 walk_index,
-                expected_vertex,
+                expected_vertex_arg,
                 failed_onchain_tool_reason,
                 commit_tx_digest,
                 commit_gas_charge,
@@ -1665,6 +1583,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
                 clock,
             ],
         )?;
+        super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
         Ok(())
     })
 }
@@ -1672,7 +1591,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
 /// Build a PTB that records leader gas accounting for a committed tool result.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     execution_owner: &sui::types::Owner,
@@ -1686,9 +1605,9 @@ pub(crate) fn record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
     settlement_gas_charge: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.object_from_owner(execution, execution_owner, true)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let leader_cap = tx.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let walk_index = tx.arg(&walk_index)?;
         let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
@@ -1698,10 +1617,12 @@ pub(crate) fn record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
         let commit_gas_charge = tx.arg(&commit_gas_charge)?;
         let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
         let clock = tx.clock()?;
+        let runtime_authority = tx.runtime_authority(false)?;
 
         tx.call_target(
-            execution_settlement_binding::record_committed_tool_result_gas_charge_by_leader_v2_target,
+            execution_settlement_binding::record_committed_tool_result_gas_charge_by_leader_target,
             vec![
+                runtime_authority,
                 dag,
                 execution,
                 leader_registry,
@@ -1726,11 +1647,14 @@ fn emit_payment_ready_walk_requests(
     leader_registry: sui::types::Argument,
     clock: sui::types::Argument,
 ) {
+    let runtime_authority = tx
+        .runtime_authority(false)
+        .expect("the configured RuntimeAuthority root is a valid shared input");
     tx.call_target(
         execution_settlement_binding::emit_payment_ready_walk_requests_target,
-        vec![dag, execution, leader_registry, clock],
+        vec![runtime_authority, dag, execution, leader_registry, clock],
     )
-    .expect("generated execution_settlement::emit_payment_ready_walk_requests target is valid");
+    .expect("generated execution settlement target is valid");
 }
 
 /// PTB template for creating a new DAG default value.
@@ -1742,10 +1666,10 @@ fn create_default_value(
     let vertex = tx.graph_vertex(&default_value.vertex)?;
     let port = tx.graph_input_port(&default_value.input_port)?;
     let value = default_value_nexus_data(default_value)?;
-    let value = tx.nexus_value_witnesses(&value)?;
+    let value = tx.nexus_data(&value)?;
 
     tx.call_target(
-        dag_binding::with_default_value_v2_target,
+        dag_binding::with_default_value_target,
         vec![dag, vertex, port, value],
     )
 }
@@ -1831,23 +1755,6 @@ fn mark_entry_input_port(
     )
 }
 
-/// PTB template to lock execution payment state for the given tools.
-#[allow(clippy::too_many_arguments)]
-fn lock_payment_state_for_tools(
-    tx: &mut move_boundary::NexusPtbBuilder,
-    tool_cashiers: Vec<sui::types::Argument>,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-) -> anyhow::Result<()> {
-    for tool_cashier in tool_cashiers {
-        tx.call_target(
-            tool_cashier_adapter_binding::lock_payment_state_for_tool_target,
-            vec![tool_cashier, dag, execution],
-        )?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use {
@@ -1861,7 +1768,8 @@ mod tests {
                 move_std::ascii,
                 sui_framework::object::ID,
             },
-            types::{DefaultDagExecutorTarget, OffchainToolOutputPort, UsTokenConfig},
+            test_utils::sui_mocks,
+            types::{OffchainToolOutputPort, PackageRole, SharedRoot},
         },
         std::sync::Arc,
         sui::types::{Argument, Command, Input},
@@ -1879,32 +1787,15 @@ mod tests {
         )
     }
 
-    fn nexus_objects() -> NexusObjects {
-        NexusObjects {
-            protocol_version: 1,
-            protocol: object_ref("0x18", 1, 18),
-            packages: crate::types::NexusPackages::first_publication(
-                addr("0x2"),
-                addr("0x3"),
-                addr("0x5"),
-                addr("0x13"),
-                addr("0x1"),
-                addr("0x11"),
-            ),
-            config_hash: vec![0; 32],
-            network_id: addr("0x4"),
-            tool_registry: object_ref("0x6", 1, 6),
-            network_auth: object_ref("0x8", 1, 8),
-            agent_registry: object_ref("0xc", 1, 12),
-            default_dag_executor: DefaultDagExecutorTarget {
-                agent_id: addr("0xa1"),
-                skill_id: 177,
-            },
-            leader_registry: object_ref("0xe", 1, 14),
-            priority_fee_vault: object_ref("0xf", 1, 15),
-            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
-            us_token: UsTokenConfig::new(addr("0x12")),
-        }
+    fn nexus_objects() -> NexusContext {
+        sui_mocks::mock_nexus_context()
+    }
+
+    fn runtime_package(objects: &NexusContext) -> sui::types::Address {
+        objects
+            .require_package(PackageRole::Scheduler)
+            .unwrap()
+            .storage_id
     }
 
     fn move_call_index(
@@ -1950,6 +1841,32 @@ mod tests {
         assert_eq!(shared.object_id(), *expected.object_id());
         assert_eq!(shared.version(), expected.version());
         assert_eq!(shared.mutability().is_mutable(), expected_mutable);
+    }
+
+    fn expect_shared_root_arg(
+        ptb: &ProgrammableTransaction,
+        argument: &sui::types::Argument,
+        expected: &SharedRoot,
+        expected_mutable: bool,
+    ) {
+        let sui::types::Input::Shared(shared) = input_for_argument(ptb, argument) else {
+            panic!("expected shared root input, got {argument:?}");
+        };
+        assert_eq!(shared.object_id(), expected.object_id());
+        assert_eq!(shared.version(), expected.initial_shared_version);
+        assert_eq!(shared.mutability().is_mutable(), expected_mutable);
+    }
+
+    fn expect_task_settlement_uses_clock(ptb: &ProgrammableTransaction) {
+        let settle = move_call_index(ptb, None, "scheduler", "settle");
+        let Command::MoveCall(call) = &ptb.commands[settle] else {
+            panic!("expected task settlement call");
+        };
+        let Input::Shared(clock) = input_for_argument(ptb, &call.arguments[3]) else {
+            panic!("expected Clock shared object argument");
+        };
+        assert_eq!(clock.object_id(), move_boundary::CLOCK_OBJECT_ID);
+        assert!(!clock.mutability().is_mutable());
     }
 
     fn expect_u64_arg(
@@ -2011,18 +1928,17 @@ mod tests {
         )
     }
 
-    fn offchain_ptb(submission: &PreparedOffchainToolResultSubmission) -> ProgrammableTransaction {
-        let objects = nexus_objects();
+    fn offchain_ptb(
+        objects: &NexusContext,
+        submission: &PreparedOffchainToolResultSubmission,
+    ) -> ProgrammableTransaction {
         submit_off_chain_tool_result_for_walk_ptb(
-            &objects,
-            (addr("0x50"), 7),
+            objects,
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
             0,
             &RuntimeVertex::plain("offchain"),
-            false,
-            &[],
             submission,
         )
         .unwrap()
@@ -2068,39 +1984,49 @@ mod tests {
 
     #[test]
     fn offchain_none_creates_verdict_before_unified_submission() {
-        let ptb = offchain_ptb(&PreparedOffchainToolResultSubmission::NoVerifier {
-            result: canonical_response(),
-            meta_schema: offchain_meta_schema(),
-        });
-        let typed_output = move_call_index(&ptb, None, "tagged_output", "with_named_payload_v2");
+        let objects = nexus_objects();
+        let ptb = offchain_ptb(
+            &objects,
+            &PreparedOffchainToolResultSubmission::NoVerifier {
+                result: canonical_response(),
+                meta_schema: offchain_meta_schema(),
+            },
+        );
+        let typed_output = move_call_index(&ptb, None, "tagged_output", "with_named_payload");
         let worksheet = move_call_index(
             &ptb,
             None,
             "execution_submission",
-            "prepare_tool_result_submission_worksheet_v2",
+            "prepare_tool_result_submission_worksheet",
         );
-        let verify = move_call_index(&ptb, None, "verifier", "new_none_v2");
+        let verify = move_call_index(&ptb, None, "verifier", "new_none");
         let submit = move_call_index(
             &ptb,
             None,
             "execution_submission",
-            "commit_off_chain_tool_result_for_walk_v2",
+            "commit_off_chain_tool_result_for_walk",
         );
         assert!(worksheet < typed_output && typed_output < verify && verify < submit);
         let Command::MoveCall(worksheet_call) = &ptb.commands[worksheet] else {
             unreachable!()
         };
         assert_eq!(worksheet_call.arguments.len(), 10);
+        expect_shared_root_arg(
+            &ptb,
+            &worksheet_call.arguments[0],
+            &objects.runtime_authority,
+            false,
+        );
         let Command::MoveCall(submit_call) = &ptb.commands[submit] else {
             unreachable!()
         };
-        assert_eq!(submit_call.arguments.len(), 11);
+        assert_eq!(submit_call.arguments.len(), 12);
         assert_eq!(
-            submit_call.arguments[4],
+            submit_call.arguments[5],
             Argument::NestedResult(worksheet as u16, 0),
         );
         assert_eq!(
-            submit_call.arguments[5],
+            submit_call.arguments[6],
             Argument::NestedResult(worksheet as u16, 1),
         );
     }
@@ -2112,6 +2038,7 @@ mod tests {
         let leader_key_binding = object_ref("0x70", 2, 70);
         let tool_key_binding = object_ref("0x71", 3, 71);
         let ptb = offchain_ptb(
+            &objects,
             &PreparedOffchainToolResultSubmission::RegisteredKeyVerifier {
                 tool_id: addr("0x42"),
                 result: canonical_response(),
@@ -2129,12 +2056,12 @@ mod tests {
             },
         );
         let auxiliary = move_call_index(&ptb, None, "verifier", "registered_key_auxiliary");
-        let verify = move_call_index(&ptb, None, "registered_key_verifier", "verify_v2");
+        let verify = move_call_index(&ptb, None, "registered_key_verifier", "verify");
         let submit = move_call_index(
             &ptb,
             None,
             "execution_submission",
-            "commit_off_chain_tool_result_for_walk_v2",
+            "commit_off_chain_tool_result_for_walk",
         );
         assert!(auxiliary < verify && verify < submit);
         let Command::MoveCall(auxiliary_call) = &ptb.commands[auxiliary] else {
@@ -2144,44 +2071,48 @@ mod tests {
         let Command::MoveCall(verify_call) = &ptb.commands[verify] else {
             unreachable!()
         };
-        assert_eq!(verify_call.arguments.len(), 10);
-        expect_shared_object_arg(
+        assert_eq!(verify_call.arguments.len(), 9);
+        expect_shared_root_arg(
             &ptb,
-            &verify_call.arguments[4],
+            &verify_call.arguments[3],
             &objects.leader_registry,
             false,
         );
-        expect_shared_object_arg(&ptb, &verify_call.arguments[5], &leader_cap, false);
-        expect_shared_object_arg(
+        expect_shared_object_arg(&ptb, &verify_call.arguments[4], &leader_cap, false);
+        expect_shared_root_arg(
             &ptb,
-            &verify_call.arguments[6],
+            &verify_call.arguments[5],
             &objects.network_auth,
             false,
         );
-        expect_shared_object_arg(&ptb, &verify_call.arguments[7], &leader_key_binding, false);
-        expect_shared_object_arg(&ptb, &verify_call.arguments[8], &tool_key_binding, false);
+        expect_shared_object_arg(&ptb, &verify_call.arguments[6], &leader_key_binding, false);
+        expect_shared_object_arg(&ptb, &verify_call.arguments[7], &tool_key_binding, false);
     }
 
     #[test]
     fn offchain_external_appends_immutable_objects_after_fixed_arguments() {
+        let objects = nexus_objects();
         let verifier_package = addr("0x40");
         let witness = object_ref("0x70", 2, 70);
         let config = object_ref("0x71", 3, 71);
-        let ptb = offchain_ptb(&PreparedOffchainToolResultSubmission::ExternalVerifier {
-            result: canonical_response(),
-            meta_schema: offchain_meta_schema(),
-            auxiliary: vec![9],
-            runtime_call: ExternalVerifierRuntimeCall {
-                method_id: VerifierMethodId {
-                    tool_id: ID::new(addr("0x42")),
-                    package_id: ID::new(verifier_package),
-                    module_name: ascii::String::from("verifier"),
-                    function_name: ascii::String::from("verify"),
+        let ptb = offchain_ptb(
+            &objects,
+            &PreparedOffchainToolResultSubmission::ExternalVerifier {
+                result: canonical_response(),
+                meta_schema: offchain_meta_schema(),
+                auxiliary: vec![9],
+                runtime_call: ExternalVerifierRuntimeCall {
+                    method_id: VerifierMethodId {
+                        tool_id: ID::new(addr("0x42")),
+                        package_id: ID::new(verifier_package),
+                        module_name: ascii::String::from("verifier"),
+                        function_name: ascii::String::from("verify"),
+                    },
+                    witness_id: *witness.object_id(),
+                    immutable_shared_objects: vec![witness, config],
                 },
-                witness_id: *witness.object_id(),
-                immutable_shared_objects: vec![witness, config],
             },
-        });
+        );
         let calls = move_calls(&ptb);
         let verify = calls
             .iter()
@@ -2189,20 +2120,20 @@ mod tests {
             .expect("external verifier call");
         assert_eq!(verify.module.as_str(), "verifier");
         assert_eq!(verify.function.as_str(), "verify");
-        assert_eq!(verify.arguments.len(), 6);
+        assert_eq!(verify.arguments.len(), 5);
         assert_eq!(
-            input_shared_object_id(&ptb, verify.arguments[4]),
+            input_shared_object_id(&ptb, verify.arguments[3]),
             addr("0x70")
         );
         assert_eq!(
-            input_shared_object_id(&ptb, verify.arguments[5]),
+            input_shared_object_id(&ptb, verify.arguments[4]),
             addr("0x71")
         );
         let submit = move_call_index(
             &ptb,
             None,
             "execution_submission",
-            "commit_off_chain_tool_result_for_walk_v2",
+            "commit_off_chain_tool_result_for_walk",
         );
         let external = ptb
             .commands
@@ -2215,7 +2146,7 @@ mod tests {
     }
 
     #[test]
-    fn onchain_tool_execution_locks_payment_before_execute() {
+    fn onchain_tool_execution_keeps_invocation_locked_until_outcome() {
         let objects = nexus_objects();
         let next_vertex = RuntimeVertex::plain("counter_increment");
         let tool_package = addr("0x40");
@@ -2230,31 +2161,25 @@ mod tests {
 
         let ptb = submit_on_chain_tool_result_for_walk_ptb(
             &objects,
-            (addr("0x50"), 7),
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[RuntimeToolCashierRef {
-                vertex: next_vertex.vertex().clone(),
-                object_id: addr("0x30"),
-                version: 9,
-            }],
             0,
             &next_vertex,
-            true,
-            &[],
             &submission,
         )
         .unwrap();
 
-        let lock_payment = move_call_index(
-            &ptb,
-            None,
-            "tool_cashier_adapter",
-            "lock_payment_state_for_tool",
-        );
         let execute = move_call_index(&ptb, Some(tool_package), "tool", "execute");
 
-        assert!(lock_payment < execute);
+        assert!(!ptb.commands.iter().any(|command| {
+            matches!(
+                command,
+                Command::MoveCall(call)
+                    if call.module.as_str() == "invocation_adapter"
+                        && call.function.as_str() == "settle"
+            )
+        }));
         assert_eq!(execute, ptb.commands.len() - 1);
     }
 
@@ -2270,29 +2195,26 @@ mod tests {
                 tool_witness_id: addr("0x41"),
                 requires_authorization_cap: false,
                 arguments: vec![OnchainToolArgument::SharedObject {
-                    object_id: *objects.agent_registry.object_id(),
-                    initial_shared_version: objects.agent_registry.version(),
+                    object_id: objects.agent_registry.object_id(),
+                    initial_shared_version: objects.agent_registry.initial_shared_version,
                     mutable: true,
                 }],
             });
 
         let ptb = submit_on_chain_tool_result_for_walk_ptb(
             &objects,
-            (addr("0x50"), 7),
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
             0,
             &next_vertex,
-            false,
-            &[],
             &submission,
         )
         .unwrap();
 
         let worksheet = &move_calls(&ptb)
             .into_iter()
-            .find(|call| call.function.as_str() == "prepare_tool_result_submission_worksheet_v2")
+            .find(|call| call.function.as_str() == "prepare_tool_result_submission_worksheet")
             .expect("worksheet call")
             .arguments;
         let execute = &move_calls(&ptb)
@@ -2301,8 +2223,8 @@ mod tests {
             .expect("dynamic Tool call")
             .arguments;
 
-        assert_eq!(execute[2], worksheet[1]);
-        expect_shared_object_arg(&ptb, &execute[2], &objects.agent_registry, true);
+        assert_eq!(execute[2], worksheet[2]);
+        expect_shared_root_arg(&ptb, &execute[2], &objects.agent_registry, true);
         assert_eq!(
             ptb.inputs
                 .iter()
@@ -2310,7 +2232,7 @@ mod tests {
                     matches!(
                         input,
                         Input::Shared(shared)
-                            if shared.object_id() == *objects.agent_registry.object_id()
+                            if shared.object_id() == objects.agent_registry.object_id()
                     )
                 })
                 .count(),
@@ -2333,14 +2255,11 @@ mod tests {
 
         let ptb = submit_on_chain_tool_result_for_walk_ptb(
             &objects,
-            (addr("0x50"), 7),
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
             0,
             &next_vertex,
-            false,
-            &[],
             &submission,
         )
         .unwrap();
@@ -2349,19 +2268,19 @@ mod tests {
             &ptb,
             None,
             "execution_submission",
-            "prepare_tool_result_submission_worksheet_v2",
+            "prepare_tool_result_submission_worksheet",
         );
         let release = move_call_index(
             &ptb,
             None,
             "execution_submission",
-            "release_vertex_authorization_for_onchain_walk_v2",
+            "release_vertex_authorization_for_onchain_walk",
         );
         let create = move_call_index(
             &ptb,
             None,
             "execution_submission",
-            "create_on_chain_tool_result_for_walk_v2",
+            "create_on_chain_tool_result_for_walk",
         );
         let Command::MoveCall(release_call) = &ptb.commands[release] else {
             panic!("expected authorization release call");
@@ -2371,19 +2290,19 @@ mod tests {
         };
 
         assert_eq!(
-            release_call.arguments[2],
+            release_call.arguments[3],
             Argument::NestedResult(worksheet as u16, 0),
         );
         assert_eq!(
-            release_call.arguments[3],
+            release_call.arguments[4],
             Argument::NestedResult(worksheet as u16, 1),
         );
         assert_eq!(
-            create_call.arguments[3],
+            create_call.arguments[4],
             Argument::NestedResult(worksheet as u16, 0),
         );
         assert_eq!(
-            create_call.arguments[4],
+            create_call.arguments[5],
             Argument::NestedResult(worksheet as u16, 1),
         );
     }
@@ -2392,18 +2311,16 @@ mod tests {
     fn consume_on_chain_tool_result_uses_priority_fee_vault_argument() {
         let objects = nexus_objects();
         let next_vertex = RuntimeVertex::plain("counter_increment");
-        let output_witnesses = [NexusData::inline_data(b"42").unwrap()];
 
         let ptb = consume_on_chain_tool_result_for_walk_ptb(
             &objects,
-            (addr("0x50"), 7),
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[],
+            &object_ref("0x30", 9, 30),
             9,
             &next_vertex,
             (addr("0x70"), 10),
-            &output_witnesses,
             addr("0x71"),
             123,
             45,
@@ -2413,24 +2330,22 @@ mod tests {
 
         let call_index = move_call_index(
             &ptb,
-            Some(objects.workflow_pkg_id()),
+            Some(runtime_package(&objects)),
             "execution_submission",
-            "consume_on_chain_tool_result_for_walk_v2",
+            "consume_on_chain_tool_result_for_walk",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected consume call");
         };
 
         assert_eq!(call.arguments.len(), 14);
-        assert!(matches!(
-            call.arguments[4],
-            Argument::Result(_) | Argument::NestedResult(_, _)
-        ));
-        expect_shared_object_arg(&ptb, &call.arguments[6], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[7], &objects.priority_fee_vault, false);
+        expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
+        expect_shared_root_arg(&ptb, &call.arguments[6], &objects.leader_registry, false);
+        expect_shared_root_arg(&ptb, &call.arguments[7], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[8], 9);
         expect_u64_arg(&ptb, &call.arguments[11], 123);
         expect_u64_arg(&ptb, &call.arguments[12], 45);
+        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
     }
 
     #[test]
@@ -2439,10 +2354,10 @@ mod tests {
 
         let ptb = settle_committed_tool_result_for_walk_by_leader_ptb(
             &objects,
-            (addr("0x50"), 7),
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &HashSet::new(),
+            &object_ref("0x30", 9, 30),
             11,
             &RuntimeVertex::plain(""),
             None,
@@ -2455,29 +2370,86 @@ mod tests {
 
         let call_index = move_call_index(
             &ptb,
-            Some(objects.workflow_pkg_id()),
+            Some(runtime_package(&objects)),
             "execution_settlement",
-            "settle_committed_tool_result_for_walk_by_leader_v2",
+            "settle_committed_tool_result_for_walk_by_leader",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected settlement call");
         };
 
-        assert_eq!(call.arguments.len(), 13);
-        expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, false);
-        expect_u64_arg(&ptb, &call.arguments[6], 11);
-        expect_u64_arg(&ptb, &call.arguments[10], 123);
-        expect_u64_arg(&ptb, &call.arguments[11], 45);
+        assert_eq!(call.arguments.len(), 14);
+        expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
+        expect_shared_root_arg(&ptb, &call.arguments[4], &objects.leader_registry, false);
+        expect_shared_root_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, false);
+        expect_u64_arg(&ptb, &call.arguments[7], 11);
+        expect_u64_arg(&ptb, &call.arguments[11], 123);
+        expect_u64_arg(&ptb, &call.arguments[12], 45);
+        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
     }
 
     #[test]
-    fn failed_onchain_tool_payment_record_stays_state_only() {
+    fn coin_refill_requests_payment_ready_walks() {
+        let objects = nexus_objects();
+        let ptb = refill_tap_execution_payment_for_self_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            42,
+        )
+        .expect("ptb should build");
+
+        let refill = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "refill_tap_execution_payment",
+        );
+        let request = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "emit_payment_ready_walk_requests",
+        );
+
+        assert!(refill < request);
+    }
+
+    #[test]
+    fn agent_vault_refill_requests_payment_ready_walks() {
+        let objects = nexus_objects();
+        let ptb = refill_tap_execution_payment_from_agent_vault_for_self_ptb(
+            &objects,
+            AgentInput::Shared(object_ref("0x40", 6, 40)),
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            42,
+        )
+        .expect("ptb should build");
+
+        let refill = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "refill_tap_execution_payment_from_agent_vault",
+        );
+        let request = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "emit_payment_ready_walk_requests",
+        );
+
+        assert!(refill < request);
+    }
+
+    #[test]
+    fn failed_onchain_tool_payment_record_does_not_settle_invocation() {
         let objects = nexus_objects();
         let expected_vertex = RuntimeVertex::with_iterator("counter_increment", 2, 3);
         let ptb = record_committed_tool_result_gas_charge_by_leader_ptb(
             &objects,
-            (addr("0x50"), 7),
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
             11,
@@ -2491,25 +2463,26 @@ mod tests {
 
         let call_index = move_call_index(
             &ptb,
-            Some(objects.workflow_pkg_id()),
+            Some(runtime_package(&objects)),
             "execution_settlement",
-            "record_committed_tool_result_gas_charge_by_leader_v2",
+            "record_committed_tool_result_gas_charge_by_leader",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected failed on-chain result record call");
         };
 
-        assert_eq!(call.arguments.len(), 11);
-        expect_shared_object_arg(&ptb, &call.arguments[2], &objects.leader_registry, false);
-        expect_u64_arg(&ptb, &call.arguments[4], 11);
-        expect_u64_arg(&ptb, &call.arguments[8], 123);
-        expect_u64_arg(&ptb, &call.arguments[9], 45);
+        assert_eq!(call.arguments.len(), 12);
+        expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
+        expect_shared_root_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
+        expect_u64_arg(&ptb, &call.arguments[5], 11);
+        expect_u64_arg(&ptb, &call.arguments[9], 123);
+        expect_u64_arg(&ptb, &call.arguments[10], 45);
         assert!(!ptb.commands.iter().any(|command| {
             matches!(
                 command,
                 Command::MoveCall(call)
-                    if call.module.as_str() == "tool_cashier_adapter"
-                        && call.function.as_str() == "lock_payment_state_for_tool"
+                    if call.module.as_str() == "invocation_adapter"
+                        && call.function.as_str() == "settle"
             )
         }));
         assert!(!ptb.commands.iter().any(|command| {
@@ -2523,15 +2496,15 @@ mod tests {
     }
 
     #[test]
-    fn failed_onchain_tool_secondary_uses_settlement_boundary() {
+    fn failed_onchain_tool_secondary_settles_exact_invocation() {
         let objects = nexus_objects();
         let expected_vertex = RuntimeVertex::with_iterator("counter_increment", 2, 3);
         let ptb = settle_committed_tool_result_for_walk_by_leader_ptb(
             &objects,
-            (addr("0x50"), 7),
+            &object_ref("0x50", 7, 50),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &HashSet::from([(addr("0x30"), 9)]),
+            &object_ref("0x30", 9, 30),
             11,
             &expected_vertex,
             Some(b"tool failed".to_vec()),
@@ -2544,30 +2517,24 @@ mod tests {
 
         let call_index = move_call_index(
             &ptb,
-            Some(objects.workflow_pkg_id()),
+            Some(runtime_package(&objects)),
             "execution_settlement",
-            "settle_committed_tool_result_for_walk_by_leader_v2",
+            "settle_committed_tool_result_for_walk_by_leader",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected failed on-chain settlement call");
         };
 
-        assert_eq!(call.arguments.len(), 13);
-        expect_u64_arg(&ptb, &call.arguments[6], 11);
-        expect_u64_arg(&ptb, &call.arguments[10], 123);
-        expect_u64_arg(&ptb, &call.arguments[11], 45);
+        assert_eq!(call.arguments.len(), 14);
+        expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
+        expect_u64_arg(&ptb, &call.arguments[7], 11);
+        expect_u64_arg(&ptb, &call.arguments[11], 123);
+        expect_u64_arg(&ptb, &call.arguments[12], 45);
+        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
         assert!(
             move_call_index(
                 &ptb,
-                None,
-                "tool_cashier_adapter",
-                "lock_payment_state_for_tool",
-            ) > call_index
-        );
-        assert!(
-            move_call_index(
-                &ptb,
-                Some(objects.workflow_pkg_id()),
+                Some(runtime_package(&objects)),
                 "execution_settlement",
                 "emit_payment_ready_walk_requests",
             ) > call_index
@@ -2577,62 +2544,108 @@ mod tests {
     #[test]
     fn permissionless_settle_committed_tool_result_uses_priority_fee_vault_argument() {
         let objects = nexus_objects();
+        let task = object_ref("0x80", 10, 80);
 
         let ptb = settle_committed_tool_result_for_walk_for_self_ptb(
             &objects,
             &object_ref("0x50", 7, 50),
             &object_ref("0x60", 8, 60),
+            &object_ref("0x30", 9, 30),
             13,
+            &RuntimeVertex::plain("counter_increment"),
+            Some(&task),
         )
         .expect("ptb should build");
 
         let call_index = move_call_index(
             &ptb,
-            Some(objects.workflow_pkg_id()),
+            Some(runtime_package(&objects)),
             "execution_settlement",
-            "settle_committed_tool_result_for_walk_v2",
+            "settle_committed_tool_result_for_walk",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected permissionless settlement call");
         };
 
-        assert_eq!(call.arguments.len(), 7);
-        expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, false);
-        expect_u64_arg(&ptb, &call.arguments[5], 13);
+        assert_eq!(call.arguments.len(), 8);
+        expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
+        expect_shared_root_arg(&ptb, &call.arguments[4], &objects.leader_registry, false);
+        expect_shared_root_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, false);
+        expect_u64_arg(&ptb, &call.arguments[6], 13);
+        let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
+        let request = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "emit_payment_ready_walk_requests",
+        );
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(call_index < invocation && invocation < request && request < task);
+        expect_task_settlement_uses_clock(&ptb);
     }
 
     #[test]
     fn settle_onchain_tool_result_uses_priority_fee_vault_argument() {
         let objects = nexus_objects();
         let next_vertex = RuntimeVertex::plain("counter_increment");
+        let task = object_ref("0x80", 10, 80);
 
         let ptb = settle_onchain_tool_result_for_walk_for_self_ptb(
             &objects,
             &object_ref("0x50", 7, 50),
             &object_ref("0x60", 8, 60),
+            &object_ref("0x30", 9, 30),
             &object_ref("0x70", 9, 70),
-            &[],
             15,
             &next_vertex,
             addr("0x71"),
+            Some(&task),
         )
         .expect("ptb should build");
 
         let call_index = move_call_index(
             &ptb,
-            Some(objects.workflow_pkg_id()),
+            Some(runtime_package(&objects)),
             "execution_settlement",
-            "settle_onchain_tool_result_for_walk_v2",
+            "settle_onchain_tool_result_for_walk",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected on-chain settlement call");
         };
+        let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(call_index < invocation && invocation < task);
+        expect_task_settlement_uses_clock(&ptb);
 
         assert_eq!(call.arguments.len(), 11);
-        expect_shared_object_arg(&ptb, &call.arguments[5], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[6], &objects.priority_fee_vault, false);
+        expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
+        expect_shared_root_arg(&ptb, &call.arguments[5], &objects.leader_registry, false);
+        expect_shared_root_arg(&ptb, &call.arguments[6], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[7], 15);
+    }
+
+    #[test]
+    fn permissionless_abort_settles_the_task_after_the_execution() {
+        let objects = nexus_objects();
+        let task = object_ref("0x80", 10, 80);
+        let ptb = abort_expired_execution_for_self_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            &[],
+            Some(&task),
+        )
+        .expect("ptb should build");
+
+        let abort = move_call_index(
+            &ptb,
+            None,
+            "execution_settlement",
+            "abort_expired_execution",
+        );
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(abort < task);
+        expect_task_settlement_uses_clock(&ptb);
     }
 
     #[test]
@@ -2654,7 +2667,7 @@ mod tests {
             ..Default::default()
         };
 
-        let ptb = publish_ptb(&nexus_objects(), dag, addr("0x99")).unwrap();
+        let ptb = publish_ptb(&nexus_objects(), dag).unwrap();
         move_call_index(&ptb, None, "dag", "with_edge");
     }
 
@@ -2673,8 +2686,7 @@ mod tests {
             ..Default::default()
         };
 
-        let owner = addr("0x99");
-        let ptb = publish_ptb(&nexus_objects(), dag, owner).unwrap();
+        let ptb = publish_ptb(&nexus_objects(), dag).unwrap();
         let new_dag = move_call_index(&ptb, None, "dag", "new");
         let add_vertex = move_call_index(&ptb, None, "tool_registry", "add_vertex_to_dag");
         let mode = move_call_index(&ptb, None, "verifier", "verifier_mode_registered_key");
@@ -2684,7 +2696,7 @@ mod tests {
             "tool_registry",
             "set_registered_vertex_verifier_mode",
         );
-        let share_dag = move_call_index(&ptb, None, "transfer", "public_share_object");
+        let finalize_dag = move_call_index(&ptb, None, "dag", "finalize");
         let Command::MoveCall(add_vertex_call) = &ptb.commands[add_vertex] else {
             panic!("expected add vertex call");
         };
@@ -2712,24 +2724,17 @@ mod tests {
             configure_call.arguments[2],
             Argument::NestedResult(new_dag as u16, 1)
         );
-        let Command::MoveCall(share_dag_call) = &ptb.commands[share_dag] else {
-            panic!("expected DAG share call");
+        let Command::MoveCall(finalize_dag_call) = &ptb.commands[finalize_dag] else {
+            panic!("expected DAG finalization call");
         };
         assert_eq!(
-            share_dag_call.arguments[0],
+            finalize_dag_call.arguments[0],
             Argument::NestedResult(new_dag as u16, 0)
         );
-        let Command::TransferObjects(transfer) = ptb.commands.last().unwrap() else {
-            panic!("expected DAG owner capability transfer");
-        };
         assert_eq!(
-            transfer.objects,
-            [Argument::NestedResult(new_dag as u16, 1)]
+            finalize_dag_call.arguments[1],
+            Argument::NestedResult(new_dag as u16, 1)
         );
-        let Input::Pure(recipient) = input_for_argument(&ptb, &transfer.address) else {
-            panic!("expected pure DAG owner address");
-        };
-        assert_eq!(recipient.as_ref(), bcs::to_bytes(&owner).unwrap());
         assert!(!ptb.commands.iter().any(|command| matches!(
             command,
             Command::MoveCall(call)
@@ -2766,7 +2771,7 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(publish_ptb(&nexus_objects(), dag, addr("0x99"))
+        assert!(publish_ptb(&nexus_objects(), dag)
             .unwrap_err()
             .to_string()
             .contains("cannot configure an off-chain verifier"));
@@ -2785,9 +2790,9 @@ mod tests {
             .unwrap();
 
         for function_name in [
-            "commit_off_chain_tool_result_for_walk_v2",
-            "release_vertex_authorization_for_onchain_walk_v2",
-            "create_on_chain_tool_result_for_walk_v2",
+            "commit_off_chain_tool_result_for_walk",
+            "release_vertex_authorization_for_onchain_walk",
+            "create_on_chain_tool_result_for_walk",
         ] {
             let function = functions
                 .iter()
@@ -2803,19 +2808,8 @@ mod tests {
                 .expect("active submission target must carry the typed stamp");
             assert!(stamp["ty"]
                 .to_string()
-                .contains("AgentVertexAuthorizationStampV2"));
+                .contains("AgentVertexAuthorizationStamp"));
         }
-
-        let legacy = functions
-            .iter()
-            .find(|function| function["name"] == "create_on_chain_tool_result_for_walk")
-            .expect("retained V1 on-chain result target");
-        assert_eq!(legacy["parameters"].as_array().unwrap().len(), 9);
-        assert!(legacy["parameters"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|parameter| parameter["name"] != "stamp"));
     }
 
     #[test]
@@ -2825,10 +2819,6 @@ mod tests {
         let datatypes = interface["modules"]["onchain_tool_result"]["datatypes"]
             .as_array()
             .unwrap();
-        assert!(datatypes
-            .iter()
-            .all(|datatype| datatype["name"] != "OnchainToolResultV2"));
-
         let result = datatypes
             .iter()
             .find(|datatype| datatype["name"] == "OnchainToolResult")
@@ -2839,10 +2829,20 @@ mod tests {
             .iter()
             .map(|field| field["name"].as_str().unwrap())
             .collect::<Vec<_>>();
+        assert_eq!(fields, ["id"]);
+        let inner = datatypes
+            .iter()
+            .find(|datatype| datatype["name"] == "OnchainToolResultInnerV1")
+            .unwrap();
+        let inner_fields = inner["kind"]["Struct"]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|field| field["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(
-            fields,
+            inner_fields,
             [
-                "id",
                 "execution_id",
                 "finalized",
                 "stamps",
@@ -2859,12 +2859,51 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|function| function["name"] == "consume_on_chain_tool_result_for_walk_v2")
+            .find(|function| function["name"] == "consume_on_chain_tool_result_for_walk")
             .unwrap();
-        assert!(consume["parameters"]
+        let parameter_names = consume["parameters"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|parameter| parameter["name"] == "output_witnesses"));
+            .map(|parameter| parameter["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            parameter_names,
+            [
+                "_permit",
+                "dag",
+                "execution",
+                "tool_registry",
+                "result",
+                "leader_cap",
+                "leader_registry",
+                "priority_fee_vault",
+                "walk_index",
+                "expected_vertex",
+                "tool_witness_id",
+                "commit_gas_charge",
+                "settlement_gas_charge",
+                "clock",
+                "ctx",
+            ]
+        );
+        assert_eq!(consume["type_parameters"].as_array().unwrap().len(), 1);
+
+        let scheduler: serde_json::Value =
+            serde_json::from_str(include_str!("../move_bindings/ir/scheduler.json")).unwrap();
+        let facade = scheduler["modules"]["execution_submission"]["functions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|function| function["name"] == "consume_on_chain_tool_result_for_walk")
+            .unwrap();
+        let facade_parameter_names = facade["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|parameter| parameter["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(facade_parameter_names.first(), Some(&"authority"));
+        assert!(facade["type_parameters"].as_array().unwrap().is_empty());
     }
 }

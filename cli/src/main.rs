@@ -46,7 +46,11 @@ enum Command {
     Dag(dag::DagCommand),
     #[command(subcommand, about = "Create and operate scheduled Tasks")]
     Task(Box<task::TaskCommand>),
-    #[command(subcommand, about = "Inspect workflow executions")]
+    #[command(
+        subcommand,
+        about = "Inspect and authorize workflow executions",
+        long_about = execution::EXECUTION_HELP
+    )]
     Execution(execution::ExecutionCommand),
     #[command(subcommand, about = "Manage Sui transaction gas")]
     Gas(gas::GasCommand),
@@ -170,7 +174,15 @@ mod tests {
 
     #[test]
     fn verbose_and_quiet_are_mutually_exclusive() {
-        let error = match Cli::try_parse_from(["nexus", "-v", "-q", "task", "list"]) {
+        let error = match Cli::try_parse_from([
+            "nexus",
+            "-v",
+            "-q",
+            "task",
+            "list",
+            "--scheduler-package",
+            "0xa5",
+        ]) {
             Ok(_) => panic!("verbose and quiet should conflict"),
             Err(error) => error,
         };

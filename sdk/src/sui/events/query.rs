@@ -21,7 +21,10 @@ pub trait EventQuery: Send + Sync + 'static {
     ///
     /// Returning [`None`] intentionally excludes an event accepted by the
     /// server filter.
-    fn decode(&self, event: sui::grpc::Event) -> Result<Option<Self::Output>, Self::Error>;
+    fn decode(
+        &self,
+        event: sui::grpc::Event,
+    ) -> impl std::future::Future<Output = Result<Option<Self::Output>, Self::Error>> + Send;
 }
 
 /// Query that returns unmodified Sui events.
@@ -50,7 +53,7 @@ impl EventQuery for RawEventQuery {
         self.read_mask.clone()
     }
 
-    fn decode(&self, event: sui::grpc::Event) -> Result<Option<Self::Output>, Self::Error> {
+    async fn decode(&self, event: sui::grpc::Event) -> Result<Option<Self::Output>, Self::Error> {
         Ok(Some(event))
     }
 }

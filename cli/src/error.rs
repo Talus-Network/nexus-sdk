@@ -92,8 +92,8 @@ impl NexusCliError {
             _ => {}
         }
         match self.nexus_error() {
-            Some(NexusError::UnsupportedProtocolVersion { .. }) => {
-                Some("nexus::protocol::unsupported")
+            Some(NexusError::ClientUpgradeRequired(_)) => {
+                Some("nexus::state::client_upgrade_required")
             }
             Some(NexusError::Transaction(error)) => Some(match error.state() {
                 TransactionErrorState::SubmissionRejected => {
@@ -119,15 +119,17 @@ impl Diagnostic for NexusCliError {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        if let Some(NexusError::UnsupportedProtocolVersion {
-            protocol_version,
-            maximum,
-        }) = self.nexus_error()
-        {
+        if let Some(NexusError::ClientUpgradeRequired(error)) = self.nexus_error() {
             return Some(Box::new(format!(
-                "Protocol version {protocol_version} requires a newer Nexus CLI. This CLI \
-                 supports versions through {maximum}. Upgrade the Nexus CLI and run the command \
-                 again."
+                "Object '{}' uses witness '{}' and stored layout '{}', which this CLI does not \
+                 support. Upgrade the Nexus CLI and run the command again.",
+                error.object_id,
+                error.witness_type,
+                error
+                    .inner_type
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "<unavailable>".to_owned())
             )));
         }
 
@@ -254,25 +256,37 @@ mod tests {
         super::{render_error, ErrorReportMode, NexusCliError},
         miette::Diagnostic as _,
         nexus_sdk::{
-            nexus::error::{NexusError, TransactionError},
+            nexus::error::{ClientUpgradeRequired, NexusError, TransactionError},
             scheduler::SchedulerError,
             sui,
         },
         std::time::Duration,
     };
 
+    fn client_upgrade_required() -> NexusError {
+        let tag = |package, module, name| {
+            sui::types::StructTag::new(
+                sui::types::Address::from_static(package),
+                sui::types::Identifier::new(module).unwrap(),
+                sui::types::Identifier::new(name).unwrap(),
+                vec![],
+            )
+        };
+        ClientUpgradeRequired::new(
+            sui::types::Address::from_static("0x42"),
+            tag("0xa7", "era", "V2"),
+            Some(tag("0xa7", "tool_registry", "ToolInnerV2")),
+        )
+        .into()
+    }
+
     #[test]
-    fn protocol_guidance_uses_the_typed_scheduler_client_error() {
-        let error = NexusCliError::Scheduler(SchedulerError::from(
-            NexusError::UnsupportedProtocolVersion {
-                protocol_version: 3,
-                maximum: 2,
-            },
-        ));
+    fn state_guidance_uses_the_typed_scheduler_client_error() {
+        let error = NexusCliError::Scheduler(SchedulerError::from(client_upgrade_required()));
 
         assert_eq!(
             error.code().unwrap().to_string(),
-            "nexus::protocol::unsupported"
+            "nexus::state::client_upgrade_required"
         );
         assert!(error
             .help()
@@ -415,27 +429,21 @@ mod tests {
 
     #[test]
     fn quiet_report_is_one_searchable_line() {
-        let error = NexusCliError::Nexus(NexusError::UnsupportedProtocolVersion {
-            protocol_version: 3,
-            maximum: 2,
-        });
+        let error = NexusCliError::Nexus(client_upgrade_required());
 
         let report = render_error(&error, ErrorReportMode::Quiet);
 
         assert_eq!(report.lines().count(), 1);
-        assert!(report.starts_with("nexus::protocol::unsupported: "));
+        assert!(report.starts_with("nexus::state::client_upgrade_required: "));
     }
 
     #[test]
     fn json_report_is_structured_and_human_report_can_disable_color() {
-        let error = NexusCliError::Nexus(NexusError::UnsupportedProtocolVersion {
-            protocol_version: 3,
-            maximum: 2,
-        });
+        let error = NexusCliError::Nexus(client_upgrade_required());
 
         let json: serde_json::Value =
             serde_json::from_str(&render_error(&error, ErrorReportMode::Json)).unwrap();
-        assert_eq!(json["code"], "nexus::protocol::unsupported");
+        assert_eq!(json["code"], "nexus::state::client_upgrade_required");
         assert_eq!(json["severity"], "error");
         assert!(json["help"].as_str().unwrap().contains("Upgrade"));
 

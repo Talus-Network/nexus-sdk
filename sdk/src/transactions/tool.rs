@@ -7,7 +7,7 @@ use {
         },
         move_boundary,
         sui,
-        types::{NexusObjects, OnchainToolMode, ToolMeta},
+        types::{NexusContext, OnchainToolMode, PackageRole, ToolMeta},
         ToolFqn,
     },
     anyhow::{bail, Context as _},
@@ -17,14 +17,20 @@ use {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExternalVerifierObjectInput {
+    /// Current shared object reference.
     pub object_ref: sui::types::ObjectReference,
+    /// Exact concrete Move type required by the verifier ABI.
     pub object_type: sui::types::TypeTag,
 }
 
+/// Validated external verifier definition used to configure a Tool.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExternalVerifierRegistrationInput {
+    /// Package that publishes the verifier function.
     pub package_id: sui::types::Address,
+    /// Module containing the verifier function.
     pub module_name: String,
+    /// Public verifier function name.
     pub function_name: String,
     /// Ordered immutable shared objects; object zero is the verifier witness.
     pub verifier_objects: Vec<ExternalVerifierObjectInput>,
@@ -101,6 +107,65 @@ fn configure_registration(
     })
 }
 
+fn build_external_verifier_registration(
+    tx: &mut move_boundary::NexusPtbBuilder,
+    tool_id: sui::types::Address,
+    input: &ExternalVerifierRegistrationInput,
+) -> anyhow::Result<Argument> {
+    let witness = input
+        .verifier_objects
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("external verifier requires a witness at object zero"))?;
+    if input
+        .verifier_objects
+        .iter()
+        .any(|object| *object.object_ref.object_id() == sui::types::Address::ZERO)
+    {
+        bail!("external verifier object IDs must not be zero");
+    }
+    let mut unique_ids = HashSet::with_capacity(input.verifier_objects.len());
+    if input
+        .verifier_objects
+        .iter()
+        .any(|object| !unique_ids.insert(*object.object_ref.object_id()))
+    {
+        bail!("external verifier objects must be unique");
+    }
+
+    let tool_package = tx.context().require_package(PackageRole::Tool)?.storage_id;
+    let tool_id = tx.object_id(tool_id)?;
+    let package_id = tx.object_id(input.package_id)?;
+    let module_name = tx.ascii_string(&input.module_name)?;
+    let function_name = tx.ascii_string(&input.function_name)?;
+    let witness_argument = tx.shared_object(&witness.object_ref, false)?;
+    let registration = tx.call_function_with_type_args(
+        tool_package,
+        "external_verifier",
+        "new",
+        vec![witness.object_type.clone()],
+        vec![
+            tool_id,
+            package_id,
+            module_name,
+            function_name,
+            witness_argument,
+        ],
+    )?;
+
+    for object in input.verifier_objects.iter().skip(1) {
+        let object_argument = tx.shared_object(&object.object_ref, false)?;
+        tx.call_function_with_type_args(
+            tool_package,
+            "external_verifier",
+            "add_object",
+            vec![object.object_type.clone()],
+            vec![registration, object_argument],
+        )?;
+    }
+
+    Ok(registration)
+}
+
 fn finish_registrations(
     tx: &mut move_boundary::NexusPtbBuilder,
     registrations: &[RegisteredToolArguments],
@@ -135,6 +200,7 @@ fn register_off_chain_tool(
     pay_with: Argument,
     clock: Argument,
 ) -> anyhow::Result<Argument> {
+    meta.validate_registration()?;
     let fqn = tx.ascii_string(meta.fqn.to_string())?;
     let url = tx.arg(&meta.url.as_bytes().to_vec())?;
     let description = tx.arg(&meta.description.as_bytes().to_vec())?;
@@ -144,7 +210,7 @@ fn register_off_chain_tool(
     let invocation_cost_mist = tx.arg(&invocation_cost_mist)?;
 
     tx.call_target(
-        tool_registry_binding::register_off_chain_tool_v2_target,
+        tool_registry_binding::register_off_chain_tool_target,
         vec![
             tool_registry,
             fqn,
@@ -167,7 +233,7 @@ fn register_off_chain_tool(
 /// Returns an error if the timeout does not fit in `u64` milliseconds or the
 /// transaction cannot be built.
 pub fn register_off_chain_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     meta: &ToolMeta,
     address: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
@@ -193,7 +259,7 @@ pub fn register_off_chain_for_self_ptb(
 /// Returns an error if the timeout does not fit in `u64` milliseconds or the
 /// transaction cannot be built.
 pub fn register_off_chain_for_self_with_address_balance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     meta: &ToolMeta,
     address: sui::types::Address,
     collateral_us: u64,
@@ -209,14 +275,14 @@ pub fn register_off_chain_for_self_with_address_balance_ptb(
 }
 
 fn register_off_chain_for_self_with_collateral_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     meta: &ToolMeta,
     address: sui::types::Address,
     collateral: ToolCollateral<'_>,
     invocation_cost_mist: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, true)?;
         let pay_with = collateral.ptb_argument(tx)?;
         let clock = tx.clock()?;
         let register_result = register_off_chain_tool(
@@ -274,7 +340,7 @@ fn compose_off_chain_registration(
         clock,
     )?;
     let registered = configure_registration(tx, register_result)?;
-    super::network_auth::create_tool_binding_and_register_key(
+    let binding = super::network_auth::create_tool_binding_and_register_key(
         tx,
         registered.tool,
         registered.owner_cap_over_tool,
@@ -282,12 +348,25 @@ fn compose_off_chain_registration(
         registration.pop_signature,
         None,
     )?;
+    let network_auth = tx.objects().network_auth;
+    let network_auth = tx.shared_root(&network_auth, false)?;
+    tx.call_target(
+        registered_key_verifier_binding::configure_tool_target,
+        vec![
+            tool_registry,
+            registered.tool,
+            registered.owner_cap_over_tool,
+            network_auth,
+            binding,
+        ],
+    )?;
+    super::network_auth::share_binding(tx, binding)?;
     Ok(registered)
 }
 
 /// Builds one [`ProgrammableTransaction`] that atomically registers off chain
-/// [`OffChainToolRegistration`] values and their initial network authorization
-/// keys.
+/// [`OffChainToolRegistration`] values, their initial response keys, and
+/// RegisteredKey verifier support.
 ///
 /// The transaction uses one `$US` withdrawal from the owner address balance.
 ///
@@ -297,7 +376,7 @@ fn compose_off_chain_registration(
 /// values, requires more collateral than fits in `u64`, contains an invalid
 /// timeout, or the transaction cannot be built.
 pub fn register_off_chain_batch_for_self_with_address_balance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     registrations: &[OffChainToolRegistration],
     owner: sui::types::Address,
     collateral_per_tool_us: u64,
@@ -306,7 +385,7 @@ pub fn register_off_chain_batch_for_self_with_address_balance_ptb(
     let collateral = ToolCollateral::AddressBalance(collateral_us);
 
     move_boundary::ptb(objects, |tx| {
-        let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, true)?;
         let pay_with = collateral.ptb_argument(tx)?;
         let clock = tx.clock()?;
         let mut registered_tools = Vec::with_capacity(registrations.len());
@@ -339,7 +418,7 @@ pub fn register_off_chain_batch_for_self_with_address_balance_ptb(
 /// transaction cannot be built.
 #[allow(clippy::too_many_arguments)]
 pub fn register_on_chain_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     package_address: sui::types::Address,
     module_name: &str,
     fqn: &ToolFqn,
@@ -382,7 +461,7 @@ pub fn register_on_chain_for_self_ptb(
 /// transaction cannot be built.
 #[allow(clippy::too_many_arguments)]
 pub fn register_on_chain_for_self_with_address_balance_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     package_address: sui::types::Address,
     module_name: &str,
     fqn: &ToolFqn,
@@ -415,7 +494,7 @@ pub fn register_on_chain_for_self_with_address_balance_ptb(
 
 #[allow(clippy::too_many_arguments)]
 fn register_on_chain_for_self_with_collateral_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     package_address: sui::types::Address,
     module_name: &str,
     fqn: &ToolFqn,
@@ -430,7 +509,7 @@ fn register_on_chain_for_self_with_collateral_ptb(
     mode: OnchainToolMode,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
+        let tool_registry = tx.shared_root(&objects.tool_registry, true)?;
         let package_addr = tx.arg(&package_address)?;
         let module_name = tx.ascii_string(module_name)?;
         let fqn = tx.ascii_string(fqn.to_string())?;
@@ -463,11 +542,11 @@ fn register_on_chain_for_self_with_collateral_ptb(
         ];
         let register_result = match mode {
             OnchainToolMode::Standard => tx.call_target(
-                tool_registry_binding::register_on_chain_tool_v2_target,
+                tool_registry_binding::register_on_chain_tool_target,
                 arguments,
             )?,
             OnchainToolMode::WorkflowAuthorization => tx.call_target(
-                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_v2_target,
+                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_target,
                 arguments,
             )?,
         };
@@ -478,19 +557,18 @@ fn register_on_chain_for_self_with_collateral_ptb(
     })
 }
 
-/// PTB template for setting the invocation cost of a Nexus Tool.
+/// Builds a transaction that updates a Tool invocation price.
 pub fn set_invocation_cost_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     tool: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
-    invocation_cost: u64,
+    invocation_cost_mist: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let registry = tx.shared_object(&objects.tool_registry, true)?;
+    move_boundary::ptb(context, |tx| {
+        let registry = tx.shared_root(&context.tool_registry, true)?;
         let tool = tx.shared_object(tool, false)?;
         let cashier_admin = tx.owned_object(cashier_admin)?;
-        let invocation_cost_mist = tx.arg(&invocation_cost)?;
-
+        let invocation_cost_mist = tx.arg(&invocation_cost_mist)?;
         tx.call_target(
             tool_registry_binding::set_invocation_cost_mist_target,
             vec![registry, tool, cashier_admin, invocation_cost_mist],
@@ -499,18 +577,17 @@ pub fn set_invocation_cost_ptb(
     })
 }
 
-/// PTB template for unregistering a Nexus Tool.
+/// Builds a transaction that unregisters a Tool from live protocol lookup.
 pub fn unregister_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
+    move_boundary::ptb(context, |tx| {
         let tool = tx.shared_object(tool, true)?;
-        let registry = tx.shared_object(&objects.tool_registry, true)?;
+        let registry = tx.shared_root(&context.tool_registry, true)?;
         let owner_cap = tx.owned_object(owner_cap)?;
         let clock = tx.clock()?;
-
         tx.call_target(
             tool_registry_binding::unregister_target,
             vec![tool, registry, owner_cap, clock],
@@ -519,18 +596,17 @@ pub fn unregister_ptb(
     })
 }
 
-/// PTB template for updating an on-chain Tool package using its bound owner capability.
+/// Builds a transaction that points an on chain Tool at a new package.
 pub fn migrate_on_chain_tool_package_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     target_package: sui::types::Address,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
+    move_boundary::ptb(context, |tx| {
         let tool = tx.shared_object(tool, true)?;
         let owner_cap = tx.owned_object(owner_cap)?;
         let target_package = tx.arg(&target_package)?;
-
         tx.call_target(
             tool_registry_binding::migrate_on_chain_tool_package_target,
             vec![tool, owner_cap, target_package],
@@ -539,18 +615,18 @@ pub fn migrate_on_chain_tool_package_ptb(
     })
 }
 
-/// Configure a Tool for the built-in two-signature RegisteredKey verifier.
+/// Builds a transaction that enables registered key verification for a Tool.
 pub fn configure_registered_key_verifier_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     tool_key_binding: &sui::types::ObjectReference,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let registry = tx.shared_object(&objects.tool_registry, true)?;
+    move_boundary::ptb(context, |tx| {
+        let registry = tx.shared_root(&context.tool_registry, true)?;
         let tool = tx.shared_object(tool, false)?;
         let owner_cap = tx.owned_object(owner_cap)?;
-        let network_auth = tx.shared_object(&objects.network_auth, false)?;
+        let network_auth = tx.shared_root(&context.network_auth, false)?;
         let tool_key_binding = tx.shared_object(tool_key_binding, false)?;
         tx.call_target(
             registered_key_verifier_binding::configure_tool_target,
@@ -560,64 +636,21 @@ pub fn configure_registered_key_verifier_ptb(
     })
 }
 
-/// Register one Tool-bound external verifier and its immutable shared object arguments.
+/// Builds a transaction that installs one external verifier for a Tool.
 pub fn register_external_verifier_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     input: &ExternalVerifierRegistrationInput,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    let witness = input
-        .verifier_objects
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("external verifier requires a witness at object zero"))?;
-    if input
-        .verifier_objects
-        .iter()
-        .any(|object| *object.object_ref.object_id() == sui::types::Address::ZERO)
-    {
-        anyhow::bail!("external verifier object IDs must not be zero");
-    }
-    let mut unique_ids = std::collections::HashSet::new();
-    if input
-        .verifier_objects
-        .iter()
-        .any(|object| !unique_ids.insert(*object.object_ref.object_id()))
-    {
-        anyhow::bail!("external verifier objects must be unique");
-    }
-
-    move_boundary::ptb(objects, |tx| {
-        let registry = tx.shared_object(&objects.tool_registry, true)?;
-        let tool_arg = tx.shared_object(tool, false)?;
+    move_boundary::ptb(context, |tx| {
+        let registry = tx.shared_root(&context.tool_registry, true)?;
+        let tool_argument = tx.shared_object(tool, false)?;
         let owner_cap = tx.owned_object(owner_cap)?;
-        let tool_id = tx.object_id(*tool.object_id())?;
-        let package_id = tx.object_id(input.package_id)?;
-        let module_name = tx.ascii_string(&input.module_name)?;
-        let function_name = tx.ascii_string(&input.function_name)?;
-        let witness_arg = tx.shared_object(&witness.object_ref, false)?;
-        let registration = tx.call_function_with_type_args(
-            objects.tool_pkg_id(),
-            "external_verifier",
-            "new",
-            vec![witness.object_type.clone()],
-            vec![tool_id, package_id, module_name, function_name, witness_arg],
-        )?;
-
-        for object in input.verifier_objects.iter().skip(1) {
-            let object_arg = tx.shared_object(&object.object_ref, false)?;
-            tx.call_function_with_type_args(
-                objects.tool_pkg_id(),
-                "external_verifier",
-                "add_object",
-                vec![object.object_type.clone()],
-                vec![registration, object_arg],
-            )?;
-        }
-
+        let registration = build_external_verifier_registration(tx, *tool.object_id(), input)?;
         tx.call_target(
             tool_registry_binding::register_external_verifier_target,
-            vec![registry, tool_arg, owner_cap, registration],
+            vec![registry, tool_argument, owner_cap, registration],
         )?;
         Ok(())
     })
@@ -626,7 +659,7 @@ pub fn register_external_verifier_ptb(
 /// PTB template for claiming collateral for a Nexus Tool. The funds are
 /// transferred to the tx sender.
 pub fn claim_collateral_for_self_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
 ) -> anyhow::Result<ProgrammableTransaction> {
@@ -643,20 +676,18 @@ pub fn claim_collateral_for_self_ptb(
     })
 }
 
-/// PTB template for updating a tool's timeout.
+/// Builds a transaction that updates the timeout of a registered Tool.
 pub fn update_tool_timeout_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
-    new_timeout: Duration,
+    timeout: Duration,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
+    move_boundary::ptb(context, |tx| {
         let tool = tx.shared_object(tool, false)?;
-        let registry = tx.shared_object(&objects.tool_registry, true)?;
+        let registry = tx.shared_root(&context.tool_registry, true)?;
         let owner_cap = tx.owned_object(owner_cap)?;
-        let timeout_ms = timeout_millis(new_timeout)?;
-        let timeout_ms = tx.arg(&timeout_ms)?;
-
+        let timeout_ms = tx.arg(&timeout_millis(timeout)?)?;
         tx.call_target(
             tool_registry_binding::update_tool_timeout_target,
             vec![tool, registry, owner_cap, timeout_ms],
@@ -666,28 +697,38 @@ pub fn update_tool_timeout_ptb(
 }
 
 /// Builds a transaction that replaces an off chain Tool URL.
-///
-/// The `tool` is the current shared Tool reference and `owner_cap` must grant
-/// authority over that Tool.
-///
-/// # Errors
-///
-/// Returns an error when an object argument, URL argument, or generated Move
-/// call cannot be added to the transaction.
 pub fn update_off_chain_tool_url_ptb(
-    objects: &NexusObjects,
+    context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     new_url: &str,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
+    move_boundary::ptb(context, |tx| {
         let tool = tx.shared_object(tool, true)?;
         let owner_cap = tx.owned_object(owner_cap)?;
         let new_url = tx.arg(&new_url.as_bytes().to_vec())?;
-
         tx.call_target(
             tool_registry_binding::update_off_chain_tool_url_target,
             vec![tool, owner_cap, new_url],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a transaction that replaces a registered Tool description.
+pub fn update_tool_metadata_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    description: &str,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let tool = tx.shared_object(tool, true)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let description = tx.arg(&description.as_bytes().to_vec())?;
+        tx.call_target(
+            tool_registry_binding::update_tool_metadata_target,
+            vec![tool, owner_cap, description],
         )?;
         Ok(())
     })
@@ -697,7 +738,7 @@ pub fn update_off_chain_tool_url_ptb(
 mod tests {
     use {
         super::*,
-        crate::{test_utils::sui_mocks, types::DefaultDagExecutorTarget},
+        crate::{test_utils::sui_mocks, types::PackageRole},
         sui::types::{Command, WithdrawFrom},
         sui_move_call::CallArg,
     };
@@ -719,36 +760,8 @@ mod tests {
         )
     }
 
-    fn nexus_objects() -> NexusObjects {
-        NexusObjects {
-            protocol_version: 1,
-            protocol: object_ref("0x18", 1, 18),
-            packages: crate::types::NexusPackages::first_publication(
-                addr("0x2"),
-                addr("0x3"),
-                addr("0x5"),
-                addr("0x13"),
-                addr("0x1"),
-                addr("0x11"),
-            ),
-            config_hash: vec![0; 32],
-            network_id: addr("0x4"),
-            tool_registry: object_ref("0x6", 1, 6),
-            network_auth: object_ref("0x8", 1, 8),
-            agent_registry: object_ref("0xc", 1, 12),
-            default_dag_executor: DefaultDagExecutorTarget {
-                agent_id: addr("0xa1"),
-                skill_id: 177,
-            },
-            leader_registry: object_ref("0xe", 1, 14),
-            priority_fee_vault: object_ref("0xf", 1, 15),
-            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
-            us_token: crate::types::UsTokenConfig {
-                package_id: addr("0x11"),
-                protected_treasury: None,
-                metadata: None,
-            },
-        }
+    fn nexus_objects() -> NexusContext {
+        sui_mocks::mock_nexus_context()
     }
 
     fn move_calls(ptb: &ProgrammableTransaction) -> Vec<&sui::types::MoveCall> {
@@ -762,7 +775,7 @@ mod tests {
     }
 
     fn assert_us_address_balance_withdrawal(
-        objects: &NexusObjects,
+        objects: &NexusContext,
         ptb: &ProgrammableTransaction,
         expected_amount: u64,
     ) {
@@ -848,56 +861,17 @@ mod tests {
     }
 
     #[test]
-    fn unregister_updates_tool_and_verifier_state_atomically() {
+    fn unregister_uses_the_tool_and_current_registry() {
         let objects = nexus_objects();
-        let ptb = unregister_ptb(
-            &objects,
-            &object_ref("0x20", 2, 20),
-            &object_ref("0x21", 3, 21),
-        )
-        .unwrap();
+        let tool = object_ref("0x20", 2, 20);
+        let owner_cap = object_ref("0x21", 3, 21);
+        let ptb = unregister_ptb(&objects, &tool, &owner_cap).unwrap();
+
         let calls = move_calls(&ptb);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].module.as_str(), "tool_registry");
         assert_eq!(calls[0].function.as_str(), "unregister");
         assert_eq!(calls[0].arguments.len(), 4);
-    }
-
-    #[test]
-    fn off_chain_url_update_uses_current_tool_registry_abi() {
-        let objects = nexus_objects();
-        let ptb = update_off_chain_tool_url_ptb(
-            &objects,
-            &object_ref("0x20", 2, 20),
-            &object_ref("0x21", 3, 21),
-            "https://example.com/invoke",
-        )
-        .unwrap();
-        let calls = move_calls(&ptb);
-
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].package, objects.tool_pkg_id());
-        assert_eq!(calls[0].module.as_str(), "tool_registry");
-        assert_eq!(calls[0].function.as_str(), "update_off_chain_tool_url");
-        assert_eq!(calls[0].arguments.len(), 3);
-    }
-
-    #[test]
-    fn on_chain_package_migration_uses_only_tool_owner_and_target_package() {
-        let objects = nexus_objects();
-        let tool = object_ref("0x20", 2, 20);
-        let owner_cap = object_ref("0x21", 3, 21);
-        let target_package = addr("0x23");
-
-        let ptb =
-            migrate_on_chain_tool_package_ptb(&objects, &tool, &owner_cap, target_package).unwrap();
-
-        let calls = move_calls(&ptb);
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].package, objects.tool_pkg_id());
-        assert_eq!(calls[0].module.as_str(), "tool_registry");
-        assert_eq!(calls[0].function.as_str(), "migrate_on_chain_tool_package");
-        assert_eq!(calls[0].arguments.len(), 3);
         let tool_input = ptb
             .inputs
             .iter()
@@ -905,42 +879,35 @@ mod tests {
                 CallArg::Shared(shared) if shared.object_id() == *tool.object_id() => Some(shared),
                 _ => None,
             })
-            .expect("migration must use the mutable Tool");
+            .expect("unregister must use the mutable Tool");
         assert!(tool_input.mutability().is_mutable());
-        assert!(!ptb.inputs.iter().any(|input| {
-            matches!(input, CallArg::Shared(shared) if shared.object_id() == *objects.tool_registry.object_id())
+        assert!(ptb.inputs.iter().any(|input| {
+            matches!(input, CallArg::Shared(shared) if shared.object_id() == objects.tool_registry.object_id())
         }));
-        assert_eq!(
-            ptb.inputs
-                .iter()
-                .filter(|input| {
-                    matches!(input, CallArg::ImmutableOrOwned(object) if *object.object_id() == *owner_cap.object_id())
-                })
-                .count(),
-            1,
-        );
     }
 
     #[test]
-    fn registered_key_configuration_uses_current_five_object_abi() {
+    fn update_url_uses_tool_and_owner_authority() {
         let objects = nexus_objects();
-        let ptb = configure_registered_key_verifier_ptb(
+        let ptb = update_off_chain_tool_url_ptb(
             &objects,
             &object_ref("0x20", 2, 20),
             &object_ref("0x21", 3, 21),
-            &object_ref("0x22", 4, 22),
+            "https://example.com/new",
         )
         .unwrap();
         let calls = move_calls(&ptb);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].module.as_str(), "registered_key_verifier");
-        assert_eq!(calls[0].function.as_str(), "configure_tool");
-        assert_eq!(calls[0].arguments.len(), 5);
+        assert_eq!(calls[0].module.as_str(), "tool_registry");
+        assert_eq!(calls[0].function.as_str(), "update_off_chain_tool_url");
+        assert_eq!(calls[0].arguments.len(), 3);
     }
 
     #[test]
     fn external_registration_keeps_witness_first_and_appends_objects_in_order() {
         let objects = nexus_objects();
+        let tool = object_ref("0x20", 2, 20);
+        let owner_cap = object_ref("0x21", 3, 21);
         let witness_type = object_type("0x40", "state", "Witness");
         let config_type = object_type("0x40", "state", "Config");
         let input = ExternalVerifierRegistrationInput {
@@ -958,13 +925,7 @@ mod tests {
                 },
             ],
         };
-        let ptb = register_external_verifier_ptb(
-            &objects,
-            &object_ref("0x20", 2, 20),
-            &object_ref("0x21", 3, 21),
-            &input,
-        )
-        .unwrap();
+        let ptb = register_external_verifier_ptb(&objects, &tool, &owner_cap, &input).unwrap();
         let calls = move_calls(&ptb)
             .into_iter()
             .filter(|call| {
@@ -1049,8 +1010,8 @@ mod tests {
     }
 
     #[test]
-    fn single_off_chain_registration_retains_its_lifecycle_commands() {
-        let objects = sui_mocks::mock_nexus_objects();
+    fn single_off_chain_registration_shares_tool_and_transfers_authority() {
+        let objects = sui_mocks::mock_nexus_context();
         let owner = sui_mocks::mock_sui_address();
         let registration = batch_registration("single", 6);
         let ptb = register_off_chain_for_self_with_address_balance_ptb(
@@ -1063,7 +1024,7 @@ mod tests {
         .unwrap();
 
         for (module, function) in [
-            ("tool_registry", "register_off_chain_tool_v2"),
+            ("tool_registry", "register_off_chain_tool"),
             ("transfer", "public_share_object"),
         ] {
             assert_eq!(move_call_indices(&ptb, module, function).len(), 1);
@@ -1072,7 +1033,7 @@ mod tests {
             .into_iter()
             .find(|call| {
                 call.module.as_str() == "tool_registry"
-                    && call.function.as_str() == "register_off_chain_tool_v2"
+                    && call.function.as_str() == "register_off_chain_tool"
             })
             .expect("single registration must create the Tool and both capabilities");
         assert_eq!(register.arguments.len(), 9);
@@ -1090,7 +1051,7 @@ mod tests {
 
     #[test]
     fn atomic_batch_rejects_an_empty_catalog() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let owner = sui_mocks::mock_sui_address();
 
         let error =
@@ -1101,7 +1062,7 @@ mod tests {
 
     #[test]
     fn atomic_batch_rejects_duplicate_tool_names() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let owner = sui_mocks::mock_sui_address();
 
         let duplicate = batch_registration("duplicate", 1);
@@ -1118,7 +1079,7 @@ mod tests {
 
     #[test]
     fn atomic_batch_rejects_collateral_overflow() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let owner = sui_mocks::mock_sui_address();
 
         let error = register_off_chain_batch_for_self_with_address_balance_ptb(
@@ -1136,7 +1097,7 @@ mod tests {
 
     #[test]
     fn atomic_batch_uses_one_withdrawal_and_finishes_after_every_registration() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let owner = sui_mocks::mock_sui_address();
         let registrations = [
             batch_registration("atomic_a", 4),
@@ -1169,12 +1130,21 @@ mod tests {
             1
         );
         assert_eq!(
-            move_call_indices(&first, "tool_registry", "register_off_chain_tool_v2").len(),
+            move_call_indices(&first, "tool_registry", "register_off_chain_tool").len(),
             2
         );
         let key_calls = move_call_indices(&first, "network_auth", "register_key");
         assert_eq!(key_calls.len(), 2);
         let last_key_call = *key_calls.last().expect("batch must register every key");
+        let verifier_calls = move_call_indices(&first, "registered_key_verifier", "configure_tool");
+        assert_eq!(verifier_calls.len(), 2);
+        assert!(
+            key_calls
+                .iter()
+                .zip(&verifier_calls)
+                .all(|(key, verifier)| key < verifier),
+            "each active response key must exist before RegisteredKey support is enabled"
+        );
 
         let tool_type = crate::move_bindings::type_tag::<tool_registry_binding::Tool>(&objects);
         let tool_share_calls = first
@@ -1211,8 +1181,8 @@ mod tests {
         assert!(transfer.0 > last_tool_share_call);
 
         for object_id in [
-            *objects.tool_registry.object_id(),
-            *objects.network_auth.object_id(),
+            objects.tool_registry.object_id(),
+            objects.network_auth.object_id(),
             move_boundary::CLOCK_OBJECT_ID,
         ] {
             assert_eq!(
@@ -1229,8 +1199,29 @@ mod tests {
     }
 
     #[test]
+    fn registered_key_configuration_uses_the_key_validating_boundary() {
+        let objects = sui_mocks::mock_nexus_context();
+        let tool = sui_mocks::mock_sui_object_ref();
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+        let tool_key_binding = sui_mocks::mock_sui_object_ref();
+
+        let ptb =
+            configure_registered_key_verifier_ptb(&objects, &tool, &owner_cap, &tool_key_binding)
+                .unwrap();
+
+        assert_eq!(
+            move_call_indices(&ptb, "registered_key_verifier", "configure_tool").len(),
+            1
+        );
+        assert!(
+            move_call_indices(&ptb, "tool_registry", "configure_registered_key_support").is_empty(),
+            "SDK callers must not bypass active key validation"
+        );
+    }
+
+    #[test]
     fn off_chain_registration_can_source_collateral_from_address_balance() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let address = sui_mocks::mock_sui_address();
         let meta = ToolMeta {
             fqn: "xyz.taluslabs.example@1".parse().unwrap(),
@@ -1250,7 +1241,7 @@ mod tests {
 
     #[test]
     fn on_chain_registration_scopes_generated_targets_and_uses_address_balance() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let address = sui_mocks::mock_sui_address();
         let package = sui_mocks::mock_sui_address();
         let witness = sui_mocks::mock_sui_address();
@@ -1259,11 +1250,11 @@ mod tests {
         for (mode, expected_function) in [
             (
                 crate::types::OnchainToolMode::Standard,
-                "register_on_chain_tool_v2",
+                "register_on_chain_tool",
             ),
             (
                 crate::types::OnchainToolMode::WorkflowAuthorization,
-                "register_on_chain_tool_with_workflow_authorization_cap_v2",
+                "register_on_chain_tool_with_workflow_authorization_cap",
             ),
         ] {
             let ptb = register_on_chain_for_self_with_address_balance_ptb(
@@ -1291,14 +1282,20 @@ mod tests {
                         && call.function.as_str() == expected_function
                 })
                 .expect("on chain registration call");
-            assert_eq!(registration.package, objects.tool_pkg_id());
+            assert_eq!(
+                registration.package,
+                objects
+                    .require_package(PackageRole::Tool)
+                    .unwrap()
+                    .storage_id
+            );
             assert_eq!(registration.arguments.len(), 11);
         }
     }
 
     #[test]
     fn on_chain_registration_rejects_timeout_that_does_not_fit_in_milliseconds() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let address = sui_mocks::mock_sui_address();
         let package = sui_mocks::mock_sui_address();
         let witness = sui_mocks::mock_sui_address();
@@ -1325,13 +1322,19 @@ mod tests {
     }
 
     #[test]
-    fn timeout_update_rejects_timeout_that_does_not_fit_in_milliseconds() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let tool = sui_mocks::mock_sui_object_ref();
-        let owner_cap = sui_mocks::mock_sui_object_ref();
+    fn off_chain_registration_rejects_timeout_that_does_not_fit_in_milliseconds() {
+        let objects = sui_mocks::mock_nexus_context();
+        let mut registration = batch_registration("timeout", 1);
+        registration.meta.timeout = Duration::MAX;
 
-        let error =
-            update_tool_timeout_ptb(&objects, &tool, &owner_cap, Duration::MAX).unwrap_err();
+        let error = register_off_chain_for_self_with_address_balance_ptb(
+            &objects,
+            &registration.meta,
+            addr("0x20"),
+            1,
+            registration.invocation_cost_mist,
+        )
+        .unwrap_err();
 
         assert!(error.to_string().contains("timeout milliseconds"));
     }

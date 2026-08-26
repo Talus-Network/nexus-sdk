@@ -5,18 +5,19 @@ use {
         events::NexusEventKind,
         move_bindings::{
             registry::{
-                leader::{Leader, LeaderRegistry, LeaderRegistryStateV1},
+                era::V1 as RegistryWitnessV1,
+                leader::{Leader, LeaderRegistry, LeaderRegistryInnerV1},
                 priority_fee_vault::{
-                    PriorityFeeDepositV2,
+                    PriorityFeeDeposit,
                     PriorityFeeVault,
-                    PriorityFeeVaultStateV1,
+                    PriorityFeeVaultInnerV1,
                 },
             },
             sui_framework::object::ID,
         },
         nexus::{client::NexusClient, crawler::Response, error::NexusError},
         sui,
-        transactions::network,
+        transactions::{leader, network},
         types::PriorityFeeWithdrawalQuote,
     },
     std::collections::HashMap,
@@ -25,6 +26,11 @@ use {
 pub const MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE: usize = 128;
 
 pub struct ConfigurePriorityFeeVaultResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+/// Result of applying one complete leader registry policy.
+pub struct ConfigureLeaderRegistryResult {
     pub tx_digest: sui::types::Digest,
 }
 
@@ -66,28 +72,76 @@ pub struct CollectPriorityFeeDepositsResult {
     pub unavailable_deposit_ids: Vec<sui::types::Address>,
 }
 
-/// Operations over Nexus network fee state.
+/// Operations over Nexus network policy and fee state.
 pub struct NetworkActions {
     pub(super) client: NexusClient,
 }
 
 impl NetworkActions {
+    /// Apply a complete leader registry policy in one transaction.
+    ///
+    /// The operation resolves current object ownership before building the
+    /// transaction, so an administration capability moved to consensus
+    /// ownership remains usable after publication and upgrade.
+    pub async fn configure_leader_registry(
+        &self,
+        unbonding_duration_ms: u64,
+        min_stake_us: u64,
+        max_transaction_budget_mist: u64,
+    ) -> Result<ConfigureLeaderRegistryResult, NexusError> {
+        let client = &self.client;
+        let address = client.owner()?;
+        let context = client
+            .context_for_root(&client.nexus_objects.leader_registry)
+            .await?;
+        let admin_cap = client
+            .crawler()
+            .get_object_metadata(client.nexus_objects.leader_admin_cap.object_id())
+            .await
+            .map_err(|error| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch leader administration capability metadata: {error}"
+                ))
+            })?;
+        let transaction = leader::configure_registry_ptb(
+            &context,
+            &admin_cap.object_ref(),
+            &admin_cap.owner,
+            unbonding_duration_ms,
+            min_stake_us,
+            max_transaction_budget_mist,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+
+        Ok(ConfigureLeaderRegistryResult {
+            tx_digest: response.digest,
+        })
+    }
+
     /// Fetch and decode the priority fee vault state.
     pub async fn fetch_priority_fee_vault_state(
         &self,
-    ) -> Result<PriorityFeeVaultStateV1, NexusError> {
-        let client = self.client.operation_client().await?;
-        Self::fetch_priority_fee_vault_state_with(&client).await
+    ) -> Result<PriorityFeeVaultInnerV1, NexusError> {
+        Self::fetch_priority_fee_vault_state_with(&self.client).await
     }
 
     async fn fetch_priority_fee_vault_state_with(
         client: &NexusClient,
-    ) -> Result<PriorityFeeVaultStateV1, NexusError> {
+    ) -> Result<PriorityFeeVaultInnerV1, NexusError> {
+        let context = client
+            .context_for_root(&client.nexus_objects.priority_fee_vault)
+            .await
+            .map_err(|error| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch priority fee vault state: {error}"
+                ))
+            })?;
         client
-            .crawler()
-            .get_versioned_object::<PriorityFeeVault, PriorityFeeVaultStateV1>(
-                *client.nexus_objects.priority_fee_vault.object_id(),
-                1,
+            .state_resolver()
+            .load_inner::<PriorityFeeVault, RegistryWitnessV1, PriorityFeeVaultInnerV1>(
+                client.nexus_objects.priority_fee_vault.object_id(),
+                &context,
             )
             .await
             .map(|response| response.data)
@@ -103,8 +157,7 @@ impl NetworkActions {
         &self,
         leader_cap: sui::types::Address,
     ) -> Result<u64, NexusError> {
-        let client = self.client.operation_client().await?;
-        let state = Self::fetch_priority_fee_vault_state_with(&client).await?;
+        let state = Self::fetch_priority_fee_vault_state_with(&self.client).await?;
         state.leader_share(leader_cap).ok_or_else(|| {
             NexusError::Configuration(format!(
                 "Leader capability '{leader_cap}' has no priority fee share in the vault"
@@ -118,8 +171,7 @@ impl NetworkActions {
         leader_cap: sui::types::Address,
         share_to_withdraw: u64,
     ) -> Result<PriorityFeeWithdrawalQuote, NexusError> {
-        let client = self.client.operation_client().await?;
-        let state = Self::fetch_priority_fee_vault_state_with(&client).await?;
+        let state = Self::fetch_priority_fee_vault_state_with(&self.client).await?;
         state
             .quote_leader_withdrawal(leader_cap, share_to_withdraw)
             .ok_or_else(|| {
@@ -134,10 +186,22 @@ impl NetworkActions {
         &self,
         exchange_rate_million_mists_us: u64,
     ) -> Result<ConfigurePriorityFeeVaultResult, NexusError> {
-        let client = self.client.operation_client().await?;
+        let client = &self.client;
         let address = client.owner()?;
+        let context = client
+            .context_for_root(&client.nexus_objects.priority_fee_vault)
+            .await?;
+        let owner_cap = client
+            .object_reference(
+                client
+                    .nexus_objects
+                    .priority_fee_vault_owner_cap
+                    .object_id(),
+            )
+            .await?;
         let transaction = network::configure_priority_fee_vault(
-            &client.nexus_objects,
+            &context,
+            &owner_cap,
             exchange_rate_million_mists_us,
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -154,8 +218,7 @@ impl NetworkActions {
         us_coin: sui::types::Address,
         min_sui_out: u64,
     ) -> Result<SwapUsForSuiResult, NexusError> {
-        let client = self.client.operation_client().await?;
-        Self::swap_us_for_sui_with(&client, us_coin, min_sui_out).await
+        Self::swap_us_for_sui_with(&self.client, us_coin, min_sui_out).await
     }
 
     async fn swap_us_for_sui_with(
@@ -164,6 +227,9 @@ impl NetworkActions {
         min_sui_out: u64,
     ) -> Result<SwapUsForSuiResult, NexusError> {
         let address = client.owner()?;
+        let context = client
+            .context_for_root(&client.nexus_objects.priority_fee_vault)
+            .await?;
         let us_coin = client
             .crawler()
             .get_object_metadata(us_coin)
@@ -174,9 +240,8 @@ impl NetworkActions {
                     "Failed to fetch `$US` coin metadata: {error}"
                 ))
             })?;
-        let transaction =
-            network::swap_us_for_sui(&client.nexus_objects, &us_coin, min_sui_out, address)
-                .map_err(NexusError::TransactionBuilding)?;
+        let transaction = network::swap_us_for_sui(&context, &us_coin, min_sui_out, address)
+            .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
         let swap = response
             .events
@@ -209,8 +274,8 @@ impl NetworkActions {
         &self,
         us_coin: sui::types::Address,
     ) -> Result<DrainPriorityFeeVaultSuiResult, NexusError> {
-        let client = self.client.operation_client().await?;
-        let state = Self::fetch_priority_fee_vault_state_with(&client).await?;
+        let client = &self.client;
+        let state = Self::fetch_priority_fee_vault_state_with(client).await?;
         let quote = state.quote_sui_drain().ok_or_else(|| {
             NexusError::Configuration(
                 "Priority fee vault must have a configured exchange rate and positive SUI balance to drain"
@@ -218,7 +283,7 @@ impl NetworkActions {
             )
         })?;
         let min_sui_out = quote.sui_out;
-        let result = Self::swap_us_for_sui_with(&client, us_coin, min_sui_out).await?;
+        let result = Self::swap_us_for_sui_with(client, us_coin, min_sui_out).await?;
 
         Ok(DrainPriorityFeeVaultSuiResult {
             tx_digest: result.tx_digest,
@@ -234,21 +299,28 @@ impl NetworkActions {
         leader_cap: sui::types::Address,
         share_to_withdraw: u64,
     ) -> Result<WithdrawPriorityFeeResult, NexusError> {
-        let client = self.client.operation_client().await?;
+        let client = &self.client;
         let address = client.owner()?;
+        let context = client
+            .context_for_object_with_roots(
+                client.nexus_objects.priority_fee_vault.object_id(),
+                std::slice::from_ref(&client.nexus_objects.leader_registry),
+            )
+            .await?;
         let leader_cap = client
             .crawler()
             .get_object_metadata(leader_cap)
             .await
-            .map(|response| response.object_ref())
             .map_err(|error| {
                 NexusError::Rpc(anyhow::anyhow!(
                     "Failed to fetch leader capability metadata: {error}"
                 ))
             })?;
+        let leader_cap_ref = leader_cap.object_ref();
         let transaction = network::withdraw_priority_fee(
-            &client.nexus_objects,
-            &leader_cap,
+            &context,
+            &leader_cap_ref,
+            &leader_cap.owner,
             share_to_withdraw,
             address,
         )
@@ -271,8 +343,8 @@ impl NetworkActions {
     ) -> Result<CollectPriorityFeeDepositsResult, NexusError> {
         validate_priority_fee_batch_size(batch_size)?;
 
-        let client = self.client.operation_client().await?;
-        let frozen_ids = discover_priority_fee_deposits(&client)
+        let client = &self.client;
+        let frozen_ids = discover_priority_fee_deposits(client)
             .await?
             .into_iter()
             .filter(|deposit| deposit.data.leader_cap_id.bytes == leader_cap_id)
@@ -282,7 +354,7 @@ impl NetworkActions {
 
         for batch in frozen_ids.chunks(batch_size) {
             let batch_result =
-                collect_priority_fee_deposit_batch(&client, batch.to_vec(), false).await?;
+                collect_priority_fee_deposit_batch(client, batch.to_vec(), false).await?;
             result.tx_digests.extend(batch_result.tx_digests);
             result
                 .collected_deposit_ids
@@ -310,13 +382,15 @@ fn validate_priority_fee_batch_size(batch_size: usize) -> Result<(), NexusError>
 
 async fn discover_priority_fee_deposits(
     client: &NexusClient,
-) -> Result<Vec<Response<PriorityFeeDepositV2>>, NexusError> {
-    let vault_id = *client.nexus_objects.priority_fee_vault.object_id();
-    let object_type =
-        crate::move_bindings::struct_tag::<PriorityFeeDepositV2>(&client.nexus_objects);
+) -> Result<Vec<Response<PriorityFeeDeposit>>, NexusError> {
+    let vault_id = client.nexus_objects.priority_fee_vault.object_id();
+    let context = client
+        .context_for_root(&client.nexus_objects.priority_fee_vault)
+        .await?;
+    let object_type = crate::move_bindings::struct_tag::<PriorityFeeDeposit>(&context);
     let deposits = client
         .crawler()
-        .get_object_owned_objects::<PriorityFeeDepositV2>(vault_id, object_type)
+        .get_owned_objects::<PriorityFeeDeposit>(vault_id, object_type)
         .await
         .map_err(|error| {
             NexusError::Rpc(anyhow::anyhow!(
@@ -333,7 +407,7 @@ async fn prepare_priority_fee_deposit_batch(
     reject_missing: bool,
 ) -> Result<
     (
-        Vec<Response<PriorityFeeDepositV2>>,
+        Vec<Response<PriorityFeeDeposit>>,
         Vec<SkippedPriorityFeeDeposit>,
         Vec<sui::types::Address>,
     ),
@@ -359,18 +433,24 @@ async fn prepare_priority_fee_deposit_batch(
             .collect::<Vec<_>>()
             .join(", ");
         return Err(NexusError::Configuration(format!(
-            "priority fee deposits are not exact children of the configured vault: {missing}"
+            "priority fee deposits are not present at the configured vault address: {missing}"
         )));
     }
     if selected.is_empty() {
         return Ok((selected, Vec::new(), unavailable));
     }
 
+    let context = client
+        .context_for_object_with_roots(
+            client.nexus_objects.priority_fee_vault.object_id(),
+            std::slice::from_ref(&client.nexus_objects.leader_registry),
+        )
+        .await?;
     let leader_registry = client
-        .crawler()
-        .get_versioned_object::<LeaderRegistry, LeaderRegistryStateV1>(
-            *client.nexus_objects.leader_registry.object_id(),
-            1,
+        .state_resolver()
+        .load_inner::<LeaderRegistry, RegistryWitnessV1, LeaderRegistryInnerV1>(
+            client.nexus_objects.leader_registry.object_id(),
+            &context,
         )
         .await
         .map_err(|error| {
@@ -392,7 +472,7 @@ async fn prepare_priority_fee_deposit_batch(
             .collect();
         return Ok((Vec::new(), skipped, unavailable));
     }
-    let leader_id_type = crate::move_bindings::type_tag::<ID>(&client.nexus_objects);
+    let leader_id_type = crate::move_bindings::type_tag::<ID>(&context);
     let registered = client
         .crawler()
         .get_dynamic_fields_by_keys::<ID, Leader, _>(
@@ -446,7 +526,13 @@ async fn collect_priority_fee_deposit_batch(
         .iter()
         .map(Response::object_ref)
         .collect::<Vec<_>>();
-    let transaction = network::collect_priority_fee_deposits(&client.nexus_objects, &deposit_refs)
+    let context = client
+        .context_for_object_with_roots(
+            client.nexus_objects.priority_fee_vault.object_id(),
+            std::slice::from_ref(&client.nexus_objects.leader_registry),
+        )
+        .await?;
+    let transaction = network::collect_priority_fee_deposits(&context, &deposit_refs)
         .map_err(NexusError::TransactionBuilding)?;
     match client.submit_transaction(transaction, owner).await {
         Ok(response) => Ok(CollectPriorityFeeDepositsResult {
@@ -477,9 +563,14 @@ async fn collect_priority_fee_deposit_batch(
                 .iter()
                 .map(Response::object_ref)
                 .collect::<Vec<_>>();
-            let transaction =
-                network::collect_priority_fee_deposits(&client.nexus_objects, &refreshed_refs)
-                    .map_err(NexusError::TransactionBuilding)?;
+            let context = client
+                .context_for_object_with_roots(
+                    client.nexus_objects.priority_fee_vault.object_id(),
+                    std::slice::from_ref(&client.nexus_objects.leader_registry),
+                )
+                .await?;
+            let transaction = network::collect_priority_fee_deposits(&context, &refreshed_refs)
+                .map_err(NexusError::TransactionBuilding)?;
             let response = client.submit_transaction(transaction, owner).await?;
             Ok(CollectPriorityFeeDepositsResult {
                 tx_digests: vec![response.digest],
@@ -508,12 +599,11 @@ mod tests {
                     sui::SUI,
                     table::Table,
                     vec_map::{Entry, VecMap},
-                    versioned::Versioned,
                 },
                 talus::us::US,
             },
             test_utils::{nexus_mocks, sui_mocks},
-            types::NexusObjects,
+            types::{NexusContext, PackageRole},
         },
         serde::Serialize,
     };
@@ -525,10 +615,8 @@ mod tests {
         us_balance: u64,
         exchange_rate_million_mists_us: u64,
         total_share: u64,
-    ) -> PriorityFeeVaultStateV1 {
-        PriorityFeeVaultStateV1::new(
-            ID::new(sui::types::Address::from_static("0x501")),
-            1,
+    ) -> PriorityFeeVaultInnerV1 {
+        PriorityFeeVaultInnerV1::new(
             Balance::<SUI>::new(sui_balance),
             Balance::<US>::new(us_balance),
             exchange_rate_million_mists_us,
@@ -542,24 +630,24 @@ mod tests {
 
     fn mock_vault_reads(
         ledger_service: &mut sui_mocks::grpc::MockLedgerService,
-        objects: &NexusObjects,
-        state: &PriorityFeeVaultStateV1,
-        reads: usize,
+        state_service: &mut sui_mocks::grpc::MockStateService,
+        objects: &NexusContext,
+        state: &PriorityFeeVaultInnerV1,
     ) {
-        let state_id = sui::types::Address::from_static("0x502");
-        let vault = PriorityFeeVault::new(
-            UID::new(*objects.priority_fee_vault.object_id()),
-            Versioned::new(UID::new(state_id), 1),
+        let vault_id = objects.priority_fee_vault.object_id();
+        sui_mocks::grpc::mock_object_state::<
+            PriorityFeeVault,
+            RegistryWitnessV1,
+            PriorityFeeVaultInnerV1,
+        >(
+            ledger_service,
+            state_service,
+            objects,
+            sui_mocks::object_ref_for_id(vault_id),
+            sui::types::Owner::Shared(objects.priority_fee_vault.initial_shared_version),
+            PriorityFeeVault::new(UID::new(vault_id)),
+            state.clone(),
         );
-        for _ in 0..reads {
-            sui_mocks::grpc::mock_get_object_bcs(
-                ledger_service,
-                objects.priority_fee_vault.clone(),
-                sui::types::Owner::Shared(objects.priority_fee_vault.version()),
-                bcs::to_bytes(&vault).expect("vault serializes"),
-            );
-            sui_mocks::grpc::mock_versioned_payload(ledger_service, state_id, 1, state.clone());
-        }
     }
 
     #[derive(Serialize)]
@@ -568,13 +656,13 @@ mod tests {
     }
 
     fn swap_event(
-        objects: &NexusObjects,
+        objects: &NexusContext,
         us_in: u64,
         us_refunded: u64,
         sui_out: u64,
     ) -> sui::types::Event {
         let event = PriorityFeeSwapEvent::new(
-            ID::new(*objects.priority_fee_vault.object_id()),
+            ID::new(objects.priority_fee_vault.object_id()),
             us_in,
             us_refunded,
             sui_out,
@@ -588,20 +676,52 @@ mod tests {
             vec![sui::types::TypeTag::Struct(Box::new(inner))],
         );
         sui_mocks::mock_sui_event(
-            objects.packages.registry.storage_id,
+            objects
+                .require_package(PackageRole::Registry)
+                .unwrap()
+                .storage_id,
             wrapper,
             bcs::to_bytes(&Wrapper { event }).expect("swap event serializes"),
         )
     }
 
     async fn mutating_client(
-        objects: &NexusObjects,
+        objects: &NexusContext,
         metadata: Vec<(sui::types::ObjectReference, sui::types::Owner)>,
         events: Vec<sui::types::Event>,
+        require_leader_registry: bool,
     ) -> (NexusClient, sui_mocks::grpc::SubmittedTransaction) {
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
         let mut transaction_service = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut subscription_service = sui_mocks::grpc::MockSubscriptionService::new();
+        mock_vault_reads(
+            &mut ledger_service,
+            &mut state_service,
+            objects,
+            &PriorityFeeVaultInnerV1::new(
+                Balance::<SUI>::new(0),
+                Balance::<US>::new(0),
+                0,
+                0,
+                VecMap::new(vec![]),
+            ),
+        );
+        if require_leader_registry {
+            mock_leader_registry_state(
+                &mut ledger_service,
+                &mut state_service,
+                objects,
+                sui::types::Address::from_static("0x503"),
+                0,
+            );
+        }
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            objects.packages(),
+        );
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 1_000);
         for (object_ref, owner) in metadata {
             sui_mocks::grpc::mock_get_object_metadata(&mut ledger_service, object_ref, owner, None);
@@ -617,8 +737,10 @@ mod tests {
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
             execution_service_mock: Some(transaction_service),
             subscription_service_mock: Some(subscription_service),
+            state_service_mock: Some(state_service),
             ..Default::default()
         });
         let client = nexus_mocks::mock_nexus_client(objects, &rpc_url).await;
@@ -627,18 +749,18 @@ mod tests {
 
     fn mock_priority_fee_deposit_scans(
         state_service: &mut sui_mocks::grpc::MockStateService,
-        objects: &NexusObjects,
+        objects: &NexusContext,
         scans: Vec<Vec<(sui::types::ObjectReference, sui::types::Address)>>,
     ) {
-        let vault_id = *objects.priority_fee_vault.object_id();
-        let object_type = crate::move_bindings::struct_tag::<PriorityFeeDepositV2>(objects);
+        let vault_id = objects.priority_fee_vault.object_id();
+        let object_type = crate::move_bindings::struct_tag::<PriorityFeeDeposit>(objects);
         let grpc_scans = scans
             .into_iter()
             .map(|deposits| {
                 deposits
                     .into_iter()
                     .map(|(object_ref, leader_cap_id)| {
-                        let deposit = PriorityFeeDepositV2::new(
+                        let deposit = PriorityFeeDeposit::new(
                             UID::new(*object_ref.object_id()),
                             Balance::<SUI>::new(1),
                             ID::new(leader_cap_id),
@@ -647,8 +769,9 @@ mod tests {
                         object.set_object_id(object_ref.object_id().to_string());
                         object.set_version(object_ref.version());
                         object.set_digest(*object_ref.digest());
-                        object
-                            .set_owner(sui::grpc::Owner::from(sui::types::Owner::Object(vault_id)));
+                        object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Address(
+                            vault_id,
+                        )));
                         object.set_object_type(object_type.to_string());
                         let mut contents = sui::grpc::Bcs::default();
                         contents.set_name(object_type.to_string());
@@ -678,27 +801,27 @@ mod tests {
 
     fn mock_leader_registry_state(
         ledger_service: &mut sui_mocks::grpc::MockLedgerService,
-        objects: &NexusObjects,
+        state_service: &mut sui_mocks::grpc::MockStateService,
+        objects: &NexusContext,
         records_id: sui::types::Address,
         record_count: u64,
     ) {
-        let state_id = sui::types::Address::from_static("0x57a");
-        let registry = LeaderRegistry::new(
-            UID::new(*objects.leader_registry.object_id()),
-            Versioned::new(UID::new(state_id), 1),
-        );
-        let mut state = LeaderRegistryStateV1::new_for_test(
-            *objects.leader_registry.object_id(),
-            objects.network_id,
-        );
+        let registry_id = objects.leader_registry.object_id();
+        let mut state = LeaderRegistryInnerV1::new_for_test(registry_id, objects.network_id);
         state.records = Table::new(records_id, record_count);
-        sui_mocks::grpc::mock_get_object_bcs(
+        sui_mocks::grpc::mock_object_state::<
+            LeaderRegistry,
+            RegistryWitnessV1,
+            LeaderRegistryInnerV1,
+        >(
             ledger_service,
-            objects.leader_registry.clone(),
-            sui::types::Owner::Shared(objects.leader_registry.version()),
-            bcs::to_bytes(&registry).expect("leader registry serializes"),
+            state_service,
+            objects,
+            sui_mocks::object_ref_for_id(registry_id),
+            sui::types::Owner::Shared(objects.leader_registry.initial_shared_version),
+            LeaderRegistry::new(UID::new(registry_id)),
+            state,
         );
-        sui_mocks::grpc::mock_versioned_payload(ledger_service, state_id, 1, state);
     }
 
     fn active_leader(records_id: sui::types::Address) -> Leader {
@@ -720,7 +843,7 @@ mod tests {
 
     #[tokio::test]
     async fn priority_fee_collection_skips_a_removed_leader_without_submitting() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let deposit_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x572"));
         let removed_leader = sui::types::Address::from_static("0x573");
         let mut state_service = sui_mocks::grpc::MockStateService::new();
@@ -733,14 +856,34 @@ mod tests {
             ],
         );
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
         mock_leader_registry_state(
             &mut ledger_service,
+            &mut state_service,
             &objects,
             sui::types::Address::from_static("0x574"),
             0,
         );
+        mock_vault_reads(
+            &mut ledger_service,
+            &mut state_service,
+            &objects,
+            &PriorityFeeVaultInnerV1::new(
+                Balance::<SUI>::new(0),
+                Balance::<US>::new(0),
+                0,
+                0,
+                VecMap::new(vec![]),
+            ),
+        );
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            objects.packages(),
+        );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
             state_service_mock: Some(state_service),
             ..Default::default()
         });
@@ -766,7 +909,7 @@ mod tests {
 
     #[tokio::test]
     async fn priority_fee_collection_submits_registered_deposits() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let deposit_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x575"));
         let unrelated_ref =
             sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x5751"));
@@ -790,7 +933,31 @@ mod tests {
         );
 
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-        mock_leader_registry_state(&mut ledger_service, &objects, records_id, 1);
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
+        mock_leader_registry_state(
+            &mut ledger_service,
+            &mut state_service,
+            &objects,
+            records_id,
+            1,
+        );
+        mock_vault_reads(
+            &mut ledger_service,
+            &mut state_service,
+            &objects,
+            &PriorityFeeVaultInnerV1::new(
+                Balance::<SUI>::new(0),
+                Balance::<US>::new(0),
+                0,
+                0,
+                VecMap::new(vec![]),
+            ),
+        );
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            objects.packages(),
+        );
         let leader_id = ID::new(leader_cap_id);
         let leader_id_type = crate::move_bindings::type_tag::<ID>(&objects);
         let field_id = records_id.derive_dynamic_child_id(
@@ -820,9 +987,11 @@ mod tests {
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
             execution_service_mock: Some(transaction_service),
             subscription_service_mock: Some(subscription_service),
             state_service_mock: Some(state_service),
+            ..Default::default()
         });
         let client = nexus_mocks::mock_nexus_client(&objects, &rpc_url).await;
 
@@ -840,7 +1009,7 @@ mod tests {
 
     #[tokio::test]
     async fn leader_collection_freezes_initial_ids_and_reports_concurrent_unavailability() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let first_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x579"));
         let second_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x57b"));
         let later_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x57c"));
@@ -871,7 +1040,31 @@ mod tests {
         );
 
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-        mock_leader_registry_state(&mut ledger_service, &objects, records_id, 1);
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
+        mock_leader_registry_state(
+            &mut ledger_service,
+            &mut state_service,
+            &objects,
+            records_id,
+            1,
+        );
+        mock_vault_reads(
+            &mut ledger_service,
+            &mut state_service,
+            &objects,
+            &PriorityFeeVaultInnerV1::new(
+                Balance::<SUI>::new(0),
+                Balance::<US>::new(0),
+                0,
+                0,
+                VecMap::new(vec![]),
+            ),
+        );
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            objects.packages(),
+        );
         let leader_id = ID::new(leader_cap_id);
         let leader_id_type = crate::move_bindings::type_tag::<ID>(&objects);
         let field_id = records_id.derive_dynamic_child_id(
@@ -901,9 +1094,11 @@ mod tests {
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
             execution_service_mock: Some(transaction_service),
             subscription_service_mock: Some(subscription_service),
             state_service_mock: Some(state_service),
+            ..Default::default()
         });
         let client = nexus_mocks::mock_nexus_client(&objects, &rpc_url).await;
 
@@ -924,13 +1119,22 @@ mod tests {
 
     #[tokio::test]
     async fn priority_fee_reads_decode_state_and_classify_invalid_requests() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let leader_cap = sui::types::Address::from_static("0x511");
         let state = vault_state(leader_cap, 10, 0, 90, 3, 30);
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-        mock_vault_reads(&mut ledger_service, &objects, &state, 5);
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_vault_reads(&mut ledger_service, &mut state_service, &objects, &state);
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            objects.packages(),
+        );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
+            state_service_mock: Some(state_service),
             ..Default::default()
         });
         let client = nexus_mocks::mock_nexus_client_without_coins(&objects, &rpc_url).await;
@@ -968,7 +1172,7 @@ mod tests {
 
     #[tokio::test]
     async fn priority_fee_read_failure_keeps_rpc_context() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());
         let client = nexus_mocks::mock_nexus_client_without_coins(&objects, &rpc_url).await;
 
@@ -986,12 +1190,21 @@ mod tests {
 
     #[tokio::test]
     async fn drain_requires_configured_rate_and_positive_sui_balance() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let state = vault_state(sui::types::Address::from_static("0x521"), 1, 0, 9, 0, 1);
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-        mock_vault_reads(&mut ledger_service, &objects, &state, 1);
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_vault_reads(&mut ledger_service, &mut state_service, &objects, &state);
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service,
+            &mut package_service,
+            objects.packages(),
+        );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
+            package_service_mock: Some(package_service),
+            state_service_mock: Some(state_service),
             ..Default::default()
         });
         let client = nexus_mocks::mock_nexus_client_without_coins(&objects, &rpc_url).await;
@@ -1007,8 +1220,18 @@ mod tests {
 
     #[tokio::test]
     async fn configure_priority_fee_vault_submits_transaction() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let (client, submitted) = mutating_client(&objects, vec![], vec![]).await;
+        let objects = sui_mocks::mock_nexus_context();
+        let owner_cap = objects.priority_fee_vault_owner_cap.object_id();
+        let (client, submitted) = mutating_client(
+            &objects,
+            vec![(
+                sui_mocks::object_ref_for_id(owner_cap),
+                sui::types::Owner::Address(sui::types::Address::ZERO),
+            )],
+            vec![],
+            false,
+        )
+        .await;
 
         let result = client
             .network()
@@ -1021,7 +1244,7 @@ mod tests {
 
     #[tokio::test]
     async fn swap_decodes_amounts_from_canonical_event() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let coin_id = sui::types::Address::from_static("0x531");
         let coin_ref = sui_mocks::object_ref_for_id(coin_id);
         let event = swap_event(&objects, 100, 20, 70);
@@ -1032,6 +1255,7 @@ mod tests {
                 sui::types::Owner::Address(sui::types::Address::from_static("0x532")),
             )],
             vec![event],
+            false,
         )
         .await;
 
@@ -1049,7 +1273,7 @@ mod tests {
 
     #[tokio::test]
     async fn swap_requires_canonical_event() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let coin_id = sui::types::Address::from_static("0x541");
         let (client, _submitted) = mutating_client(
             &objects,
@@ -1058,6 +1282,7 @@ mod tests {
                 sui::types::Owner::Address(sui::types::Address::from_static("0x542")),
             )],
             vec![],
+            false,
         )
         .await;
 
@@ -1074,7 +1299,7 @@ mod tests {
 
     #[tokio::test]
     async fn swap_rejects_refund_larger_than_input() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let coin_id = sui::types::Address::from_static("0x551");
         let event = swap_event(&objects, 10, 11, 1);
         let (client, _submitted) = mutating_client(
@@ -1084,6 +1309,7 @@ mod tests {
                 sui::types::Owner::Address(sui::types::Address::from_static("0x552")),
             )],
             vec![event],
+            false,
         )
         .await;
 
@@ -1100,7 +1326,7 @@ mod tests {
 
     #[tokio::test]
     async fn priority_fee_withdrawal_resolves_cap_and_submits() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let leader_cap = sui::types::Address::from_static("0x561");
         let (client, submitted) = mutating_client(
             &objects,
@@ -1109,6 +1335,7 @@ mod tests {
                 sui::types::Owner::Address(sui::types::Address::from_static("0x562")),
             )],
             vec![],
+            true,
         )
         .await;
 

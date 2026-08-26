@@ -1,212 +1,308 @@
 use {
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
+    nexus_sdk::{move_bindings::interface::payment::PaymentSourceKind, nexus::tool::ToolEconomy},
     std::num::NonZeroU64,
 };
 
-/// Commands for configuring and buying tool payment tickets.
+/// Commands for one Tool's economic policies and entitlement products.
 #[derive(Subcommand)]
 pub(crate) enum CashierCommand {
-    #[command(subcommand, about = "Manage expiry payment tickets")]
-    Expiry(ExpiryTicketCommand),
-
-    #[command(subcommand, about = "Manage payment tickets with invocation limits")]
-    LimitedInvocations(LimitedInvocationsTicketCommand),
-}
-
-/// Commands for time limited tool payment tickets.
-#[derive(Subcommand)]
-pub(crate) enum ExpiryTicketCommand {
-    #[command(about = "Enable expiry payment tickets for a tool")]
-    Enable {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The fully qualified name (FQN) of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "cashier-admin",
-            short = 'a',
-            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
-            value_name = "OBJECT_ID"
-        )]
-        cashier_admin: Option<sui::types::Address>,
-        #[arg(
-            long = "cost-per-minute",
-            short = 'c',
-            help = "Ticket cost per minute in MIST",
-            value_name = "MIST"
-        )]
-        cost_per_minute: u64,
+    #[command(about = "Show accepted policies and canonical offers")]
+    Inspect {
         #[command(flatten)]
-        gas: GasArgs,
+        tool: ToolArgs,
     },
 
-    #[command(about = "Disable expiry payment tickets for a tool")]
-    Disable {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The fully qualified name (FQN) of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "cashier-admin",
-            short = 'a',
-            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
-            value_name = "OBJECT_ID"
-        )]
-        cashier_admin: Option<sui::types::Address>,
+    #[command(about = "Show the beneficiary access accounts and refundable Invocations")]
+    Access {
         #[command(flatten)]
-        gas: GasArgs,
+        tool: ToolArgs,
+        #[command(flatten)]
+        beneficiary: BeneficiaryArgs,
     },
 
-    #[command(about = "Buy an expiry payment ticket for a tool")]
-    BuyTicket {
+    #[command(about = "List finalized Invocations and prepaid deposits")]
+    Inbox {
+        #[command(flatten)]
+        tool: ToolArgs,
+    },
+
+    #[command(about = "Collect one same policy batch of finalized Invocations")]
+    CollectInvocations {
+        #[command(flatten)]
+        admin: AdminArgs,
         #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The fully qualified name (FQN) of the tool.",
-            value_name = "FQN"
+            long = "invocation-id",
+            value_name = "OBJECT_ID",
+            required = true,
+            action = clap::ArgAction::Append,
+            help = "Finalized Invocation object ID"
         )]
-        tool_fqn: ToolFqn,
+        invocation_ids: Vec<sui::types::Address>,
         #[arg(
             long,
-            short = 'm',
-            help = "Positive ticket duration in minutes",
-            value_name = "MINUTES"
+            value_name = "ADDRESS",
+            help = "Payout address. Uses the active signer when omitted."
         )]
-        minutes: NonZeroU64,
-        #[arg(
-            long = "payment-coin",
-            short = 'c',
-            help = "Owned Coin<SUI> object used to pay for the ticket",
-            value_name = "OBJECT_ID"
-        )]
-        payment_coin: sui::types::Address,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-}
-
-/// Commands for invocation limited tool payment tickets.
-#[derive(Subcommand)]
-pub(crate) enum LimitedInvocationsTicketCommand {
-    #[command(about = "Enable payment tickets with invocation limits for a tool")]
-    Enable {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The fully qualified name (FQN) of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "cashier-admin",
-            short = 'a',
-            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
-            value_name = "OBJECT_ID"
-        )]
-        cashier_admin: Option<sui::types::Address>,
-        #[arg(
-            long = "cost-per-invocation",
-            short = 'c',
-            help = "Ticket cost per invocation in MIST",
-            value_name = "MIST"
-        )]
-        cost_per_invocation: u64,
-        #[arg(
-            long = "min-invocations",
-            help = "Minimum invocations purchasable in one ticket",
-            value_name = "COUNT"
-        )]
-        min_invocations: u64,
-        #[arg(
-            long = "max-invocations",
-            help = "Maximum invocations purchasable in one ticket",
-            value_name = "COUNT"
-        )]
-        max_invocations: u64,
-        #[command(flatten)]
-        gas: GasArgs,
+        recipient: Option<sui::types::Address>,
     },
 
-    #[command(about = "Disable payment tickets with invocation limits for a tool")]
-    Disable {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The fully qualified name (FQN) of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "cashier-admin",
-            short = 'a',
-            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
-            value_name = "OBJECT_ID"
-        )]
-        cashier_admin: Option<sui::types::Address>,
+    #[command(about = "Collect one batch of prepaid sale deposits")]
+    CollectDeposits {
         #[command(flatten)]
-        gas: GasArgs,
-    },
-
-    #[command(about = "Buy a payment ticket with an invocation limit for a tool")]
-    BuyTicket {
+        admin: AdminArgs,
         #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The fully qualified name (FQN) of the tool.",
-            value_name = "FQN"
+            long = "deposit-id",
+            value_name = "OBJECT_ID",
+            required = true,
+            action = clap::ArgAction::Append,
+            help = "Cashier deposit object ID"
         )]
-        tool_fqn: ToolFqn,
+        deposit_ids: Vec<sui::types::Address>,
         #[arg(
             long,
-            short = 'i',
-            help = "Positive number of invocations to purchase",
-            value_name = "COUNT"
+            value_name = "ADDRESS",
+            help = "Payout address. Uses the active signer when omitted."
         )]
-        invocations: NonZeroU64,
+        recipient: Option<sui::types::Address>,
+    },
+
+    #[command(subcommand, about = "Manage finite invocation credits")]
+    FiniteCredits(FiniteCreditCommand),
+
+    #[command(subcommand, about = "Manage time based access passes")]
+    TimePass(TimePassCommand),
+}
+
+#[derive(Args)]
+pub(crate) struct ToolArgs {
+    #[arg(
+        long = "tool-fqn",
+        short = 't',
+        help = "Fully qualified Tool name",
+        value_name = "FQN"
+    )]
+    tool_fqn: ToolFqn,
+}
+
+#[derive(Args)]
+pub(crate) struct AdminArgs {
+    #[command(flatten)]
+    tool: ToolArgs,
+    #[arg(
+        long = "cashier-admin",
+        short = 'a',
+        help = "Cashier admin capability. Uses the saved capability when omitted.",
+        value_name = "OBJECT_ID"
+    )]
+    cashier_admin: Option<sui::types::Address>,
+    #[command(flatten)]
+    gas: GasArgs,
+}
+
+#[derive(Args)]
+#[group(id = "beneficiary", multiple = false)]
+pub(crate) struct BeneficiaryArgs {
+    #[arg(
+        long,
+        value_name = "ADDRESS",
+        group = "beneficiary",
+        help = "User funded execution source allowed to use this entitlement"
+    )]
+    beneficiary_user: Option<sui::types::Address>,
+    #[arg(
+        long,
+        value_name = "AGENT_ID",
+        group = "beneficiary",
+        help = "Agent funded execution source allowed to use this entitlement"
+    )]
+    beneficiary_agent: Option<sui::types::Address>,
+}
+
+impl BeneficiaryArgs {
+    fn resolve(self, default_user: sui::types::Address) -> PaymentSourceKind {
+        match (self.beneficiary_user, self.beneficiary_agent) {
+            (Some(user), None) => PaymentSourceKind::user_funded(user),
+            (None, Some(agent)) => PaymentSourceKind::agent_funded(agent),
+            (None, None) => PaymentSourceKind::user_funded(default_user),
+            (Some(_), Some(_)) => unreachable!("clap rejects multiple beneficiary selectors"),
+        }
+    }
+}
+
+#[derive(Args)]
+pub(crate) struct FiniteCreditTerms {
+    #[command(flatten)]
+    admin: AdminArgs,
+    #[arg(long, value_name = "MIST", help = "Price of one credit in MIST")]
+    price_per_credit: NonZeroU64,
+    #[arg(long, value_name = "COUNT", help = "Minimum credits in one purchase")]
+    minimum_credits: NonZeroU64,
+    #[arg(long, value_name = "COUNT", help = "Maximum credits in one purchase")]
+    maximum_credits: NonZeroU64,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum FiniteCreditCommand {
+    #[command(about = "Enable finite credit admission and sales")]
+    Enable {
+        #[command(flatten)]
+        terms: FiniteCreditTerms,
+    },
+    #[command(about = "Close issuance without invalidating existing credits")]
+    CloseIssuance {
+        #[command(flatten)]
+        admin: AdminArgs,
+    },
+    #[command(about = "Open issuance using the current terms")]
+    OpenIssuance {
+        #[command(flatten)]
+        admin: AdminArgs,
+    },
+    #[command(about = "Change terms for future purchases")]
+    UpdateTerms {
+        #[command(flatten)]
+        terms: FiniteCreditTerms,
+    },
+    #[command(about = "Buy units for the beneficiary finite credit account")]
+    Buy {
+        #[command(flatten)]
+        tool: ToolArgs,
+        #[arg(long, value_name = "COUNT", help = "Number of credits to buy")]
+        credits: NonZeroU64,
+        #[command(flatten)]
+        beneficiary: BeneficiaryArgs,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(about = "Add units under Tool owner authority")]
+    Issue {
+        #[command(flatten)]
+        admin: AdminArgs,
+        #[command(flatten)]
+        beneficiary: BeneficiaryArgs,
+        #[arg(long, value_name = "COUNT", help = "Number of credits to issue")]
+        credits: NonZeroU64,
+    },
+    #[command(about = "Restore one refunded Invocation to its credit account")]
+    RestoreRefund {
+        #[command(flatten)]
+        tool: ToolArgs,
         #[arg(
-            long = "payment-coin",
-            short = 'c',
-            help = "Owned Coin<SUI> object used to pay for the ticket",
-            value_name = "OBJECT_ID"
+            long,
+            value_name = "OBJECT_ID",
+            help = "Refunded Invocation held by the credit account"
         )]
-        payment_coin: sui::types::Address,
+        invocation_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
 }
 
-async fn cashier_admin(
+#[derive(Args)]
+pub(crate) struct TimePassTerms {
+    #[command(flatten)]
+    admin: AdminArgs,
+    #[arg(long, value_name = "MIST", help = "Price per millisecond in MIST")]
+    price_per_ms: NonZeroU64,
+    #[arg(
+        long,
+        value_name = "MILLISECONDS",
+        help = "Minimum duration of one purchase"
+    )]
+    minimum_duration_ms: NonZeroU64,
+    #[arg(
+        long,
+        value_name = "MILLISECONDS",
+        help = "Maximum duration of one purchase"
+    )]
+    maximum_duration_ms: NonZeroU64,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum TimePassCommand {
+    #[command(about = "Enable time pass admission and sales")]
+    Enable {
+        #[command(flatten)]
+        terms: TimePassTerms,
+    },
+    #[command(about = "Close issuance without invalidating existing passes")]
+    CloseIssuance {
+        #[command(flatten)]
+        admin: AdminArgs,
+    },
+    #[command(about = "Open issuance using the current terms")]
+    OpenIssuance {
+        #[command(flatten)]
+        admin: AdminArgs,
+    },
+    #[command(about = "Change terms for future purchases")]
+    UpdateTerms {
+        #[command(flatten)]
+        terms: TimePassTerms,
+    },
+    #[command(about = "Buy duration for the beneficiary time pass account")]
+    Buy {
+        #[command(flatten)]
+        tool: ToolArgs,
+        #[arg(
+            long,
+            value_name = "MILLISECONDS",
+            help = "Duration of the access window"
+        )]
+        duration_ms: NonZeroU64,
+        #[command(flatten)]
+        beneficiary: BeneficiaryArgs,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(about = "Set a time pass window under Tool owner authority")]
+    Issue {
+        #[command(flatten)]
+        admin: AdminArgs,
+        #[command(flatten)]
+        beneficiary: BeneficiaryArgs,
+        #[arg(long, value_name = "MILLISECONDS", help = "Inclusive window start")]
+        valid_from_ms: u64,
+        #[arg(long, value_name = "MILLISECONDS", help = "Exclusive window end")]
+        valid_until_ms: u64,
+    },
+}
+
+#[derive(Clone, Copy)]
+enum AdminAction {
+    CloseFiniteCredits,
+    OpenFiniteCredits,
+    CloseTimePass,
+    OpenTimePass,
+}
+
+async fn resolve_cashier_admin(
     tool_fqn: &ToolFqn,
     explicit: Option<sui::types::Address>,
 ) -> AnyResult<sui::types::Address, NexusCliError> {
     if let Some(cashier_admin) = explicit {
         return Ok(cashier_admin);
     }
-
     let conf = CliConf::load().await.unwrap_or_default();
     conf.tools
         .get(tool_fqn)
         .and_then(|tool| tool.cashier_admin)
         .ok_or_else(|| {
             NexusCliError::Any(anyhow!(
-                "No tool cashier admin capability was provided for tool '{tool_fqn}'. Pass --cashier-admin or register the tool with this CLI first."
+                "No cashier admin capability is available for Tool '{tool_fqn}'. Pass --cashier-admin or register the Tool with this CLI first."
             ))
         })
 }
 
-fn validate_payment_coin(
-    payment_coin: sui::types::Address,
-    sui_gas_coin: Option<sui::types::Address>,
+fn validate_range(
+    minimum: NonZeroU64,
+    maximum: NonZeroU64,
+    unit: &str,
 ) -> AnyResult<(), NexusCliError> {
-    if Some(payment_coin) == sui_gas_coin {
+    if minimum > maximum {
         return Err(NexusCliError::Any(anyhow!(
-            "Payment coin '{payment_coin}' cannot also be the Sui gas coin. Use another coin or address balance gas."
+            "Minimum {unit} '{minimum}' cannot exceed maximum {unit} '{maximum}'"
         )));
     }
     Ok(())
@@ -225,246 +321,490 @@ fn emit_result(
         "action": action,
         "tool_fqn": tool_fqn,
         "digest": digest,
-    }))?;
-    Ok(())
+    }))
 }
 
-async fn enable_expiry(
-    tool_fqn: ToolFqn,
-    explicit_cashier_admin: Option<sui::types::Address>,
-    cost_per_minute: u64,
-    gas: GasArgs,
+fn emit_purchase(
+    action: &str,
+    tool_fqn: &ToolFqn,
+    result: &nexus_sdk::nexus::tool::EntitlementPurchaseResult,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Enabling expiry payment tickets for tool '{tool_fqn}'");
-    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
-    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let progress = loading!("Crafting and executing transaction...");
-    let response = match client
+    notify_success!(
+        "Entitlement object: {id}",
+        id = result.entitlement_id.to_string().truecolor(100, 100, 100)
+    );
+    json_output(&json!({
+        "action": action,
+        "tool_fqn": tool_fqn,
+        "digest": result.tx_digest,
+        "entitlement_id": result.entitlement_id,
+        "deposit_id": result.deposit_id,
+    }))
+}
+
+fn emit_issuance(
+    action: &str,
+    tool_fqn: &ToolFqn,
+    result: &nexus_sdk::nexus::tool::EntitlementIssueResult,
+) -> AnyResult<(), NexusCliError> {
+    notify_success!(
+        "Entitlement object: {id}",
+        id = result.entitlement_id.to_string().truecolor(100, 100, 100)
+    );
+    json_output(&json!({
+        "action": action,
+        "tool_fqn": tool_fqn,
+        "digest": result.tx_digest,
+        "entitlement_id": result.entitlement_id,
+    }))
+}
+
+async fn inspect(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
+    command_title!("Inspecting Tool economy '{tool_fqn}'");
+    let client = get_read_only_nexus_client().await?;
+    let economy = client
         .tool()
-        .enable_expiry_tickets(&tool_fqn, cashier_admin, cost_per_minute)
+        .inspect_economy(&tool_fqn)
         .await
-    {
-        Ok(response) => {
-            progress.success();
-            response
-        }
-        Err(error) => {
-            progress.error();
-            return Err(NexusCliError::Nexus(error));
-        }
-    };
-    emit_result("enable_expiry_tickets", &tool_fqn, &response.tx_digest)
+        .map_err(NexusCliError::Nexus)?;
+    print_economy(&tool_fqn, &economy);
+    json_output(&json!({
+        "tool_fqn": tool_fqn,
+        "economy": economy,
+    }))
 }
 
-async fn disable_expiry(
+async fn inspect_access(
     tool_fqn: ToolFqn,
-    explicit_cashier_admin: Option<sui::types::Address>,
-    gas: GasArgs,
+    beneficiary: BeneficiaryArgs,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Disabling expiry payment tickets for tool '{tool_fqn}'");
-    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
-    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let progress = loading!("Crafting and executing transaction...");
-    let response = match client
+    command_title!("Inspecting Tool access '{tool_fqn}'");
+    let client = get_owner_nexus_client().await?;
+    let owner = client.owner().map_err(NexusCliError::Nexus)?;
+    let access = client
         .tool()
-        .disable_expiry_tickets(&tool_fqn, cashier_admin)
+        .inspect_access(&tool_fqn, beneficiary.resolve(owner))
         .await
-    {
-        Ok(response) => {
-            progress.success();
-            response
-        }
-        Err(error) => {
-            progress.error();
-            return Err(NexusCliError::Nexus(error));
-        }
-    };
-    emit_result("disable_expiry_tickets", &tool_fqn, &response.tx_digest)
-}
+        .map_err(NexusCliError::Nexus)?;
 
-async fn buy_expiry(
-    tool_fqn: ToolFqn,
-    minutes: NonZeroU64,
-    payment_coin: sui::types::Address,
-    gas: GasArgs,
-) -> AnyResult<(), NexusCliError> {
-    command_title!("Buying an expiry payment ticket for tool '{tool_fqn}'");
-    validate_payment_coin(payment_coin, gas.sui_gas_coin)?;
-    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let progress = loading!("Crafting and executing transaction...");
-    let response = match client
-        .tool()
-        .buy_expiry_ticket(&tool_fqn, minutes.get(), payment_coin)
-        .await
-    {
-        Ok(response) => {
-            progress.success();
-            response
+    match &access.finite_credits {
+        Some(credits) => {
+            notify_success!(
+                "Finite credits: {} remaining in {}",
+                credits.remaining,
+                credits.account_id,
+            );
+            for invocation in &credits.refunded_invocations {
+                notify_success!("Refund ready to restore: {invocation}");
+            }
         }
-        Err(error) => {
-            progress.error();
-            return Err(NexusCliError::Nexus(error));
-        }
-    };
-    emit_result("buy_expiry_ticket", &tool_fqn, &response.tx_digest)
-}
-
-async fn enable_limited_invocations(
-    tool_fqn: ToolFqn,
-    explicit_cashier_admin: Option<sui::types::Address>,
-    cost_per_invocation: u64,
-    min_invocations: u64,
-    max_invocations: u64,
-    gas: GasArgs,
-) -> AnyResult<(), NexusCliError> {
-    if min_invocations > max_invocations {
-        return Err(NexusCliError::Any(anyhow!(
-            "Minimum invocations '{min_invocations}' cannot exceed maximum invocations '{max_invocations}'."
-        )));
+        None => notify_success!("Finite credits: none"),
     }
-    command_title!("Enabling invocation limited payment tickets for tool '{tool_fqn}'");
-    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
-    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let progress = loading!("Crafting and executing transaction...");
-    let response = match client
+    match &access.time_pass {
+        Some(pass) => notify_success!(
+            "Time pass: {} from {} through {}",
+            if pass.active { "active" } else { "inactive" },
+            pass.valid_from_ms,
+            pass.valid_until_ms,
+        ),
+        None => notify_success!("Time pass: none"),
+    }
+    json_output(&json!({
+        "tool_fqn": tool_fqn,
+        "access": access,
+    }))
+}
+
+async fn inspect_inbox(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
+    command_title!("Inspecting Tool cashier inbox '{tool_fqn}'");
+    let client = get_read_only_nexus_client().await?;
+    let inbox = client
         .tool()
-        .enable_limited_invocation_tickets(
+        .inspect_cashier_inbox(&tool_fqn)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+    notify_success!(
+        "Collectable objects: {} Invocations, {} deposits",
+        inbox.invocations.len(),
+        inbox.deposits.len()
+    );
+    json_output(&json!({
+        "tool_fqn": tool_fqn,
+        "inbox": inbox,
+    }))
+}
+
+fn print_economy(tool_fqn: &ToolFqn, economy: &ToolEconomy) {
+    notify_success!("Tool economy: {tool_fqn}");
+    for policy in &economy.policies {
+        notify_success!("Policy: {policy}");
+    }
+    notify_success!("Fixed price: {} MIST", economy.fixed_price_mist);
+    if let Some(offer) = &economy.finite_credits {
+        notify_success!(
+            "Finite credits: {} MIST each, {} to {}, issuance {}",
+            offer.price_per_credit,
+            offer.minimum_credits,
+            offer.maximum_credits,
+            if offer.issuance_enabled {
+                "open"
+            } else {
+                "closed"
+            }
+        );
+    }
+    if let Some(offer) = &economy.time_pass {
+        notify_success!(
+            "Time pass: {} MIST per ms, {} to {} ms, issuance {}",
+            offer.price_per_ms,
+            offer.minimum_duration_ms,
+            offer.maximum_duration_ms,
+            if offer.issuance_enabled {
+                "open"
+            } else {
+                "closed"
+            }
+        );
+    }
+}
+
+async fn run_admin(admin: AdminArgs, action: AdminAction) -> AnyResult<(), NexusCliError> {
+    let ToolArgs { tool_fqn } = admin.tool;
+    let cashier_admin = resolve_cashier_admin(&tool_fqn, admin.cashier_admin).await?;
+    command_title!("Updating Tool economy '{tool_fqn}'");
+    let client = get_nexus_client(admin.gas.sui_gas_coin, admin.gas.sui_gas_budget).await?;
+    let progress = loading!("Submitting policy transaction...");
+    let result = match action {
+        AdminAction::CloseFiniteCredits => {
+            client
+                .tool()
+                .close_finite_credit_issuance(&tool_fqn, cashier_admin)
+                .await
+        }
+        AdminAction::OpenFiniteCredits => {
+            client
+                .tool()
+                .open_finite_credit_issuance(&tool_fqn, cashier_admin)
+                .await
+        }
+        AdminAction::CloseTimePass => {
+            client
+                .tool()
+                .close_time_pass_issuance(&tool_fqn, cashier_admin)
+                .await
+        }
+        AdminAction::OpenTimePass => {
+            client
+                .tool()
+                .open_time_pass_issuance(&tool_fqn, cashier_admin)
+                .await
+        }
+    };
+    let result = match result {
+        Ok(result) => {
+            progress.success();
+            result
+        }
+        Err(error) => {
+            progress.error();
+            return Err(NexusCliError::Nexus(error));
+        }
+    };
+    let action = match action {
+        AdminAction::CloseFiniteCredits => "close_finite_credit_issuance",
+        AdminAction::OpenFiniteCredits => "open_finite_credit_issuance",
+        AdminAction::CloseTimePass => "close_time_pass_issuance",
+        AdminAction::OpenTimePass => "open_time_pass_issuance",
+    };
+    emit_result(action, &tool_fqn, &result.tx_digest)
+}
+
+async fn set_finite_credit_terms(
+    terms: FiniteCreditTerms,
+    enable: bool,
+) -> AnyResult<(), NexusCliError> {
+    validate_range(terms.minimum_credits, terms.maximum_credits, "credits")?;
+    let ToolArgs { tool_fqn } = terms.admin.tool;
+    let cashier_admin = resolve_cashier_admin(&tool_fqn, terms.admin.cashier_admin).await?;
+    let client =
+        get_nexus_client(terms.admin.gas.sui_gas_coin, terms.admin.gas.sui_gas_budget).await?;
+    let result = if enable {
+        client
+            .tool()
+            .enable_finite_credits(
+                &tool_fqn,
+                cashier_admin,
+                terms.price_per_credit.get(),
+                terms.minimum_credits.get(),
+                terms.maximum_credits.get(),
+            )
+            .await
+    } else {
+        client
+            .tool()
+            .update_finite_credit_terms(
+                &tool_fqn,
+                cashier_admin,
+                terms.price_per_credit.get(),
+                terms.minimum_credits.get(),
+                terms.maximum_credits.get(),
+            )
+            .await
+    }
+    .map_err(NexusCliError::Nexus)?;
+    emit_result(
+        if enable {
+            "enable_finite_credits"
+        } else {
+            "update_finite_credit_terms"
+        },
+        &tool_fqn,
+        &result.tx_digest,
+    )
+}
+
+async fn set_time_pass_terms(terms: TimePassTerms, enable: bool) -> AnyResult<(), NexusCliError> {
+    validate_range(
+        terms.minimum_duration_ms,
+        terms.maximum_duration_ms,
+        "duration",
+    )?;
+    let ToolArgs { tool_fqn } = terms.admin.tool;
+    let cashier_admin = resolve_cashier_admin(&tool_fqn, terms.admin.cashier_admin).await?;
+    let client =
+        get_nexus_client(terms.admin.gas.sui_gas_coin, terms.admin.gas.sui_gas_budget).await?;
+    let result = if enable {
+        client
+            .tool()
+            .enable_time_passes(
+                &tool_fqn,
+                cashier_admin,
+                terms.price_per_ms.get(),
+                terms.minimum_duration_ms.get(),
+                terms.maximum_duration_ms.get(),
+            )
+            .await
+    } else {
+        client
+            .tool()
+            .update_time_pass_terms(
+                &tool_fqn,
+                cashier_admin,
+                terms.price_per_ms.get(),
+                terms.minimum_duration_ms.get(),
+                terms.maximum_duration_ms.get(),
+            )
+            .await
+    }
+    .map_err(NexusCliError::Nexus)?;
+    emit_result(
+        if enable {
+            "enable_time_passes"
+        } else {
+            "update_time_pass_terms"
+        },
+        &tool_fqn,
+        &result.tx_digest,
+    )
+}
+
+async fn buy_finite_credits(
+    tool_fqn: ToolFqn,
+    credits: NonZeroU64,
+    beneficiary: BeneficiaryArgs,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
+    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let owner = client.owner().map_err(NexusCliError::Nexus)?;
+    let result = client
+        .tool()
+        .buy_finite_credits_for(&tool_fqn, credits.get(), beneficiary.resolve(owner))
+        .await
+        .map_err(NexusCliError::Nexus)?;
+    emit_purchase("buy_finite_credits", &tool_fqn, &result)
+}
+
+async fn buy_time_pass(
+    tool_fqn: ToolFqn,
+    duration_ms: NonZeroU64,
+    beneficiary: BeneficiaryArgs,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
+    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let owner = client.owner().map_err(NexusCliError::Nexus)?;
+    let result = client
+        .tool()
+        .buy_time_pass_for(&tool_fqn, duration_ms.get(), beneficiary.resolve(owner))
+        .await
+        .map_err(NexusCliError::Nexus)?;
+    emit_purchase("buy_time_pass", &tool_fqn, &result)
+}
+
+async fn issue_finite_credits(
+    admin: AdminArgs,
+    beneficiary: BeneficiaryArgs,
+    credits: NonZeroU64,
+) -> AnyResult<(), NexusCliError> {
+    let ToolArgs { tool_fqn } = admin.tool;
+    let cashier_admin = resolve_cashier_admin(&tool_fqn, admin.cashier_admin).await?;
+    let client = get_nexus_client(admin.gas.sui_gas_coin, admin.gas.sui_gas_budget).await?;
+    let owner = client.owner().map_err(NexusCliError::Nexus)?;
+    let result = client
+        .tool()
+        .issue_finite_credits(
             &tool_fqn,
             cashier_admin,
-            cost_per_invocation,
-            min_invocations,
-            max_invocations,
+            beneficiary.resolve(owner),
+            credits.get(),
         )
         .await
-    {
-        Ok(response) => {
-            progress.success();
-            response
-        }
-        Err(error) => {
-            progress.error();
-            return Err(NexusCliError::Nexus(error));
-        }
-    };
-    emit_result(
-        "enable_limited_invocation_tickets",
-        &tool_fqn,
-        &response.tx_digest,
-    )
+        .map_err(NexusCliError::Nexus)?;
+    emit_issuance("issue_finite_credits", &tool_fqn, &result)
 }
 
-async fn disable_limited_invocations(
-    tool_fqn: ToolFqn,
-    explicit_cashier_admin: Option<sui::types::Address>,
-    gas: GasArgs,
+async fn issue_time_pass(
+    admin: AdminArgs,
+    beneficiary: BeneficiaryArgs,
+    valid_from_ms: u64,
+    valid_until_ms: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Disabling invocation limited payment tickets for tool '{tool_fqn}'");
-    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
-    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let progress = loading!("Crafting and executing transaction...");
-    let response = match client
+    if valid_from_ms >= valid_until_ms {
+        return Err(NexusCliError::Any(anyhow!(
+            "Time pass end must be after its start"
+        )));
+    }
+    let ToolArgs { tool_fqn } = admin.tool;
+    let cashier_admin = resolve_cashier_admin(&tool_fqn, admin.cashier_admin).await?;
+    let client = get_nexus_client(admin.gas.sui_gas_coin, admin.gas.sui_gas_budget).await?;
+    let owner = client.owner().map_err(NexusCliError::Nexus)?;
+    let result = client
         .tool()
-        .disable_limited_invocation_tickets(&tool_fqn, cashier_admin)
+        .issue_time_pass(
+            &tool_fqn,
+            cashier_admin,
+            beneficiary.resolve(owner),
+            valid_from_ms,
+            valid_until_ms,
+        )
         .await
-    {
-        Ok(response) => {
-            progress.success();
-            response
-        }
-        Err(error) => {
-            progress.error();
-            return Err(NexusCliError::Nexus(error));
-        }
-    };
-    emit_result(
-        "disable_limited_invocation_tickets",
-        &tool_fqn,
-        &response.tx_digest,
-    )
+        .map_err(NexusCliError::Nexus)?;
+    emit_issuance("issue_time_pass", &tool_fqn, &result)
 }
 
-async fn buy_limited_invocations(
+async fn restore_finite_credit_refund(
     tool_fqn: ToolFqn,
-    invocations: NonZeroU64,
-    payment_coin: sui::types::Address,
+    invocation_id: sui::types::Address,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Buying an invocation limited payment ticket for tool '{tool_fqn}'");
-    validate_payment_coin(payment_coin, gas.sui_gas_coin)?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let progress = loading!("Crafting and executing transaction...");
-    let response = match client
+    let result = client
         .tool()
-        .buy_limited_invocation_ticket(&tool_fqn, invocations.get(), payment_coin)
+        .restore_finite_credit_refund(&tool_fqn, invocation_id)
         .await
-    {
-        Ok(response) => {
-            progress.success();
-            response
-        }
-        Err(error) => {
-            progress.error();
-            return Err(NexusCliError::Nexus(error));
-        }
-    };
-    emit_result(
-        "buy_limited_invocation_ticket",
-        &tool_fqn,
-        &response.tx_digest,
-    )
+        .map_err(NexusCliError::Nexus)?;
+    emit_issuance("restore_finite_credit_refund", &tool_fqn, &result)
+}
+
+async fn collect_invocations(
+    admin: AdminArgs,
+    invocation_ids: Vec<sui::types::Address>,
+    recipient: Option<sui::types::Address>,
+) -> AnyResult<(), NexusCliError> {
+    let ToolArgs { tool_fqn } = admin.tool;
+    let cashier_admin = resolve_cashier_admin(&tool_fqn, admin.cashier_admin).await?;
+    let client = get_nexus_client(admin.gas.sui_gas_coin, admin.gas.sui_gas_budget).await?;
+    let recipient = recipient.unwrap_or(client.owner().map_err(NexusCliError::Nexus)?);
+    let result = client
+        .tool()
+        .collect_invocations(&tool_fqn, cashier_admin, &invocation_ids, recipient)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+    emit_result("collect_invocations", &tool_fqn, &result.tx_digest)
+}
+
+async fn collect_deposits(
+    admin: AdminArgs,
+    deposit_ids: Vec<sui::types::Address>,
+    recipient: Option<sui::types::Address>,
+) -> AnyResult<(), NexusCliError> {
+    let ToolArgs { tool_fqn } = admin.tool;
+    let cashier_admin = resolve_cashier_admin(&tool_fqn, admin.cashier_admin).await?;
+    let client = get_nexus_client(admin.gas.sui_gas_coin, admin.gas.sui_gas_budget).await?;
+    let recipient = recipient.unwrap_or(client.owner().map_err(NexusCliError::Nexus)?);
+    let result = client
+        .tool()
+        .collect_deposits(&tool_fqn, cashier_admin, &deposit_ids, recipient)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+    emit_result("collect_deposits", &tool_fqn, &result.tx_digest)
 }
 
 pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), NexusCliError> {
     match command {
-        CashierCommand::Expiry(command) => match command {
-            ExpiryTicketCommand::Enable {
-                tool_fqn,
-                cashier_admin,
-                cost_per_minute,
-                gas,
-            } => enable_expiry(tool_fqn, cashier_admin, cost_per_minute, gas).await,
-            ExpiryTicketCommand::Disable {
-                tool_fqn,
-                cashier_admin,
-                gas,
-            } => disable_expiry(tool_fqn, cashier_admin, gas).await,
-            ExpiryTicketCommand::BuyTicket {
-                tool_fqn,
-                minutes,
-                payment_coin,
-                gas,
-            } => buy_expiry(tool_fqn, minutes, payment_coin, gas).await,
-        },
-        CashierCommand::LimitedInvocations(command) => match command {
-            LimitedInvocationsTicketCommand::Enable {
-                tool_fqn,
-                cashier_admin,
-                cost_per_invocation,
-                min_invocations,
-                max_invocations,
-                gas,
-            } => {
-                enable_limited_invocations(
-                    tool_fqn,
-                    cashier_admin,
-                    cost_per_invocation,
-                    min_invocations,
-                    max_invocations,
-                    gas,
-                )
-                .await
+        CashierCommand::Inspect { tool } => inspect(tool.tool_fqn).await,
+        CashierCommand::Access { tool, beneficiary } => {
+            inspect_access(tool.tool_fqn, beneficiary).await
+        }
+        CashierCommand::Inbox { tool } => inspect_inbox(tool.tool_fqn).await,
+        CashierCommand::CollectInvocations {
+            admin,
+            invocation_ids,
+            recipient,
+        } => collect_invocations(admin, invocation_ids, recipient).await,
+        CashierCommand::CollectDeposits {
+            admin,
+            deposit_ids,
+            recipient,
+        } => collect_deposits(admin, deposit_ids, recipient).await,
+        CashierCommand::FiniteCredits(command) => match command {
+            FiniteCreditCommand::Enable { terms } => set_finite_credit_terms(terms, true).await,
+            FiniteCreditCommand::CloseIssuance { admin } => {
+                run_admin(admin, AdminAction::CloseFiniteCredits).await
             }
-            LimitedInvocationsTicketCommand::Disable {
-                tool_fqn,
-                cashier_admin,
+            FiniteCreditCommand::OpenIssuance { admin } => {
+                run_admin(admin, AdminAction::OpenFiniteCredits).await
+            }
+            FiniteCreditCommand::UpdateTerms { terms } => {
+                set_finite_credit_terms(terms, false).await
+            }
+            FiniteCreditCommand::Buy {
+                tool,
+                credits,
+                beneficiary,
                 gas,
-            } => disable_limited_invocations(tool_fqn, cashier_admin, gas).await,
-            LimitedInvocationsTicketCommand::BuyTicket {
-                tool_fqn,
-                invocations,
-                payment_coin,
+            } => buy_finite_credits(tool.tool_fqn, credits, beneficiary, gas).await,
+            FiniteCreditCommand::Issue {
+                admin,
+                beneficiary,
+                credits,
+            } => issue_finite_credits(admin, beneficiary, credits).await,
+            FiniteCreditCommand::RestoreRefund {
+                tool,
+                invocation_id,
                 gas,
-            } => buy_limited_invocations(tool_fqn, invocations, payment_coin, gas).await,
+            } => restore_finite_credit_refund(tool.tool_fqn, invocation_id, gas).await,
+        },
+        CashierCommand::TimePass(command) => match command {
+            TimePassCommand::Enable { terms } => set_time_pass_terms(terms, true).await,
+            TimePassCommand::CloseIssuance { admin } => {
+                run_admin(admin, AdminAction::CloseTimePass).await
+            }
+            TimePassCommand::OpenIssuance { admin } => {
+                run_admin(admin, AdminAction::OpenTimePass).await
+            }
+            TimePassCommand::UpdateTerms { terms } => set_time_pass_terms(terms, false).await,
+            TimePassCommand::Buy {
+                tool,
+                duration_ms,
+                beneficiary,
+                gas,
+            } => buy_time_pass(tool.tool_fqn, duration_ms, beneficiary, gas).await,
+            TimePassCommand::Issue {
+                admin,
+                beneficiary,
+                valid_from_ms,
+                valid_until_ms,
+            } => issue_time_pass(admin, beneficiary, valid_from_ms, valid_until_ms).await,
         },
     }
 }
@@ -474,45 +814,168 @@ mod tests {
     use {super::*, clap::Parser};
 
     #[test]
-    fn cashier_commands_use_the_tool_namespace() {
+    fn finite_credit_purchase_uses_product_vocabulary() {
         let cli = crate::Cli::try_parse_from([
             "nexus",
             "tool",
             "cashier",
-            "expiry",
-            "enable",
+            "finite-credits",
+            "buy",
             "--tool-fqn",
             "com.example.tool@1",
-            "--cashier-admin",
-            "0x1",
-            "--cost-per-minute",
-            "10",
+            "--credits",
+            "5",
         ])
-        .expect("tool cashier command should parse");
+        .expect("finite credit purchase should parse");
 
         assert!(matches!(
             cli.command,
-            crate::Command::Tool(super::super::ToolCommand::Cashier(CashierCommand::Expiry(
-                ExpiryTicketCommand::Enable { .. }
-            )))
+            crate::Command::Tool(super::super::ToolCommand::Cashier(
+                CashierCommand::FiniteCredits(FiniteCreditCommand::Buy { .. })
+            ))
         ));
     }
 
     #[test]
-    fn ticket_quantity_must_be_positive() {
+    fn purchase_does_not_expose_coin_object_selection() {
         assert!(crate::Cli::try_parse_from([
             "nexus",
             "tool",
             "cashier",
-            "expiry",
-            "buy-ticket",
+            "finite-credits",
+            "buy",
             "--tool-fqn",
             "com.example.tool@1",
-            "--minutes",
-            "0",
+            "--credits",
+            "5",
             "--payment-coin",
             "0x1",
         ])
         .is_err());
+    }
+
+    #[test]
+    fn access_inspection_defaults_to_the_active_user() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "access",
+            "--tool-fqn",
+            "com.example.tool@1",
+        ])
+        .expect("Tool access should be discoverable without object IDs");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Tool(super::super::ToolCommand::Cashier(
+                CashierCommand::Access { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    fn zero_entitlement_quantity_is_rejected() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "time-pass",
+            "buy",
+            "--tool-fqn",
+            "com.example.tool@1",
+            "--duration-ms",
+            "0",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn owner_can_issue_an_agent_entitlement() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "finite-credits",
+            "issue",
+            "--tool-fqn",
+            "com.example.tool@1",
+            "--cashier-admin",
+            "0x8",
+            "--beneficiary-agent",
+            "0xa",
+            "--credits",
+            "5",
+        ])
+        .expect("Agent finite credit issuance should parse");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Tool(super::super::ToolCommand::Cashier(
+                CashierCommand::FiniteCredits(FiniteCreditCommand::Issue { .. })
+            ))
+        ));
+    }
+
+    #[test]
+    fn entitlement_rejects_two_beneficiary_sources() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "time-pass",
+            "buy",
+            "--tool-fqn",
+            "com.example.tool@1",
+            "--duration-ms",
+            "10",
+            "--beneficiary-user",
+            "0x2",
+            "--beneficiary-agent",
+            "0x3",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn finite_credit_refund_and_collection_need_no_policy_witness() {
+        let restore = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "finite-credits",
+            "restore-refund",
+            "--tool-fqn",
+            "com.example.tool@1",
+            "--invocation-id",
+            "0x7",
+        ])
+        .expect("finite credit refund restore should parse");
+        assert!(matches!(
+            restore.command,
+            crate::Command::Tool(super::super::ToolCommand::Cashier(
+                CashierCommand::FiniteCredits(FiniteCreditCommand::RestoreRefund { .. })
+            ))
+        ));
+
+        let collect = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "collect-invocations",
+            "--tool-fqn",
+            "com.example.tool@1",
+            "--cashier-admin",
+            "0x8",
+            "--invocation-id",
+            "0x9",
+        ])
+        .expect("Invocation collection should infer its policy");
+        assert!(matches!(
+            collect.command,
+            crate::Command::Tool(super::super::ToolCommand::Cashier(
+                CashierCommand::CollectInvocations { .. }
+            ))
+        ));
     }
 }
