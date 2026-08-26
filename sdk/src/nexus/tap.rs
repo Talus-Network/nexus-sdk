@@ -1258,14 +1258,17 @@ mod tests {
                     version::InterfaceVersion,
                 },
                 primitives::{data::NexusData, event as event_binding},
-                registry::agent_registry::{
-                    self as agent_registry_binding,
-                    AgentRecord,
-                    AgentRegistry,
-                    AgentRegistryInnerV1,
-                    DefaultDagExecutor,
-                    DefaultDagExecutorFieldKey,
-                    SkillRecord,
+                registry::{
+                    agent_registry::{
+                        self as agent_registry_binding,
+                        AgentRecord,
+                        AgentRegistry,
+                        AgentRegistryInnerV1,
+                        DefaultDagExecutor,
+                        DefaultDagExecutorFieldKey,
+                        SkillRecord,
+                    },
+                    leader::{LeaderRegistry, LeaderRegistryInnerV1},
                 },
                 sui_framework::{table::Table as MoveTable, transfer as transfer_binding},
                 tool::{
@@ -1454,6 +1457,165 @@ mod tests {
                 object_id,
             )),
         );
+    }
+
+    fn empty_object_table<T0, T1>(
+        id: sui::types::Address,
+    ) -> crate::move_bindings::sui_framework::object_table::ObjectTable<T0, T1> {
+        crate::move_bindings::sui_framework::object_table::ObjectTable {
+            id: crate::move_bindings::sui_framework::object::UID::new(id),
+            size: 0,
+            phantom_t0: std::marker::PhantomData,
+            phantom_t1: std::marker::PhantomData,
+        }
+    }
+
+    fn empty_vec_map<K, V>() -> crate::move_bindings::sui_framework::vec_map::VecMap<K, V> {
+        crate::move_bindings::sui_framework::vec_map::VecMap { contents: vec![] }
+    }
+
+    fn mock_execution_and_dag_state(
+        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+        state_service: &mut sui_mocks::grpc::MockStateService,
+        context: &NexusContext,
+        execution_ref: sui::types::ObjectReference,
+        dag_ref: sui::types::ObjectReference,
+    ) {
+        let execution_id = *execution_ref.object_id();
+        let dag_id = *dag_ref.object_id();
+        let execution = DAGExecution::new(crate::move_bindings::sui_framework::object::UID::new(
+            execution_id,
+        ));
+        let execution_state = DAGExecutionInnerV1 {
+            dag: object_id(dag_id),
+            entry_group: crate::move_bindings::interface::graph::EntryGroup::new("default"),
+            invoker: sui::types::Address::from_static("0x1"),
+            created_at: 0,
+            priority_fee_percentage: 0,
+            agent_id: object_id(sui::types::Address::from_static("0xa")),
+            skill_id: 11,
+            interface_version: InterfaceVersion::new(1),
+            task_id: object_id(sui::types::Address::from_static("0xb")),
+            occurrence_id: 0,
+            last_request_for_execution_emitted_at_digest: vec![],
+            last_request_for_execution_leaders: vec![],
+            network: object_id(sui::types::Address::from_static("0xf")),
+            evaluations: empty_object_table(sui_mocks::mock_sui_address()),
+            terminal_records: empty_vec_map(),
+            submission_failure_records: empty_vec_map(),
+            pending_retry_handoff_cap_ids: empty_vec_map(),
+            walk_request_authorities: empty_vec_map(),
+            pending_payment_settlements: empty_vec_map(),
+            active_walks: 0,
+            pending_abort_walks: 0,
+            pending_settlement_walks: 0,
+            successful_walks: 0,
+            failed_walks: 0,
+            aborted_walks: 0,
+            consumed_walks: 0,
+            cancelled_walks: 0,
+            walks: vec![],
+        };
+        sui_mocks::grpc::mock_object_state::<DAGExecution, WorkflowWitnessV1, DAGExecutionInnerV1>(
+            ledger_service,
+            state_service,
+            context,
+            execution_ref,
+            sui::types::Owner::Shared(1),
+            execution,
+            execution_state,
+        );
+
+        let dag = DAG::new(crate::move_bindings::sui_framework::object::UID::new(
+            dag_id,
+        ));
+        let dag_state = DAGInnerV1 {
+            finalized: true,
+            vertices: crate::move_bindings::sui_framework::linked_table::LinkedTable::new(
+                sui_mocks::mock_sui_address(),
+                0,
+            ),
+            entry_groups: empty_vec_map(),
+            edges: MoveTable::new(sui_mocks::mock_sui_address(), 0),
+            outputs: MoveTable::new(sui_mocks::mock_sui_address(), 0),
+            defaults_to_input_ports: MoveTable::new(sui_mocks::mock_sui_address(), 0),
+            post_failure_action: crate::move_bindings::move_std::option::Option::from_option(
+                None::<crate::move_bindings::interface::graph::PostFailureAction>,
+            ),
+        };
+        sui_mocks::grpc::mock_object_state::<DAG, InterfaceWitnessV1, DAGInnerV1>(
+            ledger_service,
+            state_service,
+            context,
+            dag_ref,
+            sui::types::Owner::Immutable,
+            dag,
+            dag_state,
+        );
+    }
+
+    fn mock_leader_registry_observation(
+        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+        state_service: &mut sui_mocks::grpc::MockStateService,
+        context: &NexusContext,
+    ) {
+        let root = context.leader_registry;
+        sui_mocks::grpc::mock_object_state_observation::<
+            LeaderRegistry,
+            RegistryWitnessV1,
+            LeaderRegistryInnerV1,
+        >(
+            ledger_service,
+            state_service,
+            context,
+            sui_mocks::object_ref_for_id(root.object_id()),
+            sui::types::Owner::Shared(root.initial_shared_version),
+            LeaderRegistry::new(crate::move_bindings::sui_framework::object::UID::new(
+                root.object_id(),
+            )),
+        );
+    }
+
+    fn assert_refill_requests_ready_walks(
+        request: &sui::grpc::ExecuteTransactionRequest,
+        refill_target: &sui_move_call::CallTarget,
+        request_target: &sui_move_call::CallTarget,
+        dag_id: sui::types::Address,
+        execution_id: sui::types::Address,
+        leader_registry_id: sui::types::Address,
+        agent_id: Option<sui::types::Address>,
+    ) {
+        let transaction = submitted_ptb(request);
+        let refill_index = transaction
+            .commands
+            .iter()
+            .position(|command| matches!(
+                command,
+                sui::types::Command::MoveCall(call) if call_matches_generated(call, refill_target)
+            ))
+            .expect("refill call");
+        let request_index = transaction
+            .commands
+            .iter()
+            .position(|command| matches!(
+                command,
+                sui::types::Command::MoveCall(call) if call_matches_generated(call, request_target)
+            ))
+            .expect("payment ready walk request call");
+        assert!(refill_index < request_index);
+        assert!(transaction.inputs.iter().any(|input| matches!(
+            input,
+            sui::types::Input::ImmutableOrOwned(object) if object.object_id() == &dag_id
+        )));
+        for expected_id in [execution_id, leader_registry_id]
+            .into_iter()
+            .chain(agent_id)
+        {
+            assert!(transaction.inputs.iter().any(|input| matches!(
+                input,
+                sui::types::Input::Shared(object) if object.object_id() == expected_id
+            )));
+        }
     }
 
     fn skill_revision(revision: u64) -> SkillRevisionContext {
@@ -2428,6 +2590,136 @@ mod tests {
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.amount, 1500);
         assert_eq!(result.tx_digest, submitted.digest());
+    }
+
+    async fn assert_tap_refill_action_requests_ready_walks(
+        agent_ref: Option<sui::types::ObjectReference>,
+    ) {
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_context();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let execution_ref = sui_mocks::mock_sui_object_ref();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service_mock = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        mock_execution_and_dag_state(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            execution_ref.clone(),
+            dag_ref.clone(),
+        );
+        if let Some(agent_ref) = &agent_ref {
+            mock_agent_observation(
+                &mut ledger_service_mock,
+                &mut state_service_mock,
+                &nexus_objects,
+                agent_ref.clone(),
+                sui::types::Owner::Shared(agent_ref.version()),
+            );
+        }
+        mock_leader_registry_observation(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+        );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger_service_mock,
+            &mut package_service_mock,
+            nexus_objects.packages(),
+        );
+        let agent_id = agent_ref.as_ref().map(|agent| *agent.object_id());
+        let refill_target = if agent_id.is_some() {
+            generated_target(
+                &nexus_objects,
+                crate::move_bindings::scheduler::execution_settlement::refill_tap_execution_payment_from_agent_vault_target,
+            )
+        } else {
+            generated_target(
+                &nexus_objects,
+                crate::move_bindings::scheduler::execution_settlement::refill_tap_execution_payment_target,
+            )
+        };
+        let request_target = generated_target(
+            &nexus_objects,
+            crate::move_bindings::scheduler::execution_settlement::emit_payment_ready_walk_requests_target,
+        );
+        let dag_id = *dag_ref.object_id();
+        let execution_id = *execution_ref.object_id();
+        let leader_registry_id = nexus_objects.leader_registry.object_id();
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![],
+            move |request| {
+                assert_refill_requests_ready_walks(
+                    request,
+                    &refill_target,
+                    &request_target,
+                    dag_id,
+                    execution_id,
+                    leader_registry_id,
+                    agent_id,
+                );
+            },
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            package_service_mock: Some(package_service_mock),
+            state_service_mock: Some(state_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = if let Some(agent_id) = agent_id {
+            client
+                .tap()
+                .refill_execution_payment_from_agent_vault(
+                    RefillExecutionPaymentFromAgentVaultParams {
+                        execution_id,
+                        agent_id,
+                        amount: 1500,
+                    },
+                )
+                .await
+                .expect("Agent vault execution refill succeeds")
+        } else {
+            client
+                .tap()
+                .refill_execution_payment(RefillExecutionPaymentParams {
+                    execution_id,
+                    amount: 1500,
+                })
+                .await
+                .expect("execution refill succeeds")
+        };
+
+        assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(result.tx_checkpoint, 1);
+        assert_eq!(result.execution_id, execution_id);
+        assert_eq!(result.agent_id, agent_id);
+        assert_eq!(result.amount, 1500);
+    }
+
+    #[tokio::test]
+    async fn tap_actions_coin_refill_requests_payment_ready_walks() {
+        assert_tap_refill_action_requests_ready_walks(None).await;
+    }
+
+    #[tokio::test]
+    async fn tap_actions_agent_vault_refill_requests_payment_ready_walks() {
+        assert_tap_refill_action_requests_ready_walks(Some(sui_mocks::mock_sui_object_ref())).await;
     }
 
     #[tokio::test]
