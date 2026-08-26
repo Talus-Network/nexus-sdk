@@ -73,6 +73,18 @@ jobs:
           file: Cargo.toml
           field: workspace.package.version
 
+      - name: Validate tag matches version
+        if: github.ref_type == 'tag'
+        env:
+          PACKAGE_VERSION: ${{ steps.get_version.outputs.value }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          expected_tag="v${PACKAGE_VERSION}"
+          if [[ "${RELEASE_TAG}" != "${expected_tag}" ]]; then
+            echo "::error::Tag ${RELEASE_TAG} does not match package version ${PACKAGE_VERSION}"
+            exit 1
+          fi
+
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -128,7 +140,7 @@ jobs:
         if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ github.ref != format('refs/tags/v{0}', steps.get_version.outputs.value) }}
+          prerelease: ${{ contains(steps.get_version.outputs.value, '-') }}
           draft: true
           files: |
             *.deb
