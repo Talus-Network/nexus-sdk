@@ -5,3 +5,4 @@ target
 **/target
 **/build
 **/Move.lock
+*.zip

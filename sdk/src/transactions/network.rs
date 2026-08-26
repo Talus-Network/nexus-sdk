@@ -80,13 +80,14 @@ pub fn swap_us_for_sui(
 pub fn withdraw_priority_fee(
     context: &NexusContext,
     leader_cap: &sui::types::ObjectReference,
+    leader_cap_owner: &sui::types::Owner,
     share_to_withdraw: u64,
     recipient: sui::types::Address,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(context, |transaction| {
         let vault = transaction.shared_root(&context.priority_fee_vault, true)?;
         let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
-        let leader_cap = transaction.owned_object(leader_cap)?;
+        let leader_cap = transaction.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let share = transaction.arg(&share_to_withdraw)?;
         let us_out = transaction.call_target(
             priority_fee_vault_binding::withdraw_priority_fee_target,
@@ -192,5 +193,29 @@ mod tests {
         let error = collect_priority_fee_deposits(&nexus_objects(), &[])
             .expect_err("empty batch must be rejected");
         assert!(error.to_string().contains("at least one deposit"));
+    }
+
+    #[test]
+    fn priority_fee_withdrawal_preserves_consensus_address_ownership() {
+        let objects = nexus_objects();
+        let leader_cap = object_ref("0x30", 9, 30);
+        let leader_cap_owner = sui::types::Owner::ConsensusAddress {
+            start_version: 4,
+            owner: address("0x31"),
+        };
+
+        let ptb =
+            withdraw_priority_fee(&objects, &leader_cap, &leader_cap_owner, 5, address("0x31"))
+                .expect("consensus address owned cap is a valid input");
+
+        assert!(ptb.inputs.iter().any(|input| {
+            matches!(
+                input,
+                Input::Shared(shared)
+                    if shared.object_id() == *leader_cap.object_id()
+                        && shared.version() == 4
+                        && !shared.mutability().is_mutable()
+            )
+        }));
     }
 }

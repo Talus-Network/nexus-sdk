@@ -19,7 +19,7 @@ Identify an Execution directly, or let the CLI resolve it from its occurrence:
   nexus execution inspect --execution-id 0x42
   nexus execution inspect --task-id 0x21 --occurrence-id 7
 
-Authorize one exact active Tool Invocation through an accepted policy:
+As a Leader, authorize one exact active Tool Invocation through an accepted policy:
   nexus execution authorize --execution-id 0x42 --leader-cap 0x43 --walk-index 0 --vertex worker fixed-price
   nexus execution authorize --execution-id 0x42 --leader-cap 0x43 --walk-index 0 --vertex worker finite-credits
 
@@ -67,7 +67,7 @@ pub(crate) enum ExecutionCommand {
         )]
         poll_ms: u64,
     },
-    #[command(about = "Authorize one exact active Tool Invocation")]
+    #[command(about = "Authorize one exact active Tool Invocation as a Leader")]
     Authorize {
         #[arg(
             long,
@@ -79,7 +79,7 @@ pub(crate) enum ExecutionCommand {
         #[arg(
             long = "leader-cap",
             value_name = "OBJECT_ID",
-            help = "Leader capability object ID used for Invocation admission"
+            help = "Leader capability controlled by the transaction signer"
         )]
         leader_cap_id: nexus_sdk::sui::types::Address,
         #[arg(
@@ -235,10 +235,10 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
-            "--walk-index",
-            "3",
             "--leader-cap",
             "0x43",
+            "--walk-index",
+            "3",
             "--vertex",
             "worker",
             "--iteration",
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execution_authorize_dispatches_leader_cap_before_iterator_validation() {
+    async fn execution_authorize_validates_iterator_before_network_access() {
         let error = handle(ExecutionCommand::Authorize {
             execution_id: nexus_sdk::sui::types::Address::from_static("0x42"),
             leader_cap_id: nexus_sdk::sui::types::Address::from_static("0x43"),
@@ -300,10 +300,10 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
-            "--walk-index",
-            "3",
             "--leader-cap",
             "0x43",
+            "--walk-index",
+            "3",
             "--vertex",
             "worker",
             "--iteration",
@@ -321,10 +321,10 @@ mod tests {
             "authorize",
             "--execution-id",
             "0x42",
-            "--walk-index",
-            "0",
             "--leader-cap",
             "0x43",
+            "--walk-index",
+            "0",
             "--vertex",
             "worker",
             "free",

@@ -1017,7 +1017,7 @@ pub async fn fetch_active_tap_skill_revision(
     Ok(registry_response_with_data(skill, record))
 }
 
-/// Fetch the complete TAP registry selected by [`NexusObjects`].
+/// Fetch the complete TAP registry selected by [`crate::types::NexusObjects`].
 ///
 /// # Errors
 ///
@@ -1029,7 +1029,7 @@ pub async fn fetch_configured_agent_registry(
     fetch_agent_registry(client, context).await
 }
 
-/// Fetch the active skill revision from the registry selected by [`NexusObjects`].
+/// Fetch the active skill revision from the registry selected by [`crate::types::NexusObjects`].
 ///
 /// # Errors
 ///
@@ -1067,7 +1067,7 @@ pub async fn fetch_configured_active_tap_skill_execution_target(
     Ok(registry_response_with_data(skill, target))
 }
 
-/// Fetch the [`DefaultDagExecutorRecord`] selected by [`NexusObjects`].
+/// Fetch the [`DefaultDagExecutorRecord`] selected by [`crate::types::NexusObjects`].
 ///
 /// The default executor, agent, and skill are each read by their exact keys.
 ///
@@ -1122,7 +1122,7 @@ pub async fn fetch_execution_payment(
 
 /// Fetch the standard execution payment stored under a DAG execution object.
 ///
-/// The field key type is resolved through [`NexusObjects`] so the derived
+/// The field key type is resolved through [`crate::types::NexusObjects`] so the derived
 /// wrapper identity remains valid across package upgrades.
 ///
 /// # Errors
@@ -1181,7 +1181,7 @@ pub async fn fetch_agent_payment_vault(
 /// Fetch the [`AgentPaymentVaultInnerV1`] stored for an agent.
 ///
 /// The lookup derives the dynamic field identifier from [`AgentVaultFieldKey`]
-/// and the deployment addresses in [`NexusObjects`]. Its cost therefore does
+/// and the deployment addresses in [`crate::types::NexusObjects`]. Its cost therefore does
 /// not depend on the number of fields owned by the agent.
 ///
 /// # Errors
@@ -2641,7 +2641,6 @@ mod tests {
                 value: 10,
                 phantom_t0: std::marker::PhantomData,
             },
-            locked_amount: 3,
         };
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
@@ -2678,7 +2677,7 @@ mod tests {
             .await
             .expect("vault read should not require owned coins");
 
-        assert_eq!(response.data.unlocked_balance_value(), 7);
+        assert_eq!(response.data.available_balance_value(), 10);
     }
 
     #[test]

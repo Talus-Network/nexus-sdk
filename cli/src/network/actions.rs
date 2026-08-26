@@ -3,6 +3,45 @@ use {
     nexus_sdk::nexus::network::CollectPriorityFeeDepositsResult,
 };
 
+pub(crate) async fn configure_leader_registry(
+    unbonding_duration_ms: u64,
+    min_stake_us: u64,
+    max_transaction_budget_mist: u64,
+    sui_gas_coin: Option<sui::types::Address>,
+    sui_gas_budget: u64,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Configuring leader registry policy");
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let tx_handle = loading!("Crafting and executing transaction...");
+    let response = match nexus_client
+        .network()
+        .configure_leader_registry(
+            unbonding_duration_ms,
+            min_stake_us,
+            max_transaction_budget_mist,
+        )
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            tx_handle.error();
+            return Err(NexusCliError::Nexus(error));
+        }
+    };
+    tx_handle.success();
+    notify_success!(
+        "Transaction digest: {digest}",
+        digest = response.tx_digest.to_string().truecolor(100, 100, 100)
+    );
+    json_output(&json!({
+        "digest": response.tx_digest,
+        "unbonding_duration_ms": unbonding_duration_ms,
+        "min_stake_us": min_stake_us,
+        "max_transaction_budget_mist": max_transaction_budget_mist,
+    }))?;
+    Ok(())
+}
+
 pub(crate) async fn collect_priority_fees(
     leader_cap_id: sui::types::Address,
     batch_size: usize,

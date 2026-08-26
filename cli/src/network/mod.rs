@@ -15,9 +15,33 @@ fn parse_priority_fee_batch_size(value: &str) -> Result<usize, String> {
     Ok(value)
 }
 
-/// Nexus network fee commands.
+/// Nexus network administration and fee commands.
 #[derive(Subcommand)]
 pub(crate) enum NetworkCommand {
+    #[command(about = "Configure the complete leader registry policy")]
+    ConfigureLeaderRegistry {
+        #[arg(
+            long = "unbonding-duration-ms",
+            help = "Delay before requested leader stake can be claimed",
+            value_name = "MILLISECONDS"
+        )]
+        unbonding_duration_ms: u64,
+        #[arg(
+            long = "min-stake-us",
+            help = "Minimum leader stake in `$US` atomic units",
+            value_name = "AMOUNT"
+        )]
+        min_stake_us: u64,
+        #[arg(
+            long = "max-transaction-budget-mist",
+            help = "Maximum transaction budget available to one leader",
+            value_name = "MIST"
+        )]
+        max_transaction_budget_mist: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
     #[command(about = "Configure the priority fee vault exchange rate")]
     ConfigurePriorityFeeVault {
         #[arg(
@@ -102,6 +126,21 @@ pub(crate) enum NetworkCommand {
 
 pub(crate) async fn handle(command: NetworkCommand) -> AnyResult<(), NexusCliError> {
     match command {
+        NetworkCommand::ConfigureLeaderRegistry {
+            unbonding_duration_ms,
+            min_stake_us,
+            max_transaction_budget_mist,
+            gas,
+        } => {
+            configure_leader_registry(
+                unbonding_duration_ms,
+                min_stake_us,
+                max_transaction_budget_mist,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
         NetworkCommand::ConfigurePriorityFeeVault {
             exchange_rate_million_mists_us,
             gas,
@@ -171,6 +210,40 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn parses_complete_leader_registry_configuration() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "configure-leader-registry",
+            "--unbonding-duration-ms",
+            "86400000",
+            "--min-stake-us",
+            "1000000000",
+            "--max-transaction-budget-mist",
+            "10000000000",
+        ])
+        .expect("complete leader registry configuration should parse");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Network(NetworkCommand::ConfigureLeaderRegistry {
+                unbonding_duration_ms: 86_400_000,
+                min_stake_us: 1_000_000_000,
+                max_transaction_budget_mist: 10_000_000_000,
+                ..
+            })
+        ));
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "configure-leader-registry",
+            "--min-stake-us",
+            "1000000000",
+        ])
+        .is_err());
     }
 
     #[test]

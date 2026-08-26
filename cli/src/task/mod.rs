@@ -38,19 +38,19 @@ occurrence inspection read durable object state.
 
 Examples:
   nexus task create --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000
   nexus task schedule --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000 --now
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000 --now
   nexus task schedule --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000 \
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000 \
     --now --at-ms 2000000000000 \
     --recurrence-interval-ms 60000
   nexus task schedule --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000 \
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000 \
     --schedule-file schedule.json
   nexus task list --limit 50
   nexus task inspect --task-id 0x123
@@ -96,8 +96,8 @@ Funding:
 
 Example:
   nexus task create --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000"#;
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000"#;
 
 const SCHEDULE_HELP: &str = r#"Creates a Task, applies a complete nonempty Schedule, and shares the Task in
 one transaction. At least one standalone occurrence or recurrence is required.
@@ -113,16 +113,16 @@ Funding:
 
 Examples:
   nexus task schedule --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000 --now
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000 --now
   nexus task schedule --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000 \
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000 \
     --after-ms 30000 \
     --deadline-after-ms 60000 --priority-fee-percentage 20
   nexus task schedule --dag-id 0x42 \
-    --prepay-amount-mist 50000000 \
-    --occurrence-budget-mist 50000000 \
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000 \
     --recurrence-interval-ms 60000 --recurrence-occurrences 10"#;
 
 const ADD_OCCURRENCE_HELP: &str = r#"Adds one standalone occurrence to an existing Task.
@@ -777,6 +777,8 @@ mod tests {
         assert!(help.contains("durable object state"));
         assert!(help.contains("task occurrence --help"));
         assert!(help.contains("Examples:"));
+        assert!(help.contains("--occurrence-budget-mist 500000000"));
+        assert!(!help.contains("--occurrence-budget-mist 50000000\n"));
     }
 
     #[test]

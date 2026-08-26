@@ -1538,12 +1538,10 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)
     }
 
-    /// Authorizes one active runtime vertex through an owner accepted policy.
+    /// Authorizes one active [RuntimeVertex] with the current Leader capability.
     ///
-    /// Authorization records the exact accounting lock and emits the executable
-    /// walk request in the same transaction. Canonical entitlement IDs are
-    /// derived from the execution beneficiary. Custom policy calls retain their
-    /// supplied argument order and object access modes.
+    /// The signer must control the supplied capability. This manual path records
+    /// no reimbursement. The automatic Leader service supplies the verified cost.
     pub async fn authorize_invocation(
         &self,
         dag_execution_id: sui::types::Address,
@@ -1556,7 +1554,7 @@ impl WorkflowActions {
         let objects = client.get_nexus_objects();
         let required_roots = [objects.tool_registry, objects.leader_registry];
         let crawler = client.crawler();
-        let leader_cap_ref = crawler
+        let leader_cap = crawler
             .get_object_metadata(leader_cap_id)
             .await
             .map_err(NexusError::Rpc)?;
@@ -1615,8 +1613,7 @@ impl WorkflowActions {
             &cashier,
             &dag.object_ref(),
             &execution.object.object_ref(),
-            &leader_cap_ref.object_ref(),
-            &leader_cap_ref.owner,
+            &leader_cap.object_ref(),
             invocation::InvocationTarget {
                 walk_index,
                 vertex: &vertex,
@@ -2848,13 +2845,13 @@ mod tests {
                 InvocationPolicy::FixedPrice,
             )
             .await
-            .expect_err("leader-cap metadata failure should stop authorization");
+            .expect_err("missing leader capability should stop authorization");
 
         assert!(matches!(error, NexusError::Rpc(_)));
     }
 
     #[tokio::test]
-    async fn authorize_invocation_validates_the_active_walk_after_capability_resolution() {
+    async fn authorize_invocation_validates_the_active_walk() {
         let nexus_objects = sui_mocks::mock_nexus_context();
         let execution_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
@@ -2899,12 +2896,12 @@ mod tests {
 
         assert!(
             matches!(error, NexusError::Configuration(ref message) if message.contains("is not active")),
-            "unexpected inactive-walk error: {error:?}"
+            "unexpected inactive walk error: {error:?}"
         );
     }
 
     #[tokio::test]
-    async fn authorize_invocation_forwards_capability_to_the_ptb_boundary() {
+    async fn authorize_invocation_forwards_the_leader_capability() {
         let nexus_objects = sui_mocks::mock_nexus_context();
         let execution_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
@@ -3008,7 +3005,7 @@ mod tests {
                 0,
                 vertex,
                 InvocationPolicy::Custom(InvocationPolicyCall::new(
-                    TypeName::new("malformed-policy"),
+                    TypeName::new("malformed_policy"),
                     vec![],
                 )),
             )

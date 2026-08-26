@@ -200,6 +200,7 @@ fn register_off_chain_tool(
     pay_with: Argument,
     clock: Argument,
 ) -> anyhow::Result<Argument> {
+    meta.validate_registration()?;
     let fqn = tx.ascii_string(meta.fqn.to_string())?;
     let url = tx.arg(&meta.url.as_bytes().to_vec())?;
     let description = tx.arg(&meta.description.as_bytes().to_vec())?;

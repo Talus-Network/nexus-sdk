@@ -20,6 +20,41 @@ pub fn over_network_cap_struct_tag(objects: &NexusContext) -> sui::types::Struct
     crate::move_bindings::struct_tag::<OverNetworkCap>(objects)
 }
 
+/// Configures every leader registry policy value atomically.
+///
+/// Atomic updates prevent mixed policy observations. [`sui::types::Owner`]
+/// preserves the administration capability ownership form.
+pub fn configure_registry_ptb(
+    objects: &NexusContext,
+    admin_cap: &sui::types::ObjectReference,
+    admin_owner: &sui::types::Owner,
+    unbonding_duration_ms: u64,
+    min_stake_us: u64,
+    max_transaction_budget_mist: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let leader_registry = tx.shared_root(&objects.leader_registry, true)?;
+        let admin_cap = tx.object_from_owner(admin_cap, admin_owner, true)?;
+        let unbonding_duration_ms = tx.arg(&unbonding_duration_ms)?;
+        let min_stake_us = tx.arg(&min_stake_us)?;
+        let max_transaction_budget_mist = tx.arg(&max_transaction_budget_mist)?;
+
+        tx.call_target(
+            leader_binding::set_unbonding_duration_ms_target,
+            vec![leader_registry, admin_cap, unbonding_duration_ms],
+        )?;
+        tx.call_target(
+            leader_binding::set_min_stake_us_target,
+            vec![leader_registry, admin_cap, min_stake_us],
+        )?;
+        tx.call_target(
+            leader_binding::set_max_transaction_budget_target,
+            vec![leader_registry, admin_cap, max_transaction_budget_mist],
+        )?;
+        Ok(())
+    })
+}
+
 /// Register the transaction sender as a leader using part of an owned Talus `$US` coin.
 ///
 /// The coin remains owned by the sender with any balance above `stake_us`.
@@ -138,6 +173,54 @@ mod tests {
             ptb.commands.len(),
             2,
             "the registration coin must remain owned so any unused balance is preserved"
+        );
+    }
+
+    #[test]
+    fn registry_configuration_is_atomic_and_preserves_admin_ownership() {
+        let objects = nexus_objects();
+        let admin_cap = object_ref("0x30", 9, 30);
+        let admin_owner = sui::types::Owner::ConsensusAddress {
+            start_version: 4,
+            owner: addr("0x31"),
+        };
+
+        let ptb = configure_registry_ptb(
+            &objects,
+            &admin_cap,
+            &admin_owner,
+            86_400_000,
+            1_000_000_000,
+            10_000_000_000,
+        )
+        .expect("leader registry configuration PTB");
+
+        assert!(ptb.inputs.iter().any(|input| {
+            matches!(
+                input,
+                Input::Shared(shared)
+                    if shared.object_id() == *admin_cap.object_id()
+                        && shared.version() == 4
+                        && shared.mutability().is_mutable()
+            )
+        }));
+        let calls = ptb
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                Command::MoveCall(call) if call.module.as_str() == "leader" => {
+                    Some(call.function.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            calls,
+            [
+                "set_unbonding_duration_ms",
+                "set_min_stake_us",
+                "set_max_transaction_budget",
+            ]
         );
     }
 }

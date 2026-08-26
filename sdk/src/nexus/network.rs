@@ -17,7 +17,7 @@ use {
         },
         nexus::{client::NexusClient, crawler::Response, error::NexusError},
         sui,
-        transactions::network,
+        transactions::{leader, network},
         types::PriorityFeeWithdrawalQuote,
     },
     std::collections::HashMap,
@@ -26,6 +26,11 @@ use {
 pub const MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE: usize = 128;
 
 pub struct ConfigurePriorityFeeVaultResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+/// Result of applying one complete leader registry policy.
+pub struct ConfigureLeaderRegistryResult {
     pub tx_digest: sui::types::Digest,
 }
 
@@ -67,12 +72,53 @@ pub struct CollectPriorityFeeDepositsResult {
     pub unavailable_deposit_ids: Vec<sui::types::Address>,
 }
 
-/// Operations over Nexus network fee state.
+/// Operations over Nexus network policy and fee state.
 pub struct NetworkActions {
     pub(super) client: NexusClient,
 }
 
 impl NetworkActions {
+    /// Apply a complete leader registry policy in one transaction.
+    ///
+    /// The operation resolves current object ownership before building the
+    /// transaction, so an administration capability moved to consensus
+    /// ownership remains usable after publication and upgrade.
+    pub async fn configure_leader_registry(
+        &self,
+        unbonding_duration_ms: u64,
+        min_stake_us: u64,
+        max_transaction_budget_mist: u64,
+    ) -> Result<ConfigureLeaderRegistryResult, NexusError> {
+        let client = &self.client;
+        let address = client.owner()?;
+        let context = client
+            .context_for_root(&client.nexus_objects.leader_registry)
+            .await?;
+        let admin_cap = client
+            .crawler()
+            .get_object_metadata(client.nexus_objects.leader_admin_cap.object_id())
+            .await
+            .map_err(|error| {
+                NexusError::Rpc(anyhow::anyhow!(
+                    "Failed to fetch leader administration capability metadata: {error}"
+                ))
+            })?;
+        let transaction = leader::configure_registry_ptb(
+            &context,
+            &admin_cap.object_ref(),
+            &admin_cap.owner,
+            unbonding_duration_ms,
+            min_stake_us,
+            max_transaction_budget_mist,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+
+        Ok(ConfigureLeaderRegistryResult {
+            tx_digest: response.digest,
+        })
+    }
+
     /// Fetch and decode the priority fee vault state.
     pub async fn fetch_priority_fee_vault_state(
         &self,
@@ -265,15 +311,20 @@ impl NetworkActions {
             .crawler()
             .get_object_metadata(leader_cap)
             .await
-            .map(|response| response.object_ref())
             .map_err(|error| {
                 NexusError::Rpc(anyhow::anyhow!(
                     "Failed to fetch leader capability metadata: {error}"
                 ))
             })?;
-        let transaction =
-            network::withdraw_priority_fee(&context, &leader_cap, share_to_withdraw, address)
-                .map_err(NexusError::TransactionBuilding)?;
+        let leader_cap_ref = leader_cap.object_ref();
+        let transaction = network::withdraw_priority_fee(
+            &context,
+            &leader_cap_ref,
+            &leader_cap.owner,
+            share_to_withdraw,
+            address,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
 
         Ok(WithdrawPriorityFeeResult {
@@ -339,7 +390,7 @@ async fn discover_priority_fee_deposits(
     let object_type = crate::move_bindings::struct_tag::<PriorityFeeDeposit>(&context);
     let deposits = client
         .crawler()
-        .get_object_owned_objects::<PriorityFeeDeposit>(vault_id, object_type)
+        .get_owned_objects::<PriorityFeeDeposit>(vault_id, object_type)
         .await
         .map_err(|error| {
             NexusError::Rpc(anyhow::anyhow!(
@@ -382,7 +433,7 @@ async fn prepare_priority_fee_deposit_batch(
             .collect::<Vec<_>>()
             .join(", ");
         return Err(NexusError::Configuration(format!(
-            "priority fee deposits are not exact children of the configured vault: {missing}"
+            "priority fee deposits are not present at the configured vault address: {missing}"
         )));
     }
     if selected.is_empty() {
@@ -718,8 +769,9 @@ mod tests {
                         object.set_object_id(object_ref.object_id().to_string());
                         object.set_version(object_ref.version());
                         object.set_digest(*object_ref.digest());
-                        object
-                            .set_owner(sui::grpc::Owner::from(sui::types::Owner::Object(vault_id)));
+                        object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Address(
+                            vault_id,
+                        )));
                         object.set_object_type(object_type.to_string());
                         let mut contents = sui::grpc::Bcs::default();
                         contents.set_name(object_type.to_string());

@@ -198,12 +198,6 @@ impl AgentPaymentVaultInnerV1 {
     pub fn available_balance_value(&self) -> u64 {
         self.available_balance.value
     }
-
-    pub fn unlocked_balance_value(&self) -> u64 {
-        self.available_balance
-            .value
-            .saturating_sub(self.locked_amount)
-    }
 }
 
 #[allow(clippy::derivable_impls)]

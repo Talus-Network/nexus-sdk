@@ -154,12 +154,10 @@ pub fn buy_finite_credits_ptb(
         let coin = transaction.owned_object(pay_with)?;
         let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
         let credits_count = transaction.arg(&credits)?;
-        let result = transaction.call_target(
+        transaction.call_target(
             finite_credits_binding::buy_target,
             vec![cashier, coin, beneficiary, credits_count],
         )?;
-        let credits = transaction.nested_result(result, 0)?;
-        transaction.call_target(finite_credits_binding::share_target, vec![credits])?;
         Ok(())
     })
 }
@@ -213,12 +211,10 @@ pub fn buy_finite_credits_from_balance_ptb(
                 let cashier = transaction.shared_object(tool_cashier, true)?;
                 let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
                 let credits = transaction.arg(&credits)?;
-                let result = transaction.call_target(
+                transaction.call_target(
                     finite_credits_binding::buy_target,
                     vec![cashier, coin, beneficiary, credits],
                 )?;
-                let account = transaction.nested_result(result, 0)?;
-                transaction.call_target(finite_credits_binding::share_target, vec![account])?;
             }
         }
         destroy_spent_sui_coin(transaction, coin)
@@ -348,12 +344,10 @@ pub fn buy_time_pass_ptb(
         let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
         let duration = transaction.arg(&duration_ms)?;
         let clock = transaction.clock()?;
-        let result = transaction.call_target(
+        transaction.call_target(
             time_pass_binding::buy_target,
             vec![cashier, coin, beneficiary, duration, clock],
         )?;
-        let pass = transaction.nested_result(result, 0)?;
-        transaction.call_target(time_pass_binding::share_target, vec![pass])?;
         Ok(())
     })
 }
@@ -409,12 +403,10 @@ pub fn buy_time_pass_from_balance_ptb(
                 let cashier = transaction.shared_object(tool_cashier, true)?;
                 let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
                 let duration = transaction.arg(&duration_ms)?;
-                let result = transaction.call_target(
+                transaction.call_target(
                     time_pass_binding::buy_target,
                     vec![cashier, coin, beneficiary, duration, clock],
                 )?;
-                let account = transaction.nested_result(result, 0)?;
-                transaction.call_target(time_pass_binding::share_target, vec![account])?;
             }
         }
         destroy_spent_sui_coin(transaction, coin)
@@ -700,6 +692,11 @@ mod tests {
                 command,
                 Command::MoveCall(call)
                     if call.module.as_str() == policy && call.function.as_str() == "buy"
+            )));
+            assert!(!transaction.commands.iter().any(|command| matches!(
+                command,
+                Command::MoveCall(call)
+                    if call.module.as_str() == policy && call.function.as_str() == "share"
             )));
             assert!(transaction.commands.iter().any(|command| matches!(
                 command,

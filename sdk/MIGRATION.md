@@ -185,8 +185,8 @@ use nexus_sdk::{
 let task = TaskSpec::new(
     TaskOperation::default_dag(dag_id),
     DEFAULT_ENTRY_GROUP,
-    TaskFunding::address(50_000_000),
-    50_000_000,
+    TaskFunding::address(500_000_000),
+    500_000_000,
 )?
 .with_inputs(input_data);
 

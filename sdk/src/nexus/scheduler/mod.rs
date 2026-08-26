@@ -242,6 +242,60 @@ pub(super) fn mutation_receipt(
     ))
 }
 
+/// Produces a [`TaskMutationReceipt`] from one exact settlement event.
+///
+/// The event proves the transition because a successful transaction may be a no op.
+pub(super) fn settlement_receipt(
+    executed: ExecutedTransaction,
+    occurrence: OccurrenceRef,
+    execution_id: sui::types::Address,
+) -> Result<TaskMutationReceipt, SchedulerError> {
+    let mut settlements = executed
+        .events
+        .iter()
+        .filter_map(|event| match &event.data {
+            NexusEventKind::OccurrenceSettled(settled) => Some(settled),
+            _ => None,
+        });
+    let Some(settled) = settlements.next() else {
+        return Err(SchedulerError::Confirmation {
+            message: format!(
+                "settlement transaction for occurrence '{}:{}' did not emit OccurrenceSettled",
+                occurrence.task_id(),
+                occurrence.occurrence_id(),
+            ),
+        });
+    };
+    if settlements.next().is_some() {
+        return Err(SchedulerError::Confirmation {
+            message: format!(
+                "settlement transaction for occurrence '{}:{}' emitted more than one \
+                 OccurrenceSettled event",
+                occurrence.task_id(),
+                occurrence.occurrence_id(),
+            ),
+        });
+    }
+    if settled.task_id.bytes != occurrence.task_id()
+        || settled.occurrence_id != occurrence.occurrence_id()
+        || settled.execution_id.bytes != execution_id
+    {
+        return Err(SchedulerError::Confirmation {
+            message: format!(
+                "settlement transaction for occurrence '{}:{}' and runtime object \
+                 '{execution_id}' confirmed occurrence '{}:{}' and runtime object '{}'",
+                occurrence.task_id(),
+                occurrence.occurrence_id(),
+                settled.task_id.bytes,
+                settled.occurrence_id,
+                settled.execution_id.bytes,
+            ),
+        });
+    }
+
+    mutation_receipt(executed, occurrence.task_id())
+}
+
 fn created_task_id(executed: &ExecutedTransaction) -> Result<sui::types::Address, SchedulerError> {
     let mut task_ids = executed
         .events
@@ -389,6 +443,52 @@ mod tests {
             ID::new(address("0x53")),
             0,
         ))
+    }
+
+    fn occurrence_settled(
+        reference: OccurrenceRef,
+        execution_id: sui::types::Address,
+    ) -> NexusEventKind {
+        NexusEventKind::OccurrenceSettled(scheduler_binding::OccurrenceSettledEvent::new(
+            ID::new(reference.task_id()),
+            reference.occurrence_id(),
+            ID::new(execution_id),
+            true,
+        ))
+    }
+
+    #[test]
+    fn settlement_receipt_requires_the_exact_confirmed_transition() {
+        let task_id = address("0x50");
+        let reference = OccurrenceRef::new(task_id, 8);
+        let execution_id = address("0x51");
+
+        for unconfirmed in [
+            executed(Vec::new()),
+            executed(vec![occurrence_settled(
+                OccurrenceRef::new(task_id, 9),
+                execution_id,
+            )]),
+            executed(vec![occurrence_settled(reference, address("0x52"))]),
+            executed(vec![
+                occurrence_settled(reference, execution_id),
+                occurrence_settled(reference, execution_id),
+            ]),
+        ] {
+            assert!(matches!(
+                settlement_receipt(unconfirmed, reference, execution_id),
+                Err(SchedulerError::Confirmation { .. })
+            ));
+        }
+
+        let receipt = settlement_receipt(
+            executed(vec![occurrence_settled(reference, execution_id)]),
+            reference,
+            execution_id,
+        )
+        .expect("exact settlement event confirms the transition");
+        assert_eq!(receipt.task_id(), task_id);
+        assert_eq!(receipt.transaction().checkpoint(), 14);
     }
 
     #[test]

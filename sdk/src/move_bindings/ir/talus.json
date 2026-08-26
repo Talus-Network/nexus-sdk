@@ -98,7 +98,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "treasury",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -152,7 +152,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "treasury",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -206,7 +206,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "treasury",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -224,7 +224,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "coin",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -257,7 +257,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "otw",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -270,7 +270,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -297,7 +297,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "treasury",
               "ty": {
                 "Ref": {
                   "mutable": false,

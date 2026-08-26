@@ -5414,6 +5414,37 @@
           "return_types": []
         },
         {
+          "name": "assert_transaction_budget",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "gas_charge",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "bootstrap_leader_record",
           "visibility": "Private",
           "is_entry": false,
@@ -7465,7 +7496,30 @@
           "return_types": []
         },
         {
-          "name": "shares_for_amount",
+          "name": "shares_for_deposit",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "amount",
+              "ty": "U64"
+            },
+            {
+              "name": "pool",
+              "ty": "U64"
+            },
+            {
+              "name": "total_shares",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "shares_for_withdrawal",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
