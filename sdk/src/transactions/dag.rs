@@ -414,21 +414,26 @@ fn create_vertex_verifier_mode(
     Ok(())
 }
 
-/// Builds a [`ProgrammableTransaction`] that refills TAP execution payment from
-/// the sender's address balance.
+/// Builds a [`ProgrammableTransaction`] that refills TAP execution payment and
+/// requests every active walk whose payment is ready.
 pub(crate) fn refill_tap_execution_payment_for_self_ptb(
     objects: &NexusContext,
+    dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     amount: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
         let coin = tx.withdraw_sui_coin(amount)?;
         let runtime_authority = tx.runtime_authority(false)?;
         tx.call_target(
             execution_settlement_binding::refill_tap_execution_payment_target,
             vec![runtime_authority, execution, coin],
         )?;
+        emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
         Ok(())
     })
 }
@@ -860,22 +865,28 @@ pub fn dry_run_on_chain_tool_result_for_walk_ptb(
     })
 }
 
-/// Build a PTB that refills TAP execution payment from an agent vault.
+/// Builds a [`ProgrammableTransaction`] that refills TAP execution payment from
+/// an Agent vault and requests every active walk whose payment is ready.
 pub(crate) fn refill_tap_execution_payment_from_agent_vault_for_self_ptb(
     objects: &NexusContext,
     agent: AgentInput,
+    dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     amount: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let agent = agent.mutable_ptb_argument(tx)?;
+        let dag = tx.immutable_object(dag)?;
         let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
         let amount = tx.arg(&amount)?;
         let runtime_authority = tx.runtime_authority(false)?;
         tx.call_target(
             execution_settlement_binding::refill_tap_execution_payment_from_agent_vault_target,
             vec![runtime_authority, agent, execution, amount],
         )?;
+        emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
         Ok(())
     })
 }
@@ -1353,9 +1364,11 @@ pub fn abort_expired_execution_for_self_ptb(
     })
 }
 
-/// Builds a PTB that settles a committed Tool result for one [RuntimeVertex].
+/// Builds a [`ProgrammableTransaction`] that settles a committed Tool result
+/// for one [`RuntimeVertex`].
 ///
-/// The exact Invocation is settled before the optional owning Task settlement.
+/// The exact Invocation is settled and payment ready walks are requested before
+/// the optional owning Task settlement.
 pub fn settle_committed_tool_result_for_walk_for_self_ptb(
     objects: &NexusContext,
     dag: &sui::types::ObjectReference,
@@ -1389,6 +1402,7 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
             ],
         )?;
         super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
+        emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
         if let Some(task) = task_settlement {
             scheduler::append_settle_occurrence(tx, task, execution, clock)?;
         }
@@ -2375,6 +2389,61 @@ mod tests {
     }
 
     #[test]
+    fn coin_refill_requests_payment_ready_walks() {
+        let objects = nexus_objects();
+        let ptb = refill_tap_execution_payment_for_self_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            42,
+        )
+        .expect("ptb should build");
+
+        let refill = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "refill_tap_execution_payment",
+        );
+        let request = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "emit_payment_ready_walk_requests",
+        );
+
+        assert!(refill < request);
+    }
+
+    #[test]
+    fn agent_vault_refill_requests_payment_ready_walks() {
+        let objects = nexus_objects();
+        let ptb = refill_tap_execution_payment_from_agent_vault_for_self_ptb(
+            &objects,
+            AgentInput::Shared(object_ref("0x40", 6, 40)),
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            42,
+        )
+        .expect("ptb should build");
+
+        let refill = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "refill_tap_execution_payment_from_agent_vault",
+        );
+        let request = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "emit_payment_ready_walk_requests",
+        );
+
+        assert!(refill < request);
+    }
+
+    #[test]
     fn failed_onchain_tool_payment_record_does_not_settle_invocation() {
         let objects = nexus_objects();
         let expected_vertex = RuntimeVertex::with_iterator("counter_increment", 2, 3);
@@ -2504,8 +2573,14 @@ mod tests {
         expect_shared_root_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[6], 13);
         let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
+        let request = move_call_index(
+            &ptb,
+            Some(runtime_package(&objects)),
+            "execution_settlement",
+            "emit_payment_ready_walk_requests",
+        );
         let task = move_call_index(&ptb, None, "scheduler", "settle");
-        assert!(call_index < invocation && invocation < task);
+        assert!(call_index < invocation && invocation < request && request < task);
         expect_task_settlement_uses_clock(&ptb);
     }
 
