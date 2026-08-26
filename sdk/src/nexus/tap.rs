@@ -88,6 +88,22 @@ pub(crate) fn agent_input_from_metadata(metadata: &Response<()>) -> anyhow::Resu
     }
 }
 
+async fn execution_and_dag_refs(
+    client: &NexusClient,
+    context: &NexusContext,
+    execution_id: sui::types::Address,
+) -> Result<(sui::types::ObjectReference, sui::types::ObjectReference), NexusError> {
+    let execution = client
+        .state_resolver()
+        .load_inner::<DAGExecution, WorkflowWitnessV1, DAGExecutionInnerV1>(execution_id, context)
+        .await?;
+    let dag = client
+        .state_resolver()
+        .load_inner::<DAG, InterfaceWitnessV1, DAGInnerV1>(execution.data.dag_id(), context)
+        .await?;
+    Ok((execution.object_ref(), dag.object_ref()))
+}
+
 /// Result returned after creating a standard Talus agent.
 #[derive(Clone, Debug)]
 pub struct CreateAgentResult {
@@ -557,32 +573,25 @@ impl TapActions {
         })
     }
 
-    /// Refill a live TAP execution payment by splitting MIST from the caller's
-    /// transaction gas coin.
+    /// Refill a live TAP [`DAGExecution`] payment from the caller's transaction
+    /// gas coin and request every active walk whose payment is ready.
     pub async fn refill_execution_payment(
         &self,
         params: RefillExecutionPaymentParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
         let context = self.client.context_for_object(params.execution_id).await?;
-        self.client
-            .state_resolver()
-            .validate_state_pair::<DAGExecution, WorkflowWitnessV1, DAGExecutionInnerV1>(
-                params.execution_id,
-                &context,
-            )
-            .await?;
         let address = self.client.owner()?;
-        let execution_ref = self
-            .client
-            .crawler()
-            .get_object_metadata(params.execution_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
+        let (execution_ref, dag_ref) =
+            execution_and_dag_refs(&self.client, &context, params.execution_id).await?;
 
-        let runtime = self.client.runtime_context(&[]).await?;
+        let objects = self.client.get_nexus_objects();
+        let runtime = self
+            .client
+            .runtime_context(&[objects.leader_registry])
+            .await?;
         let tx = dag_tx::refill_tap_execution_payment_for_self_ptb(
             &runtime,
+            &dag_ref,
             &execution_ref,
             params.amount,
         )
@@ -598,19 +607,13 @@ impl TapActions {
         })
     }
 
-    /// Refill a live TAP execution payment from an agent payment vault.
+    /// Refill a live TAP [`DAGExecution`] payment from an [`Agent`] payment
+    /// vault and request every active walk whose payment is ready.
     pub async fn refill_execution_payment_from_agent_vault(
         &self,
         params: RefillExecutionPaymentFromAgentVaultParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
         let context = self.client.context_for_object(params.execution_id).await?;
-        self.client
-            .state_resolver()
-            .validate_state_pair::<DAGExecution, WorkflowWitnessV1, DAGExecutionInnerV1>(
-                params.execution_id,
-                &context,
-            )
-            .await?;
         self.client
             .state_resolver()
             .validate_state_pair::<Agent, InterfaceWitnessV1, AgentInnerV1>(
@@ -620,11 +623,8 @@ impl TapActions {
             .await?;
         let address = self.client.owner()?;
         let crawler = self.client.crawler();
-        let execution_ref = crawler
-            .get_object_metadata(params.execution_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
+        let (execution_ref, dag_ref) =
+            execution_and_dag_refs(&self.client, &context, params.execution_id).await?;
         let agent_ref = crawler
             .get_object_metadata(params.agent_id)
             .await
@@ -632,10 +632,15 @@ impl TapActions {
 
         let agent =
             agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
-        let runtime = self.client.runtime_context(&[]).await?;
+        let objects = self.client.get_nexus_objects();
+        let runtime = self
+            .client
+            .runtime_context(&[objects.leader_registry])
+            .await?;
         let tx = dag_tx::refill_tap_execution_payment_from_agent_vault_for_self_ptb(
             &runtime,
             agent,
+            &dag_ref,
             &execution_ref,
             params.amount,
         )
