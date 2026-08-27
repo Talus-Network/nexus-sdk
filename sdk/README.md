@@ -28,10 +28,6 @@ This crate includes the signed HTTP protocol used for Leader node <=> Tool commu
 
 It is feature-gated under `signed_http` and is used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses.
 
-See the end-to-end guide:
-
-- [Tool communication guide](https://github.com/Talus-Network/nexus-sdk/blob/main/docs/guides/tool-communication.md)
-
 ## Standard TAP Payments
 
 The SDK models the current standard TAP payment interface, including the mandatory agent payment vault created for every Talus agent.
