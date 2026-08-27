@@ -740,7 +740,7 @@ mod tests {
         super::*,
         crate::{test_utils::sui_mocks, types::PackageRole},
         sui::types::{Command, WithdrawFrom},
-        sui_move_call::CallArg,
+        talus_sui_move_call::CallArg,
     };
 
     const OFFCHAIN_INPUT_SCHEMA: &[u8] = br#"{"type":"object","properties":{}}"#;

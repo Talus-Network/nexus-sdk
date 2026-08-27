@@ -1,3 +1,5 @@
+//! TAP transaction construction, including Move package publishing.
+
 use {
     crate::{
         move_bindings::{
@@ -9,7 +11,7 @@ use {
             registry::agent_registry as agent_registry_binding,
         },
         move_boundary,
-        sui,
+        sui::{self, MovePackageArtifact},
         transactions::agent_input::AgentInput,
         types::{NexusContext, SkillId, TapPublishArtifact},
     },
@@ -41,20 +43,25 @@ pub(crate) fn create_agent(
     tx.call_target(agent_registry_binding::create_agent_target, vec![registry])
 }
 
-/// Build a PTB that publishes a TAP Move package and transfers the upgrade cap to `recipient`.
+/// Builds a PTB that publishes [`MovePackageArtifact`] and transfers its upgrade
+/// capability to `recipient`.
+///
+/// # Errors
+///
+/// Returns an error when the package or transfer cannot be represented as a
+/// programmable transaction.
 #[cfg(feature = "move_publish")]
-pub(crate) fn publish_package_ptb(
-    objects: &NexusContext,
-    modules: Vec<Vec<u8>>,
-    dependencies: Vec<sui::types::Address>,
+pub fn publish_package_ptb(
+    package: MovePackageArtifact,
     recipient: sui::types::Address,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let upgrade_cap = tx.publish(modules, dependencies)?;
-        let recipient = tx.arg(&recipient)?;
-        tx.transfer_objects(vec![upgrade_cap], recipient)?;
-        Ok(())
-    })
+    let dependencies =
+        move_boundary::publish_dependency_ids_or_framework_defaults(package.dependency_ids);
+    let mut tx = talus_sui_move_ptb::PtbBuilder::new();
+    let upgrade_cap = tx.publish(package.modules, dependencies)?;
+    let recipient = tx.arg(&recipient)?;
+    tx.transfer_objects(vec![upgrade_cap], recipient)?;
+    Ok(tx.finish())
 }
 
 /// Build a PTB that creates a standard TAP agent and transfers it to `address`.
@@ -309,4 +316,53 @@ fn fixed_tools_arg(
         .map(|fixed_tool| fixed_tool_arg(tx, fixed_tool))
         .collect::<anyhow::Result<Vec<_>>>()?;
     Ok(tx.move_vector::<FixedTool>(fixed_tools)?)
+}
+
+#[cfg(all(test, feature = "move_publish"))]
+mod tests {
+    use super::*;
+
+    fn publish_command(tx: &ProgrammableTransaction) -> &sui::types::Publish {
+        let Some(sui::types::Command::Publish(publish)) = tx.commands.first() else {
+            panic!("expected package publish command");
+        };
+        publish
+    }
+
+    #[test]
+    fn package_publish_uses_framework_dependencies_when_none_are_provided() {
+        let modules = vec![vec![1, 2, 3]];
+        let tx = publish_package_ptb(
+            MovePackageArtifact {
+                modules: modules.clone(),
+                dependency_ids: vec![],
+            },
+            sui::types::Address::from_static("0xa"),
+        )
+        .expect("package publish should build");
+
+        assert_eq!(publish_command(&tx).modules, modules);
+        assert_eq!(
+            publish_command(&tx).dependencies,
+            vec![
+                sui::types::Address::from_static("0x1"),
+                sui::types::Address::from_static("0x2"),
+            ]
+        );
+    }
+
+    #[test]
+    fn package_publish_preserves_compiled_dependencies() {
+        let dependency = sui::types::Address::from_static("0x42");
+        let tx = publish_package_ptb(
+            MovePackageArtifact {
+                modules: vec![vec![1, 2, 3]],
+                dependency_ids: vec![dependency],
+            },
+            sui::types::Address::from_static("0xa"),
+        )
+        .expect("package publish should build");
+
+        assert_eq!(publish_command(&tx).dependencies, vec![dependency]);
+    }
 }

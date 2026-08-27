@@ -6,7 +6,7 @@ use {
         sui,
     },
     serde::{Deserialize, Serialize},
-    sui_move::{MoveStruct, MoveType},
+    talus_sui_move::{MoveStruct, MoveType},
 };
 
 /// Stable identity of one Sui object.

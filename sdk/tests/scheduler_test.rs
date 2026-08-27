@@ -11,7 +11,7 @@ use {
         },
         sui,
     },
-    sui_move::MoveStruct as _,
+    talus_sui_move::MoveStruct as _,
 };
 
 #[test]

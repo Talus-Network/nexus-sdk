@@ -140,14 +140,12 @@ mod tests {
             .next()
             .unwrap();
 
-        // Publish test onchain_tool package.
-        let response = test_utils::contracts::publish_move_package(
-            &pk,
-            &rpc_url,
-            "tests/move/onchain_tool_test",
-            gas_coin,
+        let package = crate::integration_test_support::compile_move_package(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/move/onchain_tool_test"),
         )
-        .await;
+        .expect("failed to compile Move package");
+        let response =
+            test_utils::contracts::publish_move_package(&pk, &rpc_url, package, gas_coin).await;
 
         let pkg_id = response
             .objects

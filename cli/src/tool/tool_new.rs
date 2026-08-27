@@ -222,7 +222,9 @@ mod tests {
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains(r#"name = "test""#));
-        assert!(contents.contains("[dependencies.nexus-toolkit]"));
+        assert!(contents.contains(r#"nexus-sdk = "2.0.0""#));
+        assert!(contents.contains(r#"nexus-toolkit = "2.0.0""#));
+        assert!(!contents.contains("git ="));
     }
 
     #[tokio::test]

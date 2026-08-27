@@ -25,10 +25,7 @@ You can also manually include the Nexus Toolkit in your existing project.
 Add the following lines to your project's `Cargo.toml`:
 
 ```toml
-[dependencies.nexus-toolkit]
-git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "v2.0.0-rc.final"
-package = "nexus-toolkit"
+nexus-toolkit = "2.0.0"
 ```
 
 ---

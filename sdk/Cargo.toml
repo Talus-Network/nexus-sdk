@@ -1,16 +1,21 @@
 [package]
 name = "nexus-sdk"
-description = "Nexus SDK provides a set of tools to interact with the Nexus Workflow."
+description = "Rust SDK for Nexus protocol types, RPC access, and transaction construction."
+documentation = "https://docs.rs/nexus-sdk"
+publish = ["crates-io"]
 
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
-readme.workspace = true
+readme = "README.md"
 authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
 
 [[bin]]
 name = "regenerate_bindings"
@@ -46,21 +51,16 @@ sui_types = [
     "tokio",
 ]
 
-# Move package publishing support for deployment tooling. Runtime/full users
-# should enable this explicitly only when they need to build and publish Move
-# packages.
-move_publish = [
-    "sui_types",
-    "sui_move_build",
-    "move_package_alt",
-]
+# Move package transaction support for clients that provide compiled modules
+# and dependency package IDs.
+move_publish = ["transactions"]
 
 # Binding codegen feature gates the `regenerate_bindings` binary, the network half
 # of the Move binding package IR pipeline. It needs a full Tokio runtime to drive
 # the gRPC fetch; the offline render in `build.rs` requires none of this.
 binding_codegen = [
     "tokio/full",
-    "sui-move-codegen",
+    "talus-sui-move-codegen",
     "sui-sdk-types",
     "serde_json",
     "toml",
@@ -74,9 +74,9 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 types = [
     "tool_fqn",
     "sui_types",
-    "sui-move",
-    "sui-move-call",
-    "sui-move-ptb",
+    "talus-sui-move",
+    "talus-sui-move-call",
+    "talus-sui-move-ptb",
     "zeroize",
     "bcs",
     "hex",
@@ -98,7 +98,7 @@ events = [
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["types", "sui-move-ptb", "thiserror"]
+transactions = ["types", "talus-sui-move-ptb", "thiserror"]
 
 # Provides various Nexus runtime utilities like execution of workflows. Move
 # package publishing helpers require the explicit `move_publish` feature.
@@ -113,17 +113,17 @@ nexus = [
     "tokio",
 ]
 
-# Test utils feature enables the use of the `test_utils` module. It includes
-# Move package compilation, container fixtures and mock dependencies.
+# Test utils feature enables container fixtures and mock dependencies.
 test_utils = [
+    "nexus",
+    "move_publish",
+    "reqwest",
     "types",
     "sui-transaction-builder",
     "http",
     "tempfile",
     "tokio-retry",
     "tokio-stream",
-    "sui_move_build",
-    "move_package_alt",
     "portpicker",
     "testcontainers",
     "testcontainers-modules",
@@ -132,8 +132,8 @@ test_utils = [
     "tonic",
 ]
 
-# Enable runtime SDK features apart from deployment-only `move_publish` and
-# test-only `test_utils`.
+# Enable runtime SDK features apart from deployment only `move_publish` and
+# test only `test_utils`.
 full = [
     "tool_fqn",
     "signed_http",
@@ -273,25 +273,21 @@ workspace = true
 optional = true
 
 # === Move binding ===
-[dependencies.sui-move-codegen]
-git = "https://github.com/Talus-Network/move-binding"
-rev = "2d42967137b760b8b133625565255e12f5022cc1"
+[dependencies.talus-sui-move-codegen]
+version = "=0.2.0"
 optional = true
 
-[dependencies.sui-move]
-git = "https://github.com/Talus-Network/move-binding"
-rev = "2d42967137b760b8b133625565255e12f5022cc1"
+[dependencies.talus-sui-move]
+version = "=0.2.0"
 features = ["derive"]
 optional = true
 
-[dependencies.sui-move-call]
-git = "https://github.com/Talus-Network/move-binding"
-rev = "2d42967137b760b8b133625565255e12f5022cc1"
+[dependencies.talus-sui-move-call]
+version = "=0.2.0"
 optional = true
 
-[dependencies.sui-move-ptb]
-git = "https://github.com/Talus-Network/move-binding"
-rev = "2d42967137b760b8b133625565255e12f5022cc1"
+[dependencies.talus-sui-move-ptb]
+version = "=0.2.0"
 optional = true
 
 # === Sui deps ===
@@ -311,18 +307,6 @@ optional = true
 
 [dependencies.sui-transaction-builder]
 version = "0.3.2"
-optional = true
-
-[dependencies.sui_move_build]
-git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.77.2"
-package = "sui-move-build"
-optional = true
-
-[dependencies.move_package_alt]
-git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.77.2"
-package = "move-package-alt"
 optional = true
 
 [dependencies.testcontainers]
@@ -351,11 +335,11 @@ portpicker.workspace = true
 tempfile.workspace = true
 tonic.workspace = true
 toml.workspace = true
+sui-move-build.workspace = true
 
 # === Build deps ===
 [build-dependencies]
 toml.workspace = true
 
-[build-dependencies.sui-move-codegen]
-git = "https://github.com/Talus-Network/move-binding"
-rev = "2d42967137b760b8b133625565255e12f5022cc1"
+[build-dependencies.talus-sui-move-codegen]
+version = "=0.2.0"

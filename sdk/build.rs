@@ -6,7 +6,7 @@
 
 use {
     std::{collections::BTreeMap, fmt::Write as _, fs, path::Path},
-    sui_move_codegen::{
+    talus_sui_move_codegen::{
         ir::NormalizedPackage,
         render::{render_package_parts, RenderOptions},
     },
@@ -212,7 +212,7 @@ fn render_move_binding_package(
     normalized: &NormalizedPackage,
     package: &str,
     packages: &BTreeMap<String, (String, std::path::PathBuf, NormalizedPackage)>,
-) -> sui_move_codegen::render::RenderedPackageParts {
+) -> talus_sui_move_codegen::render::RenderedPackageParts {
     let mut opts = RenderOptions {
         emit_types: true,
         emit_calls: true,
@@ -239,7 +239,7 @@ fn render_move_binding_package(
 
 fn write_move_binding_package_files(
     package: &str,
-    generated: sui_move_codegen::render::RenderedPackageParts,
+    generated: talus_sui_move_codegen::render::RenderedPackageParts,
     out_dir: &Path,
 ) {
     let mut package_out =

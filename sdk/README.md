@@ -1,20 +1,19 @@
 # nexus-sdk
 
 > [!NOTE]
-> This is an internal crate intended primarily for use within other Nexus packages. For Nexus Tool development, please use the higher-level [Nexus Toolkit][nexus-toolkit-docs].
+> This is the lower level crate for applications that interact directly with Nexus. For Nexus Tool development, use the [Nexus Toolkit][nexus-toolkit-docs].
 
 ## Usage
 
-Generally, you won't need to depend on this crate directly. Instead, use the [Nexus Toolkit][nexus-toolkit-docs], which provides interfaces for Nexus Tool development.
+Most Nexus Tool projects should use the [Nexus Toolkit][nexus-toolkit-docs], which provides interfaces for Nexus Tool development.
 
-However, if you specifically require direct access to internal helper functions,you can include this crate in your project's `Cargo.toml` file:
+Applications that need direct RPC, transaction, or protocol type access can add this crate to `Cargo.toml`:
 
 ```toml
-[dependencies.nexus-sdk]
-git = "https://github.com/Talus-Network/nexus-sdk"
-tag = "v2.0.0-rc.final"
-package = "nexus-sdk"
+nexus-sdk = { version = "2.0.0", features = ["full", "move_publish"] }
 ```
+
+Move package transaction construction requires the `move_publish` feature. It accepts compiled module bytes and dependency package IDs through `MovePackageArtifact`; project compilation remains the responsibility of the caller.
 
 If you are upgrading direct SDK usage after the move to generated Move bindings,
 see the [SDK migration guide](./MIGRATION.md).

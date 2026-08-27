@@ -352,9 +352,9 @@ impl OnchainToolResultState {
 
     /// Build the mutable shared-object input expected by
     /// `consume_on_chain_tool_result_for_walk`.
-    pub fn consume_object_input(&self) -> Option<sui_move_call::CallArg> {
+    pub fn consume_object_input(&self) -> Option<talus_sui_move_call::CallArg> {
         self.consume_ready_result().map(|(_, object_ref)| {
-            sui_move_call::CallArg::Shared(sui::types::SharedInput::new(
+            talus_sui_move_call::CallArg::Shared(sui::types::SharedInput::new(
                 *object_ref.object_id(),
                 object_ref.version(),
                 true,
