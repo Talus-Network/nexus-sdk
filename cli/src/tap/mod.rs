@@ -41,7 +41,6 @@ use {
             GetSkillRequirementResult,
             PublishSkillResult,
             RegisterSkillResult,
-            TapPackagePublishOptions,
             UpdateSkillResult,
         },
         types::{SkillConfig, SkillId, TapPublishArtifact},

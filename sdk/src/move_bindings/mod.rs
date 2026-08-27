@@ -13,7 +13,7 @@ use self::registry::network_auth::IdentityKey;
 #[cfg(feature = "walrus")]
 pub(crate) use extensions::canonical_walrus_blob_id;
 #[cfg(feature = "transactions")]
-pub use sui_move_ptb::CLOCK_OBJECT_ID;
+pub use talus_sui_move_ptb::CLOCK_OBJECT_ID;
 use {
     self::interface::graph::RuntimeVertex,
     crate::{
@@ -146,7 +146,7 @@ pub(crate) fn with_nexus_scope<R>(context: &NexusContext, f: impl FnOnce() -> R)
 /// upgrades before constructing the tag.
 pub fn type_tag<T>(context: &NexusContext) -> sui::types::TypeTag
 where
-    T: sui_move::MoveType,
+    T: talus_sui_move::MoveType,
 {
     with_nexus_scope(context, T::type_tag_static)
 }
@@ -156,7 +156,7 @@ fn registry_type_tag_from_origin<T>(
     registry_type_origin_pkg_id: sui::types::Address,
 ) -> sui::types::TypeTag
 where
-    T: sui_move::MoveType,
+    T: talus_sui_move::MoveType,
 {
     registry::with_packages(
         registry_type_origin_pkg_id,
@@ -168,7 +168,7 @@ where
 /// Build a generated Move struct tag scoped to this Nexus deployment.
 pub fn struct_tag<T>(context: &NexusContext) -> sui::types::StructTag
 where
-    T: sui_move::MoveStruct,
+    T: talus_sui_move::MoveStruct,
 {
     with_nexus_scope(context, T::struct_tag_static)
 }
@@ -176,7 +176,7 @@ where
 /// Return whether `tag` matches the generated struct `T` identity scoped to this deployment.
 pub fn struct_tag_matches<T>(context: &NexusContext, tag: &sui::types::StructTag) -> bool
 where
-    T: sui_move::MoveStruct,
+    T: talus_sui_move::MoveStruct,
 {
     let expected = struct_tag::<T>(context);
     tag.address() == expected.address()
@@ -190,7 +190,7 @@ where
 /// caller package is the value being inspected rather than the configured Nexus deployment.
 pub fn struct_shape_matches<T>(tag: &sui::types::StructTag) -> bool
 where
-    T: sui_move::MoveStruct,
+    T: talus_sui_move::MoveStruct,
 {
     let expected = T::struct_tag_static();
     tag.module() == expected.module() && tag.name() == expected.name()
@@ -201,7 +201,7 @@ pub fn derive_tool_id(
     tool_registry: sui::types::Address,
     tool_fqn: &crate::ToolFqn,
 ) -> anyhow::Result<sui::types::Address> {
-    use sui_move::MoveType as _;
+    use talus_sui_move::MoveType as _;
 
     derive_object_id(
         tool_registry,
@@ -267,7 +267,7 @@ pub fn derive_walk_execution_event_task_id(
     execution: sui::types::Address,
     vertex: &RuntimeVertex,
 ) -> anyhow::Result<sui::types::Address> {
-    use sui_move::MoveStruct;
+    use talus_sui_move::MoveStruct;
 
     let (name, repetitive, iteration) = match vertex {
         RuntimeVertex::Plain { vertex } => (vertex, false, 0),
@@ -416,7 +416,7 @@ mod tests {
             sui,
             test_utils::sui_mocks::mock_nexus_context,
         },
-        sui_move::MoveType,
+        talus_sui_move::MoveType,
     };
     #[test]
     fn generated_bindings_expose_calls() {

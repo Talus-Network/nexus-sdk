@@ -1168,9 +1168,9 @@ pub mod grpc {
         sui::types::StructTag,
     )
     where
-        A: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
-        W: sui_move::MoveStruct,
-        V: sui_move::MoveStruct,
+        A: Serialize + talus_sui_move::MoveStruct + Clone + Send + Sync + 'static,
+        W: talus_sui_move::MoveStruct,
+        V: talus_sui_move::MoveStruct,
     {
         use crate::move_bindings::primitives::object_state::{Inner, Witness};
 
@@ -1276,9 +1276,9 @@ pub mod grpc {
         owner: sui::types::Owner,
         anchor: A,
     ) where
-        A: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
-        W: sui_move::MoveStruct,
-        V: sui_move::MoveStruct,
+        A: Serialize + talus_sui_move::MoveStruct + Clone + Send + Sync + 'static,
+        W: talus_sui_move::MoveStruct,
+        V: talus_sui_move::MoveStruct,
     {
         let _ = mock_object_state_metadata::<A, W, V>(
             ledger_service,
@@ -1306,9 +1306,9 @@ pub mod grpc {
         anchor: A,
         inner: V,
     ) where
-        A: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
-        W: sui_move::MoveStruct,
-        V: Serialize + sui_move::MoveStruct + Clone + Send + Sync + 'static,
+        A: Serialize + talus_sui_move::MoveStruct + Clone + Send + Sync + 'static,
+        W: talus_sui_move::MoveStruct,
+        V: Serialize + talus_sui_move::MoveStruct + Clone + Send + Sync + 'static,
     {
         #[derive(Clone, Serialize)]
         struct DynamicFieldValue<K, V> {

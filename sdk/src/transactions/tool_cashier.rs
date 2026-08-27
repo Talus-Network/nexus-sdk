@@ -32,7 +32,7 @@ fn policy_toggle_ptb(
     objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
-    target: impl FnOnce() -> Result<sui_move_call::CallTarget, sui_move_call::CallSpecError>,
+    target: impl FnOnce() -> Result<talus_sui_move_call::CallTarget, talus_sui_move_call::CallSpecError>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
         let arguments = cashier_admin_args(transaction, tool_cashier, cashier_admin)?;

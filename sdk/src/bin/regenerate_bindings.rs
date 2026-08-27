@@ -1,4 +1,4 @@
-//! Regenerate committed Move binding IR with [`sui_move_codegen`].
+//! Regenerate committed Move binding IR with [`talus_sui_move_codegen`].
 
 use {
     anyhow::{anyhow, bail, Context, Result},
@@ -10,13 +10,13 @@ use {
         path::{Path, PathBuf},
         str::FromStr,
     },
-    sui_move_codegen::{
+    sui_sdk_types::Address,
+    talus_sui_move_codegen::{
         apply_function_parameter_names_from_sources,
         fetch_package,
         ir::NormalizedPackage,
         GrpcClient,
     },
-    sui_sdk_types::Address,
 };
 
 const DEFAULT_GRPC_URL: &str = "http://127.0.0.1:9000";
@@ -453,7 +453,7 @@ mod tests {
     use {
         super::*,
         std::collections::BTreeMap,
-        sui_move_codegen::ir::{
+        talus_sui_move_codegen::ir::{
             Datatype,
             DatatypeKind,
             Function,

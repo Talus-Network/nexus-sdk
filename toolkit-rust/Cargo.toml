@@ -1,16 +1,21 @@
 [package]
 name = "nexus-toolkit"
-description = "Nexus Toolkit provides a Rust framework to create new Nexus Tools."
+description = "Rust framework for building and serving Nexus Tools."
+documentation = "https://docs.rs/nexus-toolkit"
+publish = ["crates-io"]
 
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
-readme.workspace = true
+readme = "README.md"
 authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 anyhow.workspace = true
