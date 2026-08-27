@@ -126,6 +126,14 @@ jobs:
             gzip --best > \
             nexus-cli-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.tar.gz
 
+      - name: Create checksums
+        run: |
+          for artifact in *.deb *.tar.gz *.zip; do
+            if [[ -f "$artifact" ]]; then
+              shasum -a 256 "$artifact" > "$artifact.sha256"
+            fi
+          done
+
       - name: Upload artifact
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
@@ -135,6 +143,7 @@ jobs:
             *.deb
             *.tar.gz
             *.zip
+            *.sha256
 
       - name: Create release
         if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
@@ -146,4 +155,5 @@ jobs:
             *.deb
             *.tar.gz
             *.zip
+            *.sha256
           generate_release_notes: true

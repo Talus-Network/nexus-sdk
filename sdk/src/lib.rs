@@ -1,6 +1,12 @@
 //! This library contains all Nexus types that are shared between different
 //! parts of Nexus. This includes the CLI, the Toolkits and the Leader node.
 
+#[cfg(test)]
+extern crate self as nexus_sdk;
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod integration_test_support;
+
 /// The ToolFqn type represents a fully qualified tool name. Contains the
 /// logic for verifying, serializing and deserializing the FQN.
 #[cfg(feature = "tool_fqn")]
@@ -54,8 +60,7 @@ pub mod transactions;
 #[cfg(feature = "transactions")]
 pub mod scheduler;
 
-/// Test utils container management for Sui and Redis, faucet, Move code
-/// compilation and deployment and similar.
+/// Test utilities for Sui submission, containers, faucets, and mock services.
 #[cfg(feature = "test_utils")]
 pub mod test_utils;
 

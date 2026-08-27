@@ -83,7 +83,7 @@ pub async fn mock_agent_skill_client_without_coins(
     let skills_table_id = sui::types::Address::from_static("0x9003");
     let agent_key = ID::new(agent_id);
     let agent_field_id = agents_table_id.derive_dynamic_child_id(
-        &<ID as sui_move::MoveType>::type_tag_static(),
+        &<ID as talus_sui_move::MoveType>::type_tag_static(),
         &bcs::to_bytes(&agent_key).expect("Agent key serializes"),
     );
     let agent_field_ref = sui_mocks::object_ref_for_id(agent_field_id);

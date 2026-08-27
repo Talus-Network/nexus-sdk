@@ -1150,7 +1150,7 @@ mod tests {
     #[tokio::test]
     #[serial(json_mode)]
     async fn test_generate_and_customize_schemas_integration() {
-        use crate::test_utils;
+        use nexus_sdk::test_utils;
 
         // Spin up the Sui instance.
         let test_utils::containers::SuiInstance {
@@ -1180,14 +1180,15 @@ mod tests {
             .next()
             .unwrap();
 
-        // Publish test onchain_tool package.
-        let response = test_utils::contracts::publish_move_package(
-            &pk,
-            &rpc_url,
-            "../sdk/tests/move/onchain_tool_test",
-            gas_coin,
+        let package = crate::move_package::compile_move_package(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../sdk/tests/move/onchain_tool_test"),
+            &[],
+            Some("testnet".to_string()),
         )
-        .await;
+        .expect("failed to compile Move package");
+        let response =
+            test_utils::contracts::publish_move_package(&pk, &rpc_url, package, gas_coin).await;
 
         let pkg_id = response
             .objects

@@ -6,6 +6,7 @@ mod display;
 mod error;
 mod execution;
 mod gas;
+mod move_package;
 mod network;
 mod nexus_data_json;
 mod prelude;

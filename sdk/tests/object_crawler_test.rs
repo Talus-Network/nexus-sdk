@@ -1,5 +1,7 @@
 #![cfg(feature = "test_utils")]
 
+mod common;
+
 use {
     nexus_sdk::{
         events::NexusEventDecoder,
@@ -53,7 +55,7 @@ struct Name {
     name: String,
 }
 
-impl sui_move::MoveType for Name {
+impl talus_sui_move::MoveType for Name {
     fn type_tag_static() -> sui::types::TypeTag {
         sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
             sui::types::Address::from_static("0x0"),
@@ -64,9 +66,9 @@ impl sui_move::MoveType for Name {
     }
 }
 
-impl sui_move::HasCopy for Name {}
-impl sui_move::HasDrop for Name {}
-impl sui_move::HasStore for Name {}
+impl talus_sui_move::HasCopy for Name {}
+impl talus_sui_move::HasDrop for Name {}
+impl talus_sui_move::HasStore for Name {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Value {
@@ -77,7 +79,7 @@ struct Value {
     pouch: ObjectBag,
 }
 
-impl sui_move::MoveType for Value {
+impl talus_sui_move::MoveType for Value {
     fn type_tag_static() -> sui::types::TypeTag {
         sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
             sui::types::Address::from_static("0x0"),
@@ -88,8 +90,8 @@ impl sui_move::MoveType for Value {
     }
 }
 
-impl sui_move::HasKey for Value {}
-impl sui_move::HasStore for Value {}
+impl talus_sui_move::HasKey for Value {}
+impl talus_sui_move::HasStore for Value {}
 
 #[derive(Clone, Debug, Deserialize)]
 struct PlainValue {
@@ -134,11 +136,14 @@ async fn test_object_crawler() {
         .await
         .expect("Failed to fetch gas coins.");
 
-    // Publish test contract and fetch some IDs.
+    let package = common::compile_move_package(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/move/object_crawler_test"),
+    )
+    .expect("failed to compile Move package");
     let response = test_utils::contracts::publish_move_package(
         &pk,
         &rpc_url,
-        "tests/move/object_crawler_test",
+        package,
         gas_coins.first().cloned().unwrap().0,
     )
     .await;
@@ -421,10 +426,14 @@ async fn test_object_crawler_get_object_update_reference() {
         .await
         .expect("Failed to fetch gas coins.");
 
+    let package = common::compile_move_package(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/move/object_crawler_test"),
+    )
+    .expect("failed to compile Move package");
     let publish_response = test_utils::contracts::publish_move_package(
         &pk,
         &rpc_url,
-        "tests/move/object_crawler_test",
+        package,
         gas_coins.first().cloned().unwrap().0,
     )
     .await;
@@ -497,7 +506,7 @@ async fn test_object_crawler_get_object_update_reference() {
 
     let mut bump_digests = Vec::new();
     for _ in 0..3 {
-        let mut ptb = sui_move_ptb::PtbBuilder::new();
+        let mut ptb = talus_sui_move_ptb::PtbBuilder::new();
         let guy_arg = ptb
             .input(sui::types::Input::Shared(sui::types::SharedInput::new(
                 guy_id,
@@ -505,7 +514,7 @@ async fn test_object_crawler_get_object_update_reference() {
                 sui::types::Mutability::Mutable,
             )))
             .expect("shared Guy input should build");
-        let target = sui_move_call::CallTarget::new(pkg_id, "main", "bump_age")
+        let target = talus_sui_move_call::CallTarget::new(pkg_id, "main", "bump_age")
             .expect("bump_age target should build");
         ptb.call_target(target, vec![guy_arg])
             .expect("bump_age call should build");

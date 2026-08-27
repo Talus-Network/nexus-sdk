@@ -4,18 +4,15 @@ use {
         sui::resolve_creator_package,
         tap::tap_validate_skill::{tap_package_path_for_config, validate_tap_package_manifest},
     },
-    nexus_sdk::{dag::json::parse_dag_spec, sui::build::Environment, types::PackageRole},
+    nexus_sdk::{dag::json::parse_dag_spec, types::PackageRole},
 };
 
 /// Parse `<package_path>/Move.toml` and pick the `[environments]` entry whose
-/// chain id matches the connected RPC's chain id. Returns `Some(Environment)`
-/// when a match is found; `None` is impossible here because `validate-skill`
-/// has already enforced the presence of an `[environments]` table, but we
-/// still surface a clean error if the entries don't match the connected RPC.
+/// chain ID matches the connected RPC chain ID.
 fn pick_publish_environment(
     package_path: &std::path::Path,
     chain_id: &str,
-) -> AnyResult<Option<Environment>, NexusCliError> {
+) -> AnyResult<Option<String>, NexusCliError> {
     let manifest_path = package_path.join("Move.toml");
     let manifest_text = std::fs::read_to_string(&manifest_path).map_err(|error| {
         NexusCliError::Any(anyhow!(
@@ -49,7 +46,7 @@ fn pick_publish_environment(
             manifest_path.display()
         ))
     })?;
-    Ok(Some(Environment::new(alias, chain_id.to_string())))
+    Ok(Some(alias))
 }
 
 pub(crate) async fn publish_skill(
@@ -71,11 +68,8 @@ pub(crate) async fn publish_skill(
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let workflow_package =
         resolve_creator_package(&nexus_client, workflow_package, PackageRole::Workflow).await?;
-    // New-style 2024 Sui Move packages resolve each dependency's
-    // `Published.toml` via the active build environment. Pick the
-    // `[environments]` entry whose chain id matches the connected RPC's
-    // chain id so Sui emits the right dep addresses; otherwise the publish
-    // tx aborts with `PublishUpgradeMissingDependency`.
+    // Sui Move packages use the active build environment to resolve each
+    // dependency Published.toml file.
     let chain_id = nexus_client
         .crawler()
         .get_chain_id()
@@ -84,18 +78,15 @@ pub(crate) async fn publish_skill(
     let package_name = validate_tap_package_manifest(&tap_package_path.join("Move.toml"))
         .map_err(NexusCliError::Any)?;
     let environment = pick_publish_environment(&tap_package_path, &chain_id)?;
+    let package = crate::move_package::compile_move_package(
+        &tap_package_path,
+        &[(package_name, sui::types::Address::ZERO)],
+        environment,
+    )
+    .map_err(NexusCliError::Any)?;
     let publish = nexus_client
         .tap()
-        .publish_skill(
-            workflow_package,
-            &config,
-            dag,
-            TapPackagePublishOptions {
-                package_path: tap_package_path,
-                named_address_overrides: vec![(package_name, sui::types::Address::ZERO)],
-                environment: environment.map(|environment| environment.name().clone()),
-            },
-        )
+        .publish_skill(workflow_package, &config, dag, package)
         .await
         .map_err(NexusCliError::Nexus)?;
 

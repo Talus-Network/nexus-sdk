@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+## [`2.0.0`] - 2026-08-27
+
+### `nexus-sdk`
+
+#### Changed
+
+- Move package publishing now accepts compiled module bytes and dependency package IDs, leaving Move project compilation outside the SDK crate.
+- Move binding dependencies now use the published `0.2.0` crates.
+
+### `nexus-cli`
+
+#### Changed
+
+- TAP publishing now compiles Move projects before calling the SDK package publishing API.
+- CLI release assets now include SHA256 checksum files.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- Published toolkit packages now resolve `nexus-sdk` version `2.0.0` through crates.io.
+
 ## [`2.0.0-rc.final`] - 2026-08-26
 
 ### `nexus-sdk`
