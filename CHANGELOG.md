@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+### `nexus-sdk`
+
+#### Fixed
+
+- Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.
+
 ## [`2.0.0-rc.final`] - 2026-08-26
 
 ### `nexus-sdk`
