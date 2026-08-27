@@ -5571,7 +5571,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-cli"
-version = "2.0.0-rc.final"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -5602,6 +5602,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "sui-move-build",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -5612,7 +5613,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "2.0.0-rc.final"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -5629,7 +5630,6 @@ dependencies = [
  "lazy_static",
  "mockall 0.14.0",
  "mockito",
- "move-package-alt",
  "petgraph 0.7.1",
  "portpicker",
  "prometheus",
@@ -5641,14 +5641,14 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sui-crypto 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "sui-move",
  "sui-move-build",
- "sui-move-call",
- "sui-move-codegen",
- "sui-move-ptb",
  "sui-rpc 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sui-transaction-builder 0.3.2",
+ "talus-sui-move",
+ "talus-sui-move-call",
+ "talus-sui-move-codegen",
+ "talus-sui-move-ptb",
  "tempfile",
  "testcontainers",
  "testcontainers-modules",
@@ -5664,7 +5664,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "2.0.0-rc.final"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "bcs",
@@ -8999,19 +8999,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sui-move"
-version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?rev=2d42967137b760b8b133625565255e12f5022cc1#2d42967137b760b8b133625565255e12f5022cc1"
-dependencies = [
- "bcs",
- "ethnum",
- "serde",
- "sui-move-derive",
- "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "sui-move-build"
 version = "1.77.2"
 source = "git+https://github.com/MystenLabs/sui?tag=testnet-v1.77.2#51d177ad7d65102fc368b582408f466d97b31548"
@@ -9035,44 +9022,6 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
-]
-
-[[package]]
-name = "sui-move-call"
-version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?rev=2d42967137b760b8b133625565255e12f5022cc1#2d42967137b760b8b133625565255e12f5022cc1"
-dependencies = [
- "bcs",
- "serde",
- "sui-move",
- "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "sui-move-codegen"
-version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?rev=2d42967137b760b8b133625565255e12f5022cc1#2d42967137b760b8b133625565255e12f5022cc1"
-dependencies = [
- "prettyplease",
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "sui-rpc 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "syn 2.0.117",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "sui-move-derive"
-version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?rev=2d42967137b760b8b133625565255e12f5022cc1#2d42967137b760b8b133625565255e12f5022cc1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -9180,17 +9129,6 @@ dependencies = [
  "sui-protocol-config",
  "sui-types",
  "tracing",
-]
-
-[[package]]
-name = "sui-move-ptb"
-version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?rev=2d42967137b760b8b133625565255e12f5022cc1#2d42967137b760b8b133625565255e12f5022cc1"
-dependencies = [
- "sui-move",
- "sui-move-call",
- "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -9799,6 +9737,73 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "talus-sui-move"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca2536f4b0809fda4d671fe4e5474bb344c6c057a6f24662eef70128f7aac78b"
+dependencies = [
+ "bcs",
+ "ethnum",
+ "serde",
+ "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "talus-sui-move-derive",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "talus-sui-move-call"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e8757d1ce55b68a5174434c835a2f2dc785000997fb1305dbe947879927bf71"
+dependencies = [
+ "bcs",
+ "serde",
+ "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "talus-sui-move",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "talus-sui-move-codegen"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ed1aeafc6d00044c3ab7efa91363b96078977d0d727e498aa72cacc434da987"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "sui-rpc 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 2.0.117",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "talus-sui-move-derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68e5b334bf4da6c44903f211ae0958287735e04e05c501b82606799b8af482cc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "talus-sui-move-ptb"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2758aa9b9e5a0940aa7493c8190235daa4335090328771aea05d8d2f85fba512"
+dependencies = [
+ "sui-sdk-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "talus-sui-move",
+ "talus-sui-move-call",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

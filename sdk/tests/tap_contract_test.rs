@@ -47,8 +47,8 @@ use {
 
 fn generated_target(
     objects: &NexusContext,
-    target: impl FnOnce() -> Result<sui_move_call::CallTarget, sui_move_call::CallSpecError>,
-) -> sui_move_call::CallTarget {
+    target: impl FnOnce() -> Result<talus_sui_move_call::CallTarget, talus_sui_move_call::CallSpecError>,
+) -> talus_sui_move_call::CallTarget {
     let tx = move_boundary::ptb(objects, |tx| {
         tx.call_target(target, vec![])?;
         Ok(())
@@ -57,7 +57,7 @@ fn generated_target(
     let Some(sui::types::Command::MoveCall(call)) = tx.commands.first() else {
         panic!("expected generated target move call");
     };
-    sui_move_call::CallTarget {
+    talus_sui_move_call::CallTarget {
         package: call.package,
         module: call.module.clone(),
         function: call.function.clone(),
@@ -67,7 +67,7 @@ fn generated_target(
 
 fn generated_function(
     objects: &NexusContext,
-    target: impl FnOnce() -> Result<sui_move_call::CallTarget, sui_move_call::CallSpecError>,
+    target: impl FnOnce() -> Result<talus_sui_move_call::CallTarget, talus_sui_move_call::CallSpecError>,
 ) -> sui::types::Identifier {
     generated_target(objects, target).function
 }

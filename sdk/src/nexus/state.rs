@@ -25,7 +25,7 @@ use {
     },
     serde::{de::DeserializeOwned, Deserialize},
     std::{collections::HashMap, sync::Arc, time::Duration},
-    sui_move::MoveStruct,
+    talus_sui_move::MoveStruct,
     tokio::{sync::RwLock, time::sleep},
 };
 

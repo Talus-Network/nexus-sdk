@@ -1,9 +1,10 @@
 //! Read-only helpers and high-level actions for standard TAP.
 
 #[cfg(feature = "move_publish")]
-use crate::move_boundary::publish_dependency_ids_or_framework_defaults;
-#[cfg(feature = "move_publish")]
-use crate::types::{DagSpec, NexusPackages, SkillConfig};
+use crate::{
+    sui::MovePackageArtifact,
+    types::{DagSpec, SkillConfig},
+};
 use {
     crate::{
         events::NexusEventKind,
@@ -66,9 +67,6 @@ use {
     },
     std::time::{Duration, Instant},
 };
-#[cfg(feature = "move_publish")]
-use {std::path::PathBuf, sui_move_build::CompiledPackage};
-
 /// High-level standard TAP actions exposed through [`NexusClient`].
 #[derive(Clone)]
 pub struct TapActions {
@@ -141,15 +139,6 @@ pub struct GetSkillRequirementResult {
     pub skill_id: SkillId,
     pub active_skill_revision_key: SkillRevisionLookupKey,
     pub requirements: SkillRequirement,
-}
-
-/// Options for publishing a TAP Move package through [`TapActions`].
-#[cfg(feature = "move_publish")]
-#[derive(Clone, Debug, Default)]
-pub struct TapPackagePublishOptions {
-    pub package_path: PathBuf,
-    pub named_address_overrides: Vec<(String, sui::types::Address)>,
-    pub environment: Option<String>,
 }
 
 /// Result returned after publishing a TAP Move package.
@@ -257,32 +246,18 @@ pub fn payment_is_terminal(payment: &ExecutionPaymentInnerV1) -> bool {
 }
 
 impl TapActions {
+    /// Publishes a caller supplied [`MovePackageArtifact`].
+    ///
+    /// Accepting compiled bytes keeps compiler and file system dependencies
+    /// outside applications that only need the registry compatible SDK.
     #[cfg(feature = "move_publish")]
     pub async fn publish_tap_package(
         &self,
-        options: TapPackagePublishOptions,
+        package: MovePackageArtifact,
     ) -> Result<TapPackagePublishResult, NexusError> {
-        let package = build_move_package(
-            &options.package_path,
-            &options.named_address_overrides,
-            options.environment.clone(),
-        )
-        .map_err(NexusError::TransactionBuilding)?;
         let client = &self.client;
         let address = client.owner()?;
-        let modules = package.package.get_package_bytes(false);
-        let dependencies = publish_dependency_ids_or_framework_defaults(
-            package
-                .get_dependency_storage_package_ids()
-                .iter()
-                .map(|id| {
-                    id.to_string()
-                        .parse::<sui::types::Address>()
-                        .expect("compiled package dependency id must parse as Sui address")
-                }),
-        );
-        let context = NexusContext::new(client.get_nexus_objects(), NexusPackages::default());
-        let tx = tap_tx::publish_package_ptb(&context, modules, dependencies, address)
+        let tx = tap_tx::publish_package_ptb(package, address)
             .map_err(NexusError::TransactionBuilding)?;
 
         let response = client.submit_transaction(tx, address).await?;
@@ -306,19 +281,21 @@ impl TapActions {
         })
     }
 
+    /// Publishes a TAP package and its workflow from a caller supplied
+    /// [`MovePackageArtifact`].
     #[cfg(feature = "move_publish")]
     pub async fn publish_skill(
         &self,
         workflow_package: sui::types::Address,
         config: &SkillConfig,
         dag: DagSpec,
-        package_options: TapPackagePublishOptions,
+        package: MovePackageArtifact,
     ) -> Result<PublishSkillResult, NexusError> {
         config
             .validate()
             .map_err(|error| NexusError::TransactionBuilding(anyhow::anyhow!(error)))?;
 
-        let tap_package = self.publish_tap_package(package_options).await?;
+        let tap_package = self.publish_tap_package(package).await?;
         let dag = self
             .client
             .workflow()
@@ -804,23 +781,6 @@ where
         .find_map(|event| matcher(&event.data).cloned())
 }
 
-#[cfg(feature = "move_publish")]
-fn build_move_package(
-    package_path: &std::path::Path,
-    named_address_overrides: &[(String, sui::types::Address)],
-    environment: Option<String>,
-) -> anyhow::Result<CompiledPackage> {
-    let mut build_config = crate::sui::build::BuildConfig::new_for_testing_replace_addresses(
-        named_address_overrides
-            .iter()
-            .map(|(name, address)| (name.clone(), address.to_string().parse().unwrap()))
-            .collect::<Vec<_>>(),
-    );
-    build_config.config.environment = environment;
-    build_config.print_diags_to_stderr = false;
-    build_config.build(package_path)
-}
-
 /// Fetch a complete [`AgentRegistrySnapshot`] from chain storage.
 ///
 /// The snapshot enumerates every registered agent and skill because its return
@@ -912,7 +872,7 @@ async fn fetch_skill_record(
         .load_inner::<AgentRegistry, RegistryWitnessV1, AgentRegistryInnerV1>(registry_id, context)
         .await?;
     let agent_key = ID::new(agent_id);
-    let agent_key_type = <ID as sui_move::MoveType>::type_tag_static();
+    let agent_key_type = <ID as talus_sui_move::MoveType>::type_tag_static();
     let agent = client
         .crawler()
         .get_dynamic_field_by_key::<ID, AgentRecord>(
@@ -1327,8 +1287,11 @@ mod tests {
 
     fn generated_target(
         objects: &NexusContext,
-        target: impl FnOnce() -> Result<sui_move_call::CallTarget, sui_move_call::CallSpecError>,
-    ) -> sui_move_call::CallTarget {
+        target: impl FnOnce() -> Result<
+            talus_sui_move_call::CallTarget,
+            talus_sui_move_call::CallSpecError,
+        >,
+    ) -> talus_sui_move_call::CallTarget {
         let tx = crate::move_boundary::ptb(objects, |tx| {
             tx.call_target(target, vec![])?;
             Ok(())
@@ -1337,7 +1300,7 @@ mod tests {
         let Some(sui::types::Command::MoveCall(call)) = tx.commands.first() else {
             panic!("expected generated target move call");
         };
-        sui_move_call::CallTarget {
+        talus_sui_move_call::CallTarget {
             package: call.package,
             module: call.module.clone(),
             function: call.function.clone(),
@@ -1347,7 +1310,7 @@ mod tests {
 
     fn call_matches_generated(
         call: &sui::types::MoveCall,
-        target: &sui_move_call::CallTarget,
+        target: &talus_sui_move_call::CallTarget,
     ) -> bool {
         call.package == target.package
             && call.module == target.module
@@ -1578,8 +1541,8 @@ mod tests {
 
     fn assert_refill_requests_ready_walks(
         request: &sui::grpc::ExecuteTransactionRequest,
-        refill_target: &sui_move_call::CallTarget,
-        request_target: &sui_move_call::CallTarget,
+        refill_target: &talus_sui_move_call::CallTarget,
+        request_target: &talus_sui_move_call::CallTarget,
         dag_id: sui::types::Address,
         execution_id: sui::types::Address,
         leader_registry_id: sui::types::Address,
@@ -1812,7 +1775,7 @@ mod tests {
         sui_mocks::grpc::mock_get_dynamic_field_by_key(
             ledger_service_mock,
             mock.registry_state.agents.id(),
-            &<ID as sui_move::MoveType>::type_tag_static(),
+            &<ID as talus_sui_move::MoveType>::type_tag_static(),
             ID::new(mock.skill_revision_record.key.agent_id),
             mock.agent_record.clone(),
         );

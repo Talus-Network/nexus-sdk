@@ -4,8 +4,8 @@ use {
         scheduler::SchedulerError,
         transactions::agent_input::AgentInput,
     },
-    sui_move_call::{CallSpecError, CallTarget},
     sui_sdk_types::Argument,
+    talus_sui_move_call::{CallSpecError, CallTarget},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

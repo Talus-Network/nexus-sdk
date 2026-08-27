@@ -54,7 +54,7 @@ mod tests {
         },
         serde::{Deserialize, Serialize},
         std::marker::PhantomData,
-        sui_move::{MoveStruct, MoveType},
+        talus_sui_move::{MoveStruct, MoveType},
     };
 
     fn address(value: &'static str) -> sui::types::Address {

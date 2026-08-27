@@ -105,7 +105,7 @@ helpers on top, but they should not duplicate Move ABI logic.
 
 How the pipeline fits together:
 
-- **Refresh half (on demand through `just sdk rebind`)**: `sdk/src/bin/regenerate_bindings.rs` fetches each Nexus package's normalized IR through `sui_move_codegen::fetch_package`, replaces concrete Nexus package identities with stable SDK binding slots, normalizes the unused deployment version, extracts authoritative protocol limits from matching Nexus Move source, and writes committed JSON under `sdk/src/move_bindings/ir/<package>.json` plus `sdk/src/move_bindings/protocol_limits.toml`. The reduced `move_std` and `sui_framework` IR files remain unchanged and are rendered alongside the six refreshed Nexus package files.
+- **Refresh half (on demand through `just sdk rebind`)**: `sdk/src/bin/regenerate_bindings.rs` fetches each Nexus package's normalized IR through `talus_sui_move_codegen::fetch_package`, replaces concrete Nexus package identities with stable SDK binding slots, normalizes the unused deployment version, extracts authoritative protocol limits from matching Nexus Move source, and writes committed JSON under `sdk/src/move_bindings/ir/<package>.json` plus `sdk/src/move_bindings/protocol_limits.toml`. The reduced `move_std` and `sui_framework` IR files remain unchanged and are rendered alongside the six refreshed Nexus package files.
 - **Offline half (every build)**: `sdk/build.rs` reads the committed IR and
   renders one `$OUT_DIR/<package>_types.rs` file per package. The rendered Rust
   includes generated Move structs, enum variants, type tags, serde and BCS

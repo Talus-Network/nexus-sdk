@@ -13,6 +13,7 @@ use crate::move_bindings::interface::meta_schema::{
 };
 #[cfg(feature = "transactions")]
 use crate::move_bindings::primitives::data::NexusValue;
+#[cfg(any(feature = "transactions", feature = "move_publish"))]
 use crate::sui;
 #[cfg(feature = "transactions")]
 use crate::{
@@ -25,13 +26,13 @@ use std::{
     sync::Arc,
 };
 #[cfg(feature = "transactions")]
-use sui_move_call::{CallTarget, ReceivingMoveObject};
-#[cfg(feature = "transactions")]
-pub use sui_move_ptb::CLOCK_OBJECT_ID;
-#[cfg(feature = "transactions")]
-use sui_move_ptb::{BuildError, PtbBuilder};
-#[cfg(feature = "transactions")]
 use sui_sdk_types::Argument;
+#[cfg(feature = "transactions")]
+use talus_sui_move_call::{CallTarget, ReceivingMoveObject};
+#[cfg(feature = "transactions")]
+pub use talus_sui_move_ptb::CLOCK_OBJECT_ID;
+#[cfg(feature = "transactions")]
+use talus_sui_move_ptb::{BuildError, PtbBuilder};
 
 #[cfg(feature = "transactions")]
 pub const RANDOM_OBJECT_ID: sui::types::Address = sui::types::Address::from_static("0x8");
@@ -45,7 +46,7 @@ const BYTE_VECTOR_CHUNK_BYTES: usize = MAX_PURE_INPUT_BYTES - (256 * 3);
 ///
 /// Sui publish rejects an empty dependency list. If the compiler reports no
 /// explicit storage dependencies, include the fixed framework packages.
-#[cfg_attr(not(feature = "move_publish"), allow(dead_code))]
+#[cfg(feature = "move_publish")]
 pub(crate) fn publish_dependency_ids_or_framework_defaults(
     dependency_ids: impl IntoIterator<Item = sui::types::Address>,
 ) -> Vec<sui::types::Address> {
@@ -92,7 +93,7 @@ impl NexusPtbBuilder {
     /// Add a generated Move call target to this PTB.
     pub fn call_target(
         &mut self,
-        target: impl FnOnce() -> Result<CallTarget, sui_move_call::CallSpecError>,
+        target: impl FnOnce() -> Result<CallTarget, talus_sui_move_call::CallSpecError>,
         arguments: Vec<Argument>,
     ) -> anyhow::Result<Argument> {
         let target = crate::move_bindings::with_nexus_scope(self.context.as_ref(), target)?;
@@ -210,7 +211,7 @@ impl NexusPtbBuilder {
         object: &sui::types::ObjectReference,
     ) -> Result<Argument, BuildError>
     where
-        T: sui_move::MoveStruct + sui_move::HasKey,
+        T: talus_sui_move::MoveStruct + talus_sui_move::HasKey,
     {
         self.tx.arg(&ReceivingMoveObject::<T>::new(object.clone()))
     }
@@ -283,7 +284,7 @@ impl NexusPtbBuilder {
     fn call_target_with_ascii(
         &mut self,
         value: impl AsRef<str>,
-        target: impl FnOnce() -> Result<CallTarget, sui_move_call::CallSpecError>,
+        target: impl FnOnce() -> Result<CallTarget, talus_sui_move_call::CallSpecError>,
     ) -> anyhow::Result<Argument> {
         let value = self.ascii_string(value)?;
         self.call_target(target, vec![value])
@@ -503,7 +504,7 @@ impl NexusPtbBuilder {
     /// Build a typed Move `vector<T>` from existing PTB arguments.
     pub fn move_vector<T>(&mut self, elements: Vec<Argument>) -> Result<Argument, BuildError>
     where
-        T: sui_move::MoveType,
+        T: talus_sui_move::MoveType,
     {
         let element_type = crate::move_bindings::type_tag::<T>(self.context.as_ref());
         self.tx.make_move_vector(Some(element_type), elements)
@@ -512,7 +513,7 @@ impl NexusPtbBuilder {
     /// Build a Move `0x1::option::Option<T>` from an optional PTB argument.
     pub fn option<T>(&mut self, value: Option<Argument>) -> Result<Argument, BuildError>
     where
-        T: sui_move::MoveType,
+        T: talus_sui_move::MoveType,
     {
         crate::move_bindings::with_nexus_scope(self.context.as_ref(), || {
             option::<T>(&mut self.tx, value)
@@ -567,7 +568,7 @@ fn ascii_string(tx: &mut PtbBuilder, value: impl AsRef<str>) -> Result<Argument,
 #[cfg(feature = "transactions")]
 fn option<T>(tx: &mut PtbBuilder, value: Option<Argument>) -> Result<Argument, BuildError>
 where
-    T: sui_move::MoveType,
+    T: talus_sui_move::MoveType,
 {
     match value {
         Some(value) => tx.call_target(move_std::option::some_target::<T>()?, vec![value]),
@@ -588,8 +589,8 @@ mod tests {
             test_utils::sui_mocks,
             types::{NexusContext, NexusPackages, PackageRole, PackageVersion},
         },
-        sui_move::MoveStruct,
-        sui_move_call::CallArg,
+        talus_sui_move::MoveStruct,
+        talus_sui_move_call::CallArg,
     };
 
     fn addr(byte: u8) -> sui::types::Address {

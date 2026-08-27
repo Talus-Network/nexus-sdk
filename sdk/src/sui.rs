@@ -92,11 +92,16 @@ pub mod traits {
 
 pub const MIST_PER_SUI: u64 = 1_000_000_000;
 
-/// Move build support for production package publishing and tests.
-#[cfg(any(feature = "move_publish", feature = "test_utils"))]
-pub mod build {
-    pub use {
-        move_package_alt::schema::Environment,
-        sui_move_build::{BuildConfig, CompiledPackage},
-    };
+/// Compiled Move package data accepted by package publishing APIs.
+///
+/// This value contains only transaction input data. Move project compilation
+/// and file system access remain outside the registry compatible SDK.
+/// Existing TAP publish artifacts describe skill metadata after deployment,
+/// so they cannot carry the module bytes required by a Sui publish command.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MovePackageArtifact {
+    /// Serialized Move modules in dependency order.
+    pub modules: Vec<Vec<u8>>,
+    /// Published storage package IDs for package dependencies.
+    pub dependency_ids: Vec<types::Address>,
 }
