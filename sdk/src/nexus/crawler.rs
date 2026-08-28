@@ -4,6 +4,7 @@
 use {
     crate::{
         move_bindings::sui_framework::{object::ID, table_vec::TableVec},
+        nexus::error::NexusError,
         sui::{self, traits::FieldMaskUtil},
     },
     anyhow::{anyhow, bail, Context as _},
@@ -1643,7 +1644,7 @@ impl Crawler {
     ) -> anyhow::Result<sui::grpc::Object> {
         self.fetch_optional_object(object_id, field_mask)
             .await?
-            .ok_or_else(|| anyhow!("Object '{object_id}' not found"))
+            .ok_or_else(|| anyhow::Error::new(NexusError::ObjectNotFound { object: object_id }))
     }
 
     async fn fetch_optional_object(

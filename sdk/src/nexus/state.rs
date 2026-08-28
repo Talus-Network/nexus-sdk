@@ -103,7 +103,9 @@ impl StateResolver {
     ///
     /// Returns [`NexusError::InvalidObjectState`] when the anchor does not have
     /// exactly one `Inner` field and one `Witness` field, or either value is not
-    /// a Move struct. Transport failures return [`NexusError::Rpc`].
+    /// a Move struct. A definitive absence returns
+    /// [`NexusError::ObjectNotFound`]; other transport failures return
+    /// [`NexusError::Rpc`].
     pub async fn observe(
         &self,
         object_id: sui::types::Address,
@@ -119,7 +121,7 @@ impl StateResolver {
                     sleep(STATE_OBSERVATION_RETRY_DELAY).await;
                     continue;
                 }
-                (Err(error), _) | (_, Err(error)) => return Err(NexusError::Rpc(error)),
+                (Err(error), _) | (_, Err(error)) => return Err(NexusError::from_rpc(error)),
             };
 
             match observed_state_from_metadata(object, fields) {
@@ -372,7 +374,7 @@ impl StateResolver {
             .crawler
             .get_object::<RuntimeAuthorityState>(root.object_id())
             .await
-            .map_err(NexusError::Rpc)?;
+            .map_err(NexusError::from_rpc)?;
         let invalid = |reason: String| NexusError::InvalidObjectState {
             object: root.object_id(),
             reason,
@@ -727,7 +729,7 @@ impl StateResolver {
             .crawler
             .get_object::<A>(object_id)
             .await
-            .map_err(NexusError::Rpc)?;
+            .map_err(NexusError::from_rpc)?;
         let inner = self
             .crawler
             .get_dynamic_field_value_by_id::<
@@ -735,7 +737,7 @@ impl StateResolver {
                 V,
             >(observed.inner.field_id)
             .await
-            .map_err(NexusError::Rpc)?;
+            .map_err(NexusError::from_rpc)?;
 
         Ok(crate::nexus::crawler::Response {
             object_id: anchor.object_id,
@@ -1251,6 +1253,42 @@ fn select_state_field(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn observation_separates_absence_from_an_unreachable_node() {
+        use crate::test_utils::sui_mocks;
+
+        let object_id = address("0x10");
+
+        let observe = |status: tonic::Status| async move {
+            let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+            ledger
+                .expect_get_object()
+                .returning(move |_request| Err(status.clone()));
+
+            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger),
+                ..Default::default()
+            });
+            let crawler = Crawler::new(Arc::new(
+                sui::grpc::client(&rpc_url).expect("mock Sui client builds"),
+            ));
+
+            StateResolver::new(Arc::new(crawler))
+                .observe(object_id)
+                .await
+                .expect_err("the mocked node always fails")
+        };
+
+        assert!(matches!(
+            observe(tonic::Status::not_found("missing")).await,
+            NexusError::ObjectNotFound { object } if object == object_id
+        ));
+        assert!(matches!(
+            observe(tonic::Status::unavailable("connection refused")).await,
+            NexusError::Rpc(_)
+        ));
+    }
 
     #[tokio::test]
     async fn observation_retries_incomplete_dynamic_field_metadata() {

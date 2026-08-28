@@ -265,9 +265,23 @@ pub enum NexusError {
         package: sui::types::Address,
         reason: String,
     },
+    /// The node answered definitively that the object does not exist.
+    #[error("Object '{object}' does not exist")]
+    ObjectNotFound { object: sui::types::Address },
     /// The SDK does not contain an adapter for the observed object state.
     #[error(transparent)]
     ClientUpgradeRequired(#[from] ClientUpgradeRequired),
+}
+
+impl NexusError {
+    /// Classifies an RPC-layer failure, keeping a definitive object absence
+    /// distinguishable from a failure to reach the node.
+    pub fn from_rpc(error: anyhow::Error) -> Self {
+        match error.downcast_ref::<Self>() {
+            Some(Self::ObjectNotFound { object }) => Self::ObjectNotFound { object: *object },
+            _ => Self::Rpc(error),
+        }
+    }
 }
 
 impl From<TransactionError> for NexusError {
