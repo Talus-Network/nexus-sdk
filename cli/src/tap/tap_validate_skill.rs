@@ -90,11 +90,10 @@ pub(crate) fn validate_tap_package_manifest(manifest_path: &std::path::Path) -> 
                 manifest_path.display()
             )
         })?;
-    if edition != "2024" {
+    if !matches!(edition, "2024" | "2024.alpha") {
         bail!(
-            "TAP package manifest '{}' uses edition = \"{edition}\" — the new-style \
-             2024 Sui Move package format requires edition = \"2024\" (drop any \
-             `.beta` suffix).",
+            "TAP package manifest '{}' uses edition = \"{edition}\". Use edition = \"2024\", \
+             or edition = \"2024.alpha\" when tests use module extensions.",
             manifest_path.display()
         );
     }
@@ -106,21 +105,6 @@ pub(crate) fn validate_tap_package_manifest(manifest_path: &std::path::Path) -> 
             manifest_path.display()
         );
     }
-    if manifest
-        .get("environments")
-        .and_then(toml::Value::as_table)
-        .is_none()
-    {
-        bail!(
-            "TAP package manifest '{}' is missing an [environments] table. New-style \
-             2024 packages need at least one `<env_alias> = \"<chain-id>\"` entry so \
-             Sui can pick the right `Published.toml` for each dep. Run \
-             `sui client chain-identifier` while your target env is active to get \
-             the chain id.",
-            manifest_path.display()
-        );
-    }
-
     Ok(package_name)
 }
 

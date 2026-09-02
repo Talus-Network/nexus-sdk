@@ -56,6 +56,10 @@ pub(crate) fn scaffold_files(
         "module_move",
         include_str!("templates/tap_package/module.move.jinja"),
     )?;
+    env.add_template(
+        "module_tests_move",
+        include_str!("templates/tap_package/module_tests.move.jinja"),
+    )?;
     env.add_template("dag_template", include_str!("templates/dag.json.jinja"))?;
     env.add_template(
         "skill_config",
@@ -64,6 +68,7 @@ pub(crate) fn scaffold_files(
 
     let move_toml = env.get_template("move_toml")?;
     let module_move = env.get_template("module_move")?;
+    let module_tests_move = env.get_template("module_tests_move")?;
     let dag_template = env.get_template("dag_template")?;
     let skill_config = env.get_template("skill_config")?;
     let witness = name.to_case(Case::Pascal);
@@ -77,7 +82,14 @@ pub(crate) fn scaffold_files(
             PathBuf::from(format!("tap/sources/{module_name}.move")),
             module_move.render(context! { package_name, module_name, witness })?,
         ),
-        (PathBuf::from("dag.json"), dag_template.render(context! {})?),
+        (
+            PathBuf::from(format!("tap/tests/{module_name}_tests.move")),
+            module_tests_move.render(context! { package_name, module_name })?,
+        ),
+        (
+            PathBuf::from("dag.json"),
+            dag_template.render(context! { module_name })?,
+        ),
         (
             PathBuf::from("skill.tap.json"),
             skill_config.render(context! { name })?,
@@ -96,18 +108,19 @@ mod tests {
 
         assert!(paths.contains(&&PathBuf::from("tap/Move.toml")));
         assert!(paths.contains(&&PathBuf::from("tap/sources/weather_skill.move")));
+        assert!(paths.contains(&&PathBuf::from("tap/tests/weather_skill_tests.move")));
         assert!(paths.contains(&&PathBuf::from("dag.json")));
         assert!(paths.contains(&&PathBuf::from("skill.tap.json")));
         assert!(files
             .iter()
             .any(|(_, contents)| contents.contains("module weather_skill::weather_skill;")));
+        assert!(files.iter().any(|(path, contents)| {
+            path == &PathBuf::from("dag.json") && contents.contains("xyz.example.weather_skill@1")
+        }));
     }
 
     #[test]
-    fn scaffolded_move_toml_declares_all_six_nexus_dependencies() {
-        // The scaffold declares the complete six package graph so authors can
-        // use capability authorization, registry lookup, workflow, and
-        // scheduler surfaces without changing the generated manifest.
+    fn scaffolded_move_toml_declares_only_its_direct_mvr_dependency() {
         let files = scaffold_files(
             "tutorial transfer",
             "tutorial_transfer",
@@ -120,52 +133,45 @@ mod tests {
                 (path == &PathBuf::from("tap/Move.toml")).then_some(contents.as_str())
             })
             .expect("Move.toml present");
-        for dep in [
-            "nexus_primitives = { local = \"deps/primitives\" }",
-            "nexus_interface  = { local = \"deps/interface\" }",
-            "nexus_tool       = { local = \"deps/tool\" }",
-            "nexus_registry   = { local = \"deps/registry\" }",
-            "nexus_workflow   = { local = \"deps/workflow\" }",
-            "nexus_scheduler  = { local = \"deps/scheduler\" }",
+        assert!(move_toml.contains("nexus_primitives = { r.mvr = \"@talus/nexus-primitives\" }"));
+        for unused_dependency in [
+            "nexus_interface",
+            "nexus_tool",
+            "nexus_registry",
+            "nexus_workflow",
+            "nexus_scheduler",
         ] {
-            assert!(
-                move_toml.contains(dep),
-                "scaffolded Move.toml missing entry: {dep}"
-            );
+            assert!(!move_toml.contains(unused_dependency));
         }
     }
 
     #[test]
-    fn scaffolded_move_toml_prefills_testnet_chain_id() {
-        // The scaffold defaults to public testnet so `tap publish-skill`
-        // works out of the box for the most common dev target. Authors who
-        // target a different network edit the [environments] table.
+    fn scaffold_includes_an_executable_tap_unit_test() {
         let files = scaffold_files(
             "tutorial transfer",
             "tutorial_transfer",
             "tutorial_transfer",
         )
         .unwrap();
-        let move_toml = files
+        let test = files
             .iter()
             .find_map(|(path, contents)| {
-                (path == &PathBuf::from("tap/Move.toml")).then_some(contents.as_str())
+                (path == &PathBuf::from("tap/tests/tutorial_transfer_tests.move"))
+                    .then_some(contents)
             })
-            .expect("Move.toml present");
-        assert!(
-            move_toml.contains("testnet = \"4c78adac\""),
-            "scaffolded Move.toml must default [environments].testnet to the public testnet chain id"
-        );
+            .expect("test template present");
+
+        assert!(test.contains("#[test]"));
+        assert!(test.contains("extend module nexus_primitives::data"));
+        assert!(test.contains("inline_length_for_testing"));
     }
 
     #[test]
     fn scaffolded_move_toml_uses_new_style_layout() {
-        // `validate-skill` requires the new-style 2024 layout: `version`,
-        // `edition = "2024"`, an `[environments]` table, and no `[addresses]`
-        // (which would mark the package as old-style and break dependency
-        // resolution against new-style published deps). Pin the scaffold to
-        // that shape so the very first `validate-skill` after `tap scaffold`
-        // doesn't reject the manifest it just wrote.
+        // `validate-skill` requires the new style 2024 layout: `version`,
+        // a supported 2024 edition, and no `[addresses]` table. Sui supplies its
+        // Testnet and Mainnet environments, so the scaffold must not redefine
+        // them.
         let files = scaffold_files(
             "tutorial transfer",
             "tutorial_transfer",
@@ -184,17 +190,14 @@ mod tests {
             "scaffolded Move.toml must carry a [package].version field"
         );
         assert!(
-            move_toml.contains("edition = \"2024\""),
-            "scaffolded Move.toml must use edition = \"2024\""
+            move_toml.contains("edition = \"2024.alpha\""),
+            "scaffolded Move.toml must enable test module extensions"
         );
         assert!(
             !move_toml.contains("2024.beta"),
             "scaffolded Move.toml must not use the old 2024.beta edition"
         );
-        assert!(
-            move_toml.contains("[environments]"),
-            "scaffolded Move.toml must declare an [environments] table"
-        );
+        assert!(!move_toml.contains("[environments]"));
         assert!(
             !move_toml.contains("[addresses]"),
             "scaffolded Move.toml must not declare [addresses] (old-style marker)"

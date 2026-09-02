@@ -35,9 +35,18 @@ humantime.workspace = true
 indicatif.workspace = true
 log.workspace = true
 minijinja.workspace = true
+move-binary-format.workspace = true
+move-bytecode-verifier.workspace = true
+move-compiler.workspace = true
+move-package-alt.workspace = true
+move-package-alt-compilation.workspace = true
+move-unit-test.workspace = true
+move-vm-config.workspace = true
+move-vm-runtime.workspace = true
 miette.workspace = true
 num-format.workspace = true
 prettytable.workspace = true
+prometheus.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
@@ -47,6 +56,11 @@ thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 sui-move-build.workspace = true
+sui-adapter.workspace = true
+sui-move-natives.workspace = true
+sui-package-alt.workspace = true
+sui-protocol-config.workspace = true
+sui-types.workspace = true
 
 [dependencies.nexus-sdk]
 workspace = true
@@ -54,6 +68,7 @@ features = ["full", "move_publish"]
 
 [dev-dependencies]
 assert_matches = "1.5.0"
+move-ir-to-bytecode.workspace = true
 mockito.workspace = true
 nexus-toolkit.workspace = true
 rstest.workspace = true

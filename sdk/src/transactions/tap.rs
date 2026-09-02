@@ -222,6 +222,7 @@ pub(crate) fn bind_agent_skill_ptb(
     objects: &NexusContext,
     dag: &sui::types::ObjectReference,
     artifact: &TapPublishArtifact,
+    recipient: sui::types::Address,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let registry = agent_registry_arg(tx, true)?;
@@ -239,6 +240,8 @@ pub(crate) fn bind_agent_skill_ptb(
             artifact.requirements.schedule_policy.clone(),
             artifact.requirements.fixed_tools.clone(),
         )?;
+        let recipient = tx.arg(&recipient)?;
+        tx.transfer_objects(vec![agent], recipient)?;
         Ok(())
     })
 }

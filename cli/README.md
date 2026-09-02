@@ -77,8 +77,57 @@ atomically. Task and occurrence inspection read durable object state. Run
 `nexus task occurrence list --task-id <OBJECT_ID> --json` to page through
 retained occurrence records, and `nexus task --help` for complete examples.
 
+For an Agent skill whose onchain Tool requires workflow authorization, bind
+each vertex that requires a grant to its recipient when creating the Task:
+
+```sh
+nexus task schedule \
+  --agent-id 0xAGENT --skill-id 0 \
+  --authorization-binding check_message=0xRECIPIENT \
+  --input-json "$INPUT_JSON" \
+  --prepay-amount-mist 500000000 \
+  --occurrence-budget-mist 500000000 \
+  --now
+```
+
+Repeat `--authorization-binding` when more than one vertex requires a grant.
+The CLI rejects malformed or duplicate vertex bindings before submitting a
+transaction.
+
+## TAP unit tests
+
+Run a TAP Move suite against the Nexus bytecode published on Sui without a
+wallet, private key, gas, or local Nexus implementation source:
+
+```sh
+nexus tap test --path tap
+```
+
+The command resolves MVR dependencies for Testnet by default, fetches the exact
+published Nexus modules, adds developer `#[test_only]` extension functions in
+memory, verifies the resulting modules, and runs the TAP tests in a local Sui
+VM. Existing Nexus functions keep their published definitions.
+
+Use focused commands while developing:
+
+```sh
+nexus tap test --path tap --list
+nexus tap test --path tap complete_flow
+nexus tap test --path tap --threads 1
+nexus tap test --path tap --build-env mainnet
+```
+
+Local tests cover TAP behavior and reachable Nexus behavior with state that
+the suite constructs. Use Testnet for live shared objects, package
+publication, transaction effects, gas, network routing, and external Tools.
+
+The canonical [TAP development and testing guide] documents project structure,
+fixtures, unit test limits, a complete application, and the Testnet integration
+path.
+
 For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 
 <!-- List of references -->
 
 [nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
+[TAP development and testing guide]: https://github.com/Talus-Network/nexus-move-packages/blob/main/docs/tap_development.md

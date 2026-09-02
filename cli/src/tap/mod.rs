@@ -13,6 +13,9 @@ mod tap_registry;
 mod tap_requirements;
 mod tap_scaffold;
 mod tap_settle;
+mod tap_test;
+mod tap_test_overlay;
+mod tap_test_vm;
 mod tap_update_skill;
 mod tap_validate_skill;
 mod tap_vault;
@@ -95,6 +98,7 @@ use {
     tap_requirements::fetch_requirements,
     tap_scaffold::scaffold_tap_skill,
     tap_settle::handle_execution_command,
+    tap_test::{test_tap_package, TapTestEnvironment},
     tap_update_skill::update_skill_from_artifact,
     tap_validate_skill::{resolve_relative, validate_skill, validate_skill_command},
     tap_vault::handle_vault_command,
@@ -104,6 +108,42 @@ use {
 
 #[derive(Subcommand)]
 pub(crate) enum TapCommand {
+    #[command(
+        about = "Run TAP unit tests with published Nexus bytecode.",
+        long_about = "Run a TAP Move unit test suite in a local Sui VM with the Nexus bytecode published in the selected environment. The command resolves MVR packages, reads Nexus modules from Sui, adds test module extension functions in memory, and verifies the result before execution. No wallet, private key, gas, or Nexus source is required.",
+        after_help = "Examples:\n  nexus tap test --path tap\n  nexus tap test --path tap --list\n  nexus tap test --path tap complete_flow\n  nexus tap test --path tap --build-env mainnet"
+    )]
+    Test {
+        #[arg(
+            long,
+            short,
+            help = "Path to the TAP Move package.",
+            value_parser = ValueParser::from(expand_tilde),
+            default_value = "."
+        )]
+        path: PathBuf,
+        #[arg(
+            long = "build-env",
+            short = 'e',
+            value_enum,
+            default_value_t = TapTestEnvironment::Testnet,
+            help = "Published Nexus environment used by the test VM.",
+            value_name = "ENV"
+        )]
+        build_env: TapTestEnvironment,
+        #[arg(help = "Run only tests whose fully qualified name contains this value.")]
+        filter: Option<String>,
+        #[arg(long, short, help = "List matching tests without running them.")]
+        list: bool,
+        #[arg(
+            long,
+            short,
+            default_value_t = 8,
+            help = "Number of unit test threads.",
+            value_name = "COUNT"
+        )]
+        threads: usize,
+    },
     #[command(about = "Scaffold a TAP package and DAG-backed skill config.")]
     Scaffold {
         #[arg(long, short, help = "Skill/package name.", value_name = "NAME")]
@@ -126,7 +166,7 @@ pub(crate) enum TapCommand {
         )]
         config: PathBuf,
     },
-    #[command(about = "Publish a TAP package, DAG, and publish artifact.")]
+    #[command(about = "Publish a TAP package and DAG whose Tools are already registered.")]
     PublishSkill {
         #[arg(
             long,
@@ -448,6 +488,13 @@ pub(crate) enum ExecutionCommand {
 
 pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> {
     match command {
+        TapCommand::Test {
+            path,
+            build_env,
+            filter,
+            list,
+            threads,
+        } => test_tap_package(path, build_env, filter, list, threads).await,
         TapCommand::Scaffold { name, target } => scaffold_tap_skill(name, target).await,
         TapCommand::ValidateSkill { config } => validate_skill_command(config).await,
         TapCommand::PublishSkill {
@@ -621,6 +668,24 @@ mod tests {
                 workflow_package: None,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn test_command_defaults_to_testnet_and_accepts_a_filter() {
+        let cli =
+            crate::Cli::try_parse_from(["nexus", "tap", "test", "creates_value", "--path", "tap"])
+                .expect("TAP test command parses");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Tap(TapCommand::Test {
+                path,
+                build_env: TapTestEnvironment::Testnet,
+                filter: Some(filter),
+                list: false,
+                threads: 8,
+            }) if path.as_path() == std::path::Path::new("tap") && filter == "creates_value"
         ));
     }
 
@@ -1145,8 +1210,7 @@ public struct WeatherSkill has drop {}
             "unexpected error: {error}"
         );
 
-        // The old beta edition won't resolve against new-style published deps,
-        // so reject it. `validate-skill` accepts only `edition = "2024"`.
+        // The old beta edition cannot resolve against new style published deps.
         let beta_edition = tempdir.join("beta-edition.toml");
         std::fs::write(
             &beta_edition,
@@ -1158,6 +1222,16 @@ public struct WeatherSkill has drop {}
             error.to_string().contains("edition = \"2024.beta\""),
             "unexpected error: {error}"
         );
+
+        let alpha_edition = tempdir.join("alpha-edition.toml");
+        std::fs::write(
+            &alpha_edition,
+            "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024.alpha\"\n",
+        )
+        .unwrap();
+        let package_name = validate_tap_package_manifest(&alpha_edition)
+            .expect("the alpha edition enables test module extensions");
+        assert_eq!(package_name, "weather_skill");
 
         // [addresses] is the old-style marker — reject manifests that carry
         // it, even if their other fields look new-style.
@@ -1173,19 +1247,17 @@ public struct WeatherSkill has drop {}
             "unexpected error: {error}"
         );
 
-        // [environments] is required so Sui can resolve per-network
-        // `Published.toml` for each dependency. Missing → reject.
+        // Testnet and Mainnet are Sui system environments. A package does not
+        // need to redeclare them.
         let no_environments = tempdir.join("no-environments.toml");
         std::fs::write(
             &no_environments,
             "[package]\nname = \"weather_skill\"\nversion = \"1.0.0\"\nedition = \"2024\"\n",
         )
         .unwrap();
-        let error = validate_tap_package_manifest(&no_environments).unwrap_err();
-        assert!(
-            error.to_string().contains("[environments]"),
-            "unexpected error: {error}"
-        );
+        let package_name = validate_tap_package_manifest(&no_environments)
+            .expect("system environments need no manifest entry");
+        assert_eq!(package_name, "weather_skill");
 
         // Happy path: full new-style manifest with one environment entry.
         let valid = tempdir.join("valid-new-style.toml");

@@ -99,6 +99,12 @@ inspection examples. Use
 `nexus task occurrence list --task-id <OBJECT_ID> --json` to page through
 every retained occurrence record.
 
+TAP authors can run Move unit tests against published Nexus bytecode with
+`nexus tap test --path tap`. The command runs exact published Nexus functions
+and developer test extensions in one local Sui VM. See the canonical
+[TAP development and testing guide] for a complete application and the boundary
+between local unit tests and Testnet integration.
+
 For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 
 ## Development
@@ -128,5 +134,6 @@ Learn more about `just` in the [official manual][just-manual].
 [nexus-tools-repo]: https://github.com/Talus-Network/nexus-tools
 [nexus-docs]: https://docs.talus.network
 [cargo-binstall]: https://github.com/cargo-bins/cargo-binstall
+[TAP development and testing guide]: https://github.com/Talus-Network/nexus-move-packages/blob/main/docs/tap_development.md
 [just-repo]: https://github.com/casey/just
 [just-manual]: https://just.systems/man/en/

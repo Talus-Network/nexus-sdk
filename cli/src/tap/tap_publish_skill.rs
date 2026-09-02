@@ -2,9 +2,13 @@ use {
     super::*,
     crate::{
         sui::resolve_creator_package,
-        tap::tap_validate_skill::{tap_package_path_for_config, validate_tap_package_manifest},
+        tap::{
+            tap_create_skill_artifact::fetch_input_commitment_with_client,
+            tap_validate_skill::{tap_package_path_for_config, validate_tap_package_manifest},
+        },
     },
     nexus_sdk::{dag::json::parse_dag_spec, types::PackageRole},
+    sui_package_alt::{mainnet_environment, testnet_environment},
 };
 
 /// Parse `<package_path>/Move.toml` and pick the `[environments]` entry whose
@@ -26,27 +30,37 @@ fn pick_publish_environment(
             manifest_path.display()
         ))
     })?;
-    let Some(environments) = manifest.get("environments").and_then(toml::Value::as_table) else {
-        return Ok(None);
-    };
-    let matching = environments
-        .iter()
-        .filter_map(|(name, value)| value.as_str().map(|cid| (name.clone(), cid.to_string())))
-        .find(|(_, cid)| cid == chain_id);
-    let (alias, _) = matching.ok_or_else(|| {
-        let configured = environments
+    let environments = manifest.get("environments").and_then(toml::Value::as_table);
+    let matching = environments.and_then(|environments| {
+        environments
             .iter()
+            .filter_map(|(name, value)| value.as_str().map(|cid| (name.clone(), cid.to_string())))
+            .find(|(_, cid)| cid == chain_id)
+    });
+    if let Some((alias, _)) = matching {
+        return Ok(Some(alias));
+    }
+
+    for environment in [testnet_environment(), mainnet_environment()] {
+        if environment.id == chain_id {
+            return Ok(Some(environment.name));
+        }
+    }
+
+    Err(NexusCliError::Any(anyhow!({
+        let configured = environments
+            .into_iter()
+            .flatten()
             .filter_map(|(name, value)| value.as_str().map(|cid| format!("{name} = \"{cid}\"")))
             .collect::<Vec<_>>()
             .join(", ");
-        NexusCliError::Any(anyhow!(
-            "TAP package manifest '{}' has no [environments] entry matching the connected chain \
-             id '{chain_id}'. Configured: [{configured}]. Add or update an entry so it maps your \
-             target env alias to '{chain_id}'.",
+        format!(
+            "TAP package manifest '{}' has no environment matching the connected chain id \
+             '{chain_id}'. Configured: [{configured}]. Add an [environments] entry that maps a \
+             custom env alias to '{chain_id}'.",
             manifest_path.display()
-        ))
-    })?;
-    Ok(Some(alias))
+        )
+    })))
 }
 
 pub(crate) async fn publish_skill(
@@ -84,11 +98,13 @@ pub(crate) async fn publish_skill(
         environment,
     )
     .map_err(NexusCliError::Any)?;
-    let publish = nexus_client
+    let mut publish = nexus_client
         .tap()
         .publish_skill(workflow_package, &config, dag, package)
         .await
         .map_err(NexusCliError::Nexus)?;
+    publish.artifact.requirements.input_commitment =
+        fetch_input_commitment_with_client(&nexus_client, publish.dag.dag_object_id).await?;
 
     let artifact_json = serde_json::to_string_pretty(&publish.artifact)
         .map_err(|e| NexusCliError::Any(e.into()))?;
@@ -150,6 +166,27 @@ mod tests {
                 None => std::env::remove_var("SUI_PK"),
             }
         }
+    }
+
+    #[test]
+    fn publish_environment_recognizes_sui_system_environments() {
+        let temp = tempfile::tempdir().expect("temporary TAP package");
+        std::fs::write(
+            temp.path().join("Move.toml"),
+            "[package]\nname = \"tap\"\nversion = \"1.0.0\"\nedition = \"2024\"\n",
+        )
+        .expect("write manifest");
+
+        let testnet = testnet_environment();
+        let mainnet = mainnet_environment();
+        assert_eq!(
+            pick_publish_environment(temp.path(), &testnet.id).unwrap(),
+            Some(testnet.name)
+        );
+        assert_eq!(
+            pick_publish_environment(temp.path(), &mainnet.id).unwrap(),
+            Some(mainnet.name)
+        );
     }
 
     #[tokio::test]
