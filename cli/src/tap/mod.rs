@@ -111,7 +111,7 @@ pub(crate) enum TapCommand {
     #[command(
         about = "Run TAP unit tests with published Nexus bytecode.",
         long_about = "Run a TAP Move unit test suite in a local Sui VM with the Nexus bytecode published in the selected environment. The command resolves MVR packages, reads Nexus modules from Sui, adds test module extension functions in memory, and verifies the result before execution. No wallet, private key, gas, or Nexus source is required.",
-        after_help = "Examples:\n  nexus tap test --path tap\n  nexus tap test --path tap --list\n  nexus tap test --path tap complete_flow\n  nexus tap test --path tap --build-env mainnet"
+        after_help = "Examples:\n  nexus tap test --path tap\n  nexus tap test --path tap --list\n  nexus tap test --path tap execute_accepts\n  nexus tap test --path tap --build-env mainnet\n\nGuide:\n  https://github.com/Talus-Network/nexus-move-packages/blob/main/docs/tap_development.md"
     )]
     Test {
         #[arg(

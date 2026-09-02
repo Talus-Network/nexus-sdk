@@ -57,7 +57,7 @@ enum Command {
     Gas(gas::GasCommand),
     #[command(subcommand, about = "Manage Nexus network fees")]
     Network(network::NetworkCommand),
-    #[command(subcommand, about = "Prepare and operate standard TAP skills")]
+    #[command(subcommand, about = "Prepare, test and operate TAP applications")]
     Tap(tap::TapCommand),
     #[command(about = "Provide shell completions")]
     Completion(completion::CompletionCommand),

@@ -56,7 +56,7 @@ Commands:
   dag         Validate and publish Nexus DAGs
   task        Create and operate scheduled Tasks
   gas         Manage Nexus gas budgets and tickets
-  tap         Prepare and operate standard TAP skills
+  tap         Prepare, test and operate TAP applications
   completion  Provide shell completions
   help        Print this message or the help of the given subcommand(s)
 
@@ -108,11 +108,16 @@ published Nexus modules, adds developer `#[test_only]` extension functions in
 memory, verifies the resulting modules, and runs the TAP tests in a local Sui
 VM. Existing Nexus functions keep their published definitions.
 
+The command works for both TAP forms. `nexus tap scaffold` creates a standard
+CLI managed skill with JSON DAG and skill files. The canonical
+[embedded application example] instead owns its Agent in Move state, builds
+the DAG in Move and exposes an onchain Tool callback.
+
 Use focused commands while developing:
 
 ```sh
 nexus tap test --path tap --list
-nexus tap test --path tap complete_flow
+nexus tap test --path tap execute_accepts
 nexus tap test --path tap --threads 1
 nexus tap test --path tap --build-env mainnet
 ```
@@ -121,13 +126,16 @@ Local tests cover TAP behavior and reachable Nexus behavior with state that
 the suite constructs. Use Testnet for live shared objects, package
 publication, transaction effects, gas, network routing, and external Tools.
 
-The canonical [TAP development and testing guide] documents project structure,
-fixtures, unit test limits, a complete application, and the Testnet integration
-path.
+The canonical [TAP development and testing guide] documents both TAP forms,
+focused fixtures, unit test limits and a complete embedded application. The
+application owns its Agent, creates its DAG and skill, schedules a Task,
+authenticates the onchain Tool callback and finalizes a Nexus result before the
+Testnet integration path begins.
 
 For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 
 <!-- List of references -->
 
 [nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
+[embedded application example]: https://github.com/Talus-Network/nexus-move-packages/tree/main/examples/local_testing
 [TAP development and testing guide]: https://github.com/Talus-Network/nexus-move-packages/blob/main/docs/tap_development.md
