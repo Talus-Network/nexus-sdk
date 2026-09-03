@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Added capability negotiated checkpoint waits, indexed dynamic field discovery, and exact linked table traversal while current object authority remains on the live RPC.
+- Added one PTB helper that deposits a gas coin into several independent SUI address balances.
+- Added exact inner state object references to validated snapshots so consumers can establish causal RPC visibility before evaluating dependent transactions.
+- Added distinct archival replay endpoints for live event ingestors and exposed Move extracted protocol limits for consumers that must plan exact protocol windows.
+
 #### Fixed
 
 - Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.
@@ -53,10 +60,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Added capability negotiated checkpoint waits, indexed dynamic field discovery, and exact linked table traversal while current object authority remains on the live RPC.
-- Added one PTB helper that deposits a gas coin into several independent SUI address balances.
-- Added exact inner state object references to validated snapshots so consumers can establish causal RPC visibility before evaluating dependent transactions.
-- Added distinct archival replay endpoints for live event ingestors and exposed Move extracted protocol limits for consumers that must plan exact protocol windows.
 - Added dynamic Invocation policy composition, policy discovery, canonical finite credit and time pass accounts, owner grants, receipt collection, and exact Invocation timeout refunds.
 - Added deterministic entitlement ID derivation from the Tool cashier, payment beneficiary, and policy type.
 - Added beneficiary access inspection with canonical account state, pass activity from the onchain clock, and exact finite credit refunds ready for restoration.
