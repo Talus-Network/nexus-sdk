@@ -659,7 +659,7 @@ impl TapActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let tx = tap_tx::bind_agent_skill_ptb(&context, &dag, &artifact)
+        let tx = tap_tx::bind_agent_skill_ptb(&context, &dag, &artifact, address)
             .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.client.submit_transaction(tx, address).await?;
@@ -1283,6 +1283,22 @@ mod tests {
                     && call.module == target.module
                     && call.function == target.function
         )));
+    }
+
+    fn assert_created_agent_transferred_to_signer(request: &sui::grpc::ExecuteTransactionRequest) {
+        assert_no_public_share_object(request);
+        let transaction = submitted_ptb(request);
+        let transfer = transaction
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                sui::types::Command::TransferObjects(transfer) => Some(transfer),
+                _ => None,
+            })
+            .expect("bind must transfer the created Agent");
+
+        assert_eq!(transfer.objects, [sui::types::Argument::Result(0)]);
+        assert!(matches!(transfer.address, sui::types::Argument::Input(_)));
     }
 
     fn generated_target(
@@ -2073,7 +2089,7 @@ mod tests {
                 })
                 .unwrap(),
             )],
-            assert_no_public_share_object,
+            assert_created_agent_transferred_to_signer,
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -2199,7 +2215,7 @@ mod tests {
                     .unwrap(),
                 ),
             ],
-            assert_no_public_share_object,
+            assert_created_agent_transferred_to_signer,
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {

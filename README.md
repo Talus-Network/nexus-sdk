@@ -72,7 +72,7 @@ Commands:
   dag         Validate and publish Nexus DAGs
   task        Create and operate scheduled Tasks
   gas         Manage Nexus gas budgets and tickets
-  tap         Prepare and operate standard TAP skills
+  tap         Prepare, test and operate TAP applications
   completion  Provide shell completions
   help        Print this message or the help of the given subcommand(s)
 
@@ -98,6 +98,18 @@ atomically. Run `nexus task --help` for timing, funding, recurrence, and object
 inspection examples. Use
 `nexus task occurrence list --task-id <OBJECT_ID> --json` to page through
 every retained occurrence record.
+
+TAP authors can run Move unit tests against published Nexus bytecode with
+`nexus tap test --path tap`. The command runs exact published Nexus functions
+and developer test extensions in one local Sui VM. See the canonical
+[TAP development and testing guide] for an embedded application that owns its
+Agent, builds its DAG, schedules a Task, authenticates an onchain Tool callback
+and finalizes a Nexus result. The guide also defines the boundary between local
+unit tests and Testnet integration.
+
+`nexus tap scaffold` creates the standard CLI managed TAP form. The
+[embedded application example] is the starting point when Move state should
+own the Agent and lifecycle.
 
 For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 
@@ -128,5 +140,7 @@ Learn more about `just` in the [official manual][just-manual].
 [nexus-tools-repo]: https://github.com/Talus-Network/nexus-tools
 [nexus-docs]: https://docs.talus.network
 [cargo-binstall]: https://github.com/cargo-bins/cargo-binstall
+[embedded application example]: https://github.com/Talus-Network/nexus-move-packages/tree/main/examples/local_testing
+[TAP development and testing guide]: https://github.com/Talus-Network/nexus-move-packages/blob/main/docs/tap_development.md
 [just-repo]: https://github.com/casey/just
 [just-manual]: https://just.systems/man/en/

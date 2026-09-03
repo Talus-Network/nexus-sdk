@@ -11,6 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Fixed
 
 - Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.
+- `TapActions::bind_agent_skill` now transfers the newly created Agent to the signer after registering its first skill, preventing Sui from rejecting the PTB with an unused value that cannot be dropped.
+
+### `nexus-cli`
+
+#### Added
+
+- Added `nexus tap test`, which resolves a TAP's MVR graph and runs Move unit tests with the selected Testnet or Mainnet Nexus bytecode in a local Sui VM.
+- `task create` and `task schedule` now accept repeatable `--authorization-binding <VERTEX>=<OBJECT_ID>` values for Agent skills whose onchain Tools require workflow grants bound to a recipient.
+
+#### Changed
+
+- TAP scaffolds now use MVR dependencies and include an executable published bytecode unit test with a developer module extension.
+- `tap publish-skill` now writes the canonical published DAG input commitment into its bind artifact.
 
 ## [`2.0.0`] - 2026-08-27
 

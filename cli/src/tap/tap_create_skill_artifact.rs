@@ -107,7 +107,7 @@ async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8
     fetch_input_commitment_with_client(&nexus_client, dag_id).await
 }
 
-async fn fetch_input_commitment_with_client(
+pub(crate) async fn fetch_input_commitment_with_client(
     nexus_client: &nexus_sdk::nexus::client::NexusClient,
     dag_id: sui::types::Address,
 ) -> AnyResult<Vec<u8>, NexusCliError> {

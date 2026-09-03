@@ -161,25 +161,70 @@ struct OperationArgs {
         help = "Registered Agent skill identifier; requires --agent-id"
     )]
     skill_id: Option<u64>,
+
+    #[arg(
+        long = "authorization-binding",
+        value_name = "VERTEX=OBJECT_ID",
+        requires = "agent_id",
+        help_heading = "Operation",
+        help = "Bind a DAG vertex that requires a grant to its recipient object; repeat for each vertex"
+    )]
+    authorization_bindings: Vec<String>,
 }
 
 impl OperationArgs {
     fn into_operation(self) -> Result<TaskOperation, NexusCliError> {
         match (self.agent_id, self.skill_id) {
-            (None, None) => self.dag_id.map(TaskOperation::default_dag).ok_or_else(|| {
-                NexusCliError::Any(anyhow!("--dag-id is required for the default operation"))
-            }),
+            (None, None) => {
+                if !self.authorization_bindings.is_empty() {
+                    return Err(NexusCliError::Any(anyhow!(
+                        "--authorization-binding requires --agent-id and --skill-id"
+                    )));
+                }
+                self.dag_id.map(TaskOperation::default_dag).ok_or_else(|| {
+                    NexusCliError::Any(anyhow!("--dag-id is required for the default operation"))
+                })
+            }
             (Some(agent_id), Some(skill_id)) => Ok(TaskOperation::agent_skill(
                 agent_id,
                 skill_id,
                 self.dag_id,
-                Default::default(),
+                parse_authorization_bindings(self.authorization_bindings)?,
             )),
             _ => Err(NexusCliError::Any(anyhow!(
                 "--agent-id and --skill-id must be supplied together"
             ))),
         }
     }
+}
+
+fn parse_authorization_bindings(
+    values: Vec<String>,
+) -> Result<nexus_sdk::scheduler::AuthorizationBindings, NexusCliError> {
+    let mut bindings = nexus_sdk::scheduler::AuthorizationBindings::new();
+    for value in values {
+        let (vertex, recipient) = value.split_once('=').ok_or_else(|| {
+            NexusCliError::Any(anyhow!(
+                "invalid authorization binding '{value}': expected '<VERTEX>=<OBJECT_ID>'"
+            ))
+        })?;
+        if vertex.trim().is_empty() {
+            return Err(NexusCliError::Any(anyhow!(
+                "invalid authorization binding '{value}': vertex must not be empty"
+            )));
+        }
+        let recipient = recipient.parse().map_err(|error| {
+            NexusCliError::Any(anyhow!(
+                "invalid authorization binding object ID '{recipient}': {error}"
+            ))
+        })?;
+        if bindings.insert(vertex.to_owned(), recipient).is_some() {
+            return Err(NexusCliError::Any(anyhow!(
+                "authorization binding for vertex '{vertex}' was provided more than once"
+            )));
+        }
+    }
+    Ok(bindings)
 }
 
 /// Arguments selecting the Task reserve owner and controller.
@@ -870,6 +915,7 @@ mod tests {
                 dag_id: Some(sui::types::Address::from_static("0xd")),
                 agent_id: None,
                 skill_id: None,
+                authorization_bindings: Vec::new(),
             },
             funding: FundingArgs {
                 agent_funded: false,
@@ -892,6 +938,35 @@ mod tests {
             error,
             NexusCliError::Schedule(ScheduleError::ZeroOccurrenceBudget)
         ));
+    }
+
+    #[test]
+    fn authorization_bindings_parse_vertex_recipients() {
+        let recipient = sui::types::Address::from_static("0x42");
+        let bindings = parse_authorization_bindings(vec![format!("check_message={recipient}")])
+            .expect("binding is valid");
+
+        assert_eq!(bindings.get("check_message"), Some(&recipient));
+    }
+
+    #[test]
+    fn authorization_bindings_reject_duplicate_vertices() {
+        let error = parse_authorization_bindings(vec![
+            "check_message=0x42".to_owned(),
+            "check_message=0x43".to_owned(),
+        ])
+        .expect_err("duplicate vertex must fail");
+
+        assert!(error.to_string().contains("provided more than once"));
+    }
+
+    #[test]
+    fn authorization_bindings_require_vertex_and_object_id() {
+        for value in ["check_message", "=0x42", "check_message=invalid"] {
+            let error = parse_authorization_bindings(vec![value.to_owned()])
+                .expect_err("invalid binding must fail");
+            assert!(error.to_string().contains("authorization binding"));
+        }
     }
 
     #[tokio::test]

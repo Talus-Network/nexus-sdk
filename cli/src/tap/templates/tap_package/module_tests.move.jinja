@@ -1,0 +1,27 @@
+#[test_only]
+extend module nexus_primitives::data;
+
+/// Returns the inline byte length needed by the generated TAP test.
+public fun inline_length_for_testing(self: &NexusData): u64 {
+    match (self) {
+        NexusData::One {
+            value: NexusValue::InlineData { bytes },
+        } => bytes.length(),
+        _ => 0,
+    }
+}
+
+#[test_only]
+module {{ package_name }}::{{ module_name }}_tests;
+
+use {{ package_name }}::{{ module_name }};
+use nexus_primitives::data;
+use std::unit_test::assert_eq;
+
+#[test]
+fun creates_tap_value_and_reads_nexus_data() {
+    let _tap = {{ module_name }}::new();
+    let value = data::one(data::inline_data_value(b"hello Nexus"));
+
+    assert_eq!(value.inline_length_for_testing(), 11);
+}
