@@ -15,8 +15,124 @@ pub mod grpc {
     use std::{
         collections::HashMap,
         sync::{LazyLock, Mutex},
+        time::Duration,
     };
     pub use sui_rpc::{field::FieldMask, proto::sui::rpc::v2::*, Client};
+
+    /// Metadata used by nodes that can return execution only after the
+    /// transaction checkpoint is locally visible.
+    pub mod checkpoint_wait {
+        const HEADER: &str = "x-sui-checkpoint-wait";
+
+        /// Return whether a service response advertises checkpoint waiting.
+        pub fn is_supported<T>(response: &tonic::Response<T>) -> bool {
+            response
+                .metadata()
+                .get(HEADER)
+                .is_some_and(|value| value == "true")
+        }
+
+        /// Build an execution request that waits for local checkpoint
+        /// visibility on a node which advertised support.
+        pub fn execution_request<T>(message: T) -> tonic::Request<T> {
+            let mut request = tonic::Request::new(message);
+            request
+                .metadata_mut()
+                .insert(HEADER, tonic::metadata::MetadataValue::from_static("true"));
+            request
+        }
+    }
+
+    /// Maximum independent HTTP/2 connections retained for one RPC endpoint.
+    ///
+    /// A Sui client and all of its clones multiplex responses through one
+    /// connection. A burst of small responses can therefore exhaust h2's
+    /// framing budget before callers consume them. Independent clients are
+    /// spread across this bounded set so one busy connection cannot fail the
+    /// entire process.
+    const MAX_CHANNELS_PER_ENDPOINT: usize = 32;
+
+    /// Maximum wait for an RPC response to begin.
+    ///
+    /// Streaming responses remain open after their headers arrive. This bound
+    /// prevents a failed or saturated connection from parking an ordinary RPC
+    /// forever before the server starts its response.
+    const RESPONSE_HEADERS_TIMEOUT: Duration = Duration::from_secs(30);
+
+    /// Request metadata for finalized causal simulation.
+    #[cfg(feature = "events")]
+    pub mod causal {
+        use super::super::types::Digest;
+
+        const PARENT_HEADER: &str = "x-sui-causal-parent";
+        const RECORD_HEADER: &str = "x-sui-causal-record";
+        const APPLIED_HEADER: &str = "x-sui-causal-applied";
+        const STREAM_HEADER: &str = "x-sui-causal-stream";
+
+        /// Build an execution request whose finalized state is retained.
+        ///
+        /// `parent` links the new state to a previously finalized transaction.
+        /// An absent parent starts a new bounded causal view.
+        pub fn execution_request<T>(
+            message: T,
+            parent: Option<Digest>,
+        ) -> anyhow::Result<tonic::Request<T>> {
+            let mut request = tonic::Request::new(message);
+            request.metadata_mut().insert(
+                RECORD_HEADER,
+                tonic::metadata::MetadataValue::from_static("true"),
+            );
+            if let Some(parent) = parent {
+                request.metadata_mut().insert(
+                    PARENT_HEADER,
+                    tonic::metadata::MetadataValue::try_from(parent.to_string())?,
+                );
+            }
+            Ok(request)
+        }
+
+        /// Build a simulation request that must include `parent` state.
+        pub fn simulation_request<T>(
+            message: T,
+            parent: Digest,
+        ) -> anyhow::Result<tonic::Request<T>> {
+            let mut request = tonic::Request::new(message);
+            request.metadata_mut().insert(
+                PARENT_HEADER,
+                tonic::metadata::MetadataValue::try_from(parent.to_string())?,
+            );
+            Ok(request)
+        }
+
+        /// Return whether the server honored the requested causal view.
+        pub fn was_applied<T>(response: &tonic::Response<T>) -> bool {
+            response
+                .metadata()
+                .get(APPLIED_HEADER)
+                .is_some_and(|value| value == "true")
+        }
+
+        /// Build an opt in stream request for quorum finalized receipts.
+        ///
+        /// The stream is opportunistic and has no replay cursor. Consumers
+        /// must retain the canonical checkpoint stream as their recovery path.
+        pub fn finality_stream_request<T>(message: T) -> tonic::Request<T> {
+            let mut request = tonic::Request::new(message);
+            request.metadata_mut().insert(
+                STREAM_HEADER,
+                tonic::metadata::MetadataValue::from_static("true"),
+            );
+            request
+        }
+
+        /// Return whether the server accepted the causal finality stream.
+        pub fn finality_stream_was_applied<T>(response: &tonic::Response<T>) -> bool {
+            response
+                .metadata()
+                .get(STREAM_HEADER)
+                .is_some_and(|value| value == "true")
+        }
+    }
 
     static TRANSPORT_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
         tokio::runtime::Builder::new_multi_thread()
@@ -28,34 +144,45 @@ pub mod grpc {
     });
 
     #[derive(Default)]
+    struct EndpointPool {
+        clients: Vec<Client>,
+        next: usize,
+    }
+
+    #[derive(Default)]
     struct ClientPool {
-        clients: Mutex<HashMap<String, Client>>,
+        endpoints: Mutex<HashMap<String, EndpointPool>>,
     }
 
     impl ClientPool {
         fn client(&self, rpc_url: impl AsRef<str>) -> anyhow::Result<Client> {
             let rpc_url = rpc_url.as_ref();
-            let mut clients = self
-                .clients
+            let mut endpoints = self
+                .endpoints
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Sui gRPC client pool lock was poisoned"))?;
 
-            if let Some(client) = clients.get(rpc_url) {
-                return Ok(client.clone());
+            let endpoint = endpoints.entry(rpc_url.to_owned()).or_default();
+            if endpoint.clients.len() < MAX_CHANNELS_PER_ENDPOINT {
+                let client = {
+                    let _runtime = TRANSPORT_RUNTIME.enter();
+                    Client::new(rpc_url)
+                        .map_err(anyhow::Error::new)?
+                        .with_response_headers_timeout(RESPONSE_HEADERS_TIMEOUT)
+                };
+                endpoint.clients.push(client.clone());
+                return Ok(client);
             }
 
-            let client = {
-                let _runtime = TRANSPORT_RUNTIME.enter();
-                Client::new(rpc_url).map_err(anyhow::Error::new)?
-            };
-            clients.insert(rpc_url.to_owned(), client.clone());
-            Ok(client)
+            let index = endpoint.next;
+            endpoint.next = (endpoint.next + 1) % endpoint.clients.len();
+            Ok(endpoint.clients[index].clone())
         }
     }
 
     static CLIENT_POOL: LazyLock<ClientPool> = LazyLock::new(ClientPool::default);
 
-    /// Returns a [`Client`] backed by the process wide channel for `rpc_url`.
+    /// Returns a [`Client`] backed by a bounded process wide connection pool.
     ///
     /// # Errors
     ///
@@ -67,16 +194,58 @@ pub mod grpc {
 
     #[cfg(test)]
     mod tests {
-        use super::ClientPool;
+        use super::{ClientPool, MAX_CHANNELS_PER_ENDPOINT};
 
         #[test]
-        fn client_pool_owns_its_transport_runtime() {
+        fn client_pool_bounds_channels_per_endpoint() {
             let pool = ClientPool::default();
 
-            let _first = pool.client("http://127.0.0.1:1").unwrap();
-            let _second = pool.client("http://127.0.0.1:1").unwrap();
+            for _ in 0..MAX_CHANNELS_PER_ENDPOINT + 1 {
+                let _client = pool.client("http://127.0.0.1:1").unwrap();
+            }
 
-            assert_eq!(pool.clients.lock().unwrap().len(), 1);
+            let endpoints = pool.endpoints.lock().unwrap();
+            assert_eq!(endpoints.len(), 1);
+            assert_eq!(
+                endpoints["http://127.0.0.1:1"].clients.len(),
+                MAX_CHANNELS_PER_ENDPOINT
+            );
+            assert_eq!(endpoints["http://127.0.0.1:1"].next, 1);
+        }
+
+        #[test]
+        fn checkpoint_wait_metadata_is_explicit() {
+            let request = super::checkpoint_wait::execution_request(());
+            assert_eq!(
+                request.metadata().get("x-sui-checkpoint-wait").unwrap(),
+                "true"
+            );
+
+            let mut response = tonic::Response::new(());
+            assert!(!super::checkpoint_wait::is_supported(&response));
+            response.metadata_mut().insert(
+                "x-sui-checkpoint-wait",
+                tonic::metadata::MetadataValue::from_static("true"),
+            );
+            assert!(super::checkpoint_wait::is_supported(&response));
+        }
+
+        #[cfg(feature = "events")]
+        #[test]
+        fn causal_requests_carry_the_parent_digest() {
+            let parent = super::super::types::Digest::ZERO;
+            let request = super::causal::simulation_request((), parent).unwrap();
+
+            assert_eq!(
+                request.metadata().get("x-sui-causal-parent").unwrap(),
+                parent.to_string().as_str(),
+            );
+
+            let stream = super::causal::finality_stream_request(());
+            assert_eq!(
+                stream.metadata().get("x-sui-causal-stream").unwrap(),
+                "true",
+            );
         }
     }
 }

@@ -49,6 +49,50 @@ pub(crate) fn compile_move_package(
 }
 
 #[cfg(test)]
+pub(crate) fn compile_move_package_fixture(
+    package_path: &Path,
+    named_address_overrides: &[(String, sui::types::Address)],
+    environment: Option<String>,
+) -> anyhow::Result<MovePackageArtifact> {
+    fn copy_fixture(source: &Path, destination: &Path) -> anyhow::Result<()> {
+        std::fs::create_dir_all(destination).with_context(|| {
+            format!(
+                "failed to create Move fixture directory '{}'",
+                destination.display()
+            )
+        })?;
+        for entry in std::fs::read_dir(source)
+            .with_context(|| format!("failed to read Move fixture '{}'", source.display()))?
+        {
+            let entry = entry.context("failed to read Move fixture entry")?;
+            let name = entry.file_name();
+            if matches!(
+                name.to_str(),
+                Some("build" | "Move.lock" | "Published.toml")
+            ) {
+                continue;
+            }
+            let target = destination.join(&name);
+            let kind = entry
+                .file_type()
+                .with_context(|| format!("failed to inspect Move fixture entry '{name:?}'"))?;
+            if kind.is_dir() {
+                copy_fixture(&entry.path(), &target)?;
+            } else if kind.is_file() {
+                std::fs::copy(entry.path(), &target)
+                    .with_context(|| format!("failed to copy Move fixture entry '{name:?}'"))?;
+            }
+        }
+        Ok(())
+    }
+
+    let directory = tempfile::tempdir().context("failed to create Move fixture directory")?;
+    let isolated_package = directory.path().join("package");
+    copy_fixture(package_path, &isolated_package)?;
+    compile_move_package(&isolated_package, named_address_overrides, environment)
+}
+
+#[cfg(test)]
 mod tests {
     use {super::*, std::fs, tempfile::tempdir};
 

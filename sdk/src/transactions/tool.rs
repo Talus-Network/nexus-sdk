@@ -577,6 +577,30 @@ pub fn set_invocation_cost_ptb(
     })
 }
 
+/// Builds a transaction that changes the Registry verification status of a Tool.
+///
+/// The supplied `admin` must be the [`ToolRegistryAdminCap`](
+/// crate::move_bindings::tool::tool_registry::ToolRegistryAdminCap) for
+/// [`NexusContext::tool_registry`].
+pub fn set_verified_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    admin: &sui::types::ObjectReference,
+    verified: bool,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let tool = tx.shared_object(tool, true)?;
+        let registry = tx.shared_root(&context.tool_registry, false)?;
+        let admin = tx.owned_object(admin)?;
+        let verified = tx.arg(&verified)?;
+        tx.call_target(
+            tool_registry_binding::set_verified_target,
+            vec![tool, registry, admin, verified],
+        )?;
+        Ok(())
+    })
+}
+
 /// Builds a transaction that unregisters a Tool from live protocol lookup.
 pub fn unregister_ptb(
     context: &NexusContext,
@@ -774,6 +798,16 @@ mod tests {
             .collect()
     }
 
+    fn input_for_argument<'a>(
+        ptb: &'a ProgrammableTransaction,
+        argument: &Argument,
+    ) -> &'a CallArg {
+        let Argument::Input(index) = argument else {
+            panic!("expected input argument, got {argument:?}");
+        };
+        &ptb.inputs[usize::from(*index)]
+    }
+
     fn assert_us_address_balance_withdrawal(
         objects: &NexusContext,
         ptb: &ProgrammableTransaction,
@@ -884,6 +918,63 @@ mod tests {
         assert!(ptb.inputs.iter().any(|input| {
             matches!(input, CallArg::Shared(shared) if shared.object_id() == objects.tool_registry.object_id())
         }));
+    }
+
+    #[test]
+    fn set_verified_preserves_move_authority_and_argument_order() {
+        let objects = nexus_objects();
+        let tool = object_ref("0x20", 2, 20);
+        let admin = object_ref("0x21", 3, 21);
+
+        for verified in [false, true] {
+            let ptb = set_verified_ptb(&objects, &tool, &admin, verified).unwrap();
+            let calls = move_calls(&ptb);
+            assert_eq!(calls.len(), 1);
+            let call = calls[0];
+            assert_eq!(
+                call.package,
+                objects
+                    .require_package(PackageRole::Tool)
+                    .unwrap()
+                    .storage_id
+            );
+            assert_eq!(call.module.as_str(), "tool_registry");
+            assert_eq!(call.function.as_str(), "set_verified");
+            assert_eq!(call.arguments.len(), 4);
+
+            let CallArg::Shared(tool_input) = input_for_argument(&ptb, &call.arguments[0]) else {
+                panic!("Tool must be a shared input");
+            };
+            assert_eq!(tool_input.object_id(), *tool.object_id());
+            assert_eq!(tool_input.version(), tool.version());
+            assert!(tool_input.mutability().is_mutable());
+
+            let CallArg::Shared(registry_input) = input_for_argument(&ptb, &call.arguments[1])
+            else {
+                panic!("Tool Registry must be a shared input");
+            };
+            assert_eq!(
+                registry_input.object_id(),
+                objects.tool_registry.object_id()
+            );
+            assert_eq!(
+                registry_input.version(),
+                objects.tool_registry.initial_shared_version
+            );
+            assert!(!registry_input.mutability().is_mutable());
+
+            let CallArg::ImmutableOrOwned(admin_input) =
+                input_for_argument(&ptb, &call.arguments[2])
+            else {
+                panic!("Registry admin must be an owned input");
+            };
+            assert_eq!(admin_input, &admin);
+
+            let CallArg::Pure(verified_input) = input_for_argument(&ptb, &call.arguments[3]) else {
+                panic!("verification status must be a pure input");
+            };
+            assert_eq!(verified_input.as_slice(), &[u8::from(verified)]);
+        }
     }
 
     #[test]

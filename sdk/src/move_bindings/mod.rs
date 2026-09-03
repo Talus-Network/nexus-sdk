@@ -5,7 +5,11 @@
 //! selected modules, but they should not duplicate Move ABI logic.
 
 mod extensions;
-pub(crate) mod protocol_limits {
+/// Constants extracted from the authoritative Nexus Move source during binding refresh.
+///
+/// Regenerate these values with the `regenerate_bindings` binary. Consumers
+/// should use this module instead of copying protocol constants.
+pub mod protocol_limits {
     include!(concat!(env!("OUT_DIR"), "/protocol_limits.rs"));
 }
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]

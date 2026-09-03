@@ -13,6 +13,22 @@ lazy_static::lazy_static! {
         )
         .unwrap();
 
+    pub(super) static ref REPLAY_RANGE_DURATION: prometheus::Histogram =
+        prometheus::register_histogram!(
+            "poller_event_replay_range_duration",
+            "Duration of one complete checkpoint replay range [s]",
+            vec![0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0]
+        )
+        .unwrap();
+
+    pub(super) static ref REPLAY_RANGE_EVENTS: prometheus::Histogram =
+        prometheus::register_histogram!(
+            "poller_event_replay_range_events",
+            "Number of decoded query events retained by one replay range",
+            vec![0.0, 1.0, 10.0, 100.0, 1_000.0, 10_000.0]
+        )
+        .unwrap();
+
     pub(super) static ref FILTERED_EVENTS_RECEIVED: prometheus::Counter =
         prometheus::register_counter!(
             "poller_filtered_events_received",
@@ -32,7 +48,7 @@ lazy_static::lazy_static! {
         prometheus::register_histogram!(
             "poller_events_per_page",
             "Number of query events per event page",
-            vec![0.0, 1.0]
+            vec![0.0, 1.0, 10.0, 100.0, 1_000.0, 10_000.0]
         )
         .unwrap();
 

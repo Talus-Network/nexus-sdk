@@ -144,6 +144,7 @@ impl AddressBalanceGas {
 pub struct NexusClientBuilder {
     pk: Option<sui::crypto::Ed25519PrivateKey>,
     rpc_url: Option<String>,
+    state_catalog_rpc_url: Option<String>,
     gas_coins: Vec<sui::types::ObjectReference>,
     gas_budget: Option<u64>,
     address_balance_gas: Option<AddressBalanceGas>,
@@ -166,6 +167,15 @@ impl NexusClientBuilder {
     /// Which RPC to connect to.
     pub fn with_rpc_url(mut self, rpc_url: &str) -> Self {
         self.rpc_url = Some(rpc_url.to_string());
+        self
+    }
+
+    /// Uses an indexed Sui service to discover dynamic field collections.
+    ///
+    /// Exact object state, simulation, signing, and submission continue to use
+    /// the service configured by [`Self::with_rpc_url`].
+    pub fn with_state_catalog_rpc_url(mut self, rpc_url: &str) -> Self {
+        self.state_catalog_rpc_url = Some(rpc_url.to_owned());
         self
     }
 
@@ -251,13 +261,16 @@ impl NexusClientBuilder {
         }
 
         let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
-        let actual_chain = client
+        let service_info = client
             .as_ref()
             .clone()
             .ledger_client()
             .get_service_info(sui::grpc::GetServiceInfoRequest::default())
             .await
-            .map_err(|error| NexusError::Rpc(error.into()))?
+            .map_err(|error| NexusError::Rpc(error.into()))?;
+        let server_checkpoint_wait_supported =
+            sui::grpc::checkpoint_wait::is_supported(&service_info);
+        let actual_chain = service_info
             .into_inner()
             .chain_id
             .ok_or_else(|| NexusError::Rpc(anyhow::anyhow!("Sui service omitted its chain ID")))?;
@@ -267,12 +280,38 @@ impl NexusClientBuilder {
                 actual: actual_chain,
             });
         }
+        let catalog = match self.state_catalog_rpc_url {
+            Some(catalog_url) if catalog_url != rpc_url => {
+                let catalog_client =
+                    Arc::new(sui::grpc::client(&catalog_url).map_err(NexusError::Rpc)?);
+                let catalog_chain = catalog_client
+                    .as_ref()
+                    .clone()
+                    .ledger_client()
+                    .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+                    .await
+                    .map_err(|error| NexusError::Rpc(error.into()))?
+                    .into_inner()
+                    .chain_id
+                    .ok_or_else(|| {
+                        NexusError::Rpc(anyhow::anyhow!("Sui state catalog omitted its chain ID"))
+                    })?;
+                if catalog_chain != nexus_objects.chain_id {
+                    return Err(NexusError::ChainMismatch {
+                        expected: nexus_objects.chain_id,
+                        actual: catalog_chain,
+                    });
+                }
+                catalog_client
+            }
+            _ => Arc::clone(&client),
+        };
         let nexus_objects = Arc::new(nexus_objects);
-        let crawler = Arc::new(Crawler::new(Arc::clone(&client)));
+        let crawler = Arc::new(Crawler::with_state_catalog(Arc::clone(&client), catalog));
         let state_resolver = StateResolver::new(Arc::clone(&crawler));
 
         let signer = self.pk.map(|pk| {
-            Signer::new(
+            Signer::with_server_checkpoint_wait(
                 client,
                 pk,
                 self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
@@ -280,6 +319,7 @@ impl NexusClientBuilder {
                     state_resolver.clone(),
                     Arc::clone(&nexus_objects),
                 ),
+                server_checkpoint_wait_supported,
             )
         });
 
@@ -647,8 +687,9 @@ impl NexusClient {
     /// Fetch an owned coin with the requested Move type by object ID or
     /// deterministic ordinal.
     ///
-    /// When `coin_id` is `None`, coins are ordered by balance descending and
-    /// object ID ascending before selecting `ordinal`.
+    /// An explicit object ID uses an exact ledger read and does not require an
+    /// owned object index. When `coin_id` is [`None`], coins are ordered by
+    /// balance descending and object ID ascending before selecting `ordinal`.
     ///
     /// # Errors
     ///
@@ -663,6 +704,31 @@ impl NexusClient {
         object_type: sui::types::StructTag,
     ) -> Result<sui::types::ObjectReference, NexusError> {
         let label = format!("coins of type '{object_type}'");
+        if let Some(coin_id) = coin_id {
+            let owner = self.owner()?;
+            let object = self
+                .crawler
+                .get_object_update_reference(coin_id, None)
+                .await
+                .map_err(NexusError::Rpc)?;
+            if object.owner != sui::types::Owner::Address(owner) {
+                return Err(NexusError::Wallet(anyhow::anyhow!(
+                    "Object '{coin_id}' with {label} is not owned by wallet '{owner}'"
+                )));
+            }
+            if object.object_type != object_type {
+                return Err(NexusError::Wallet(anyhow::anyhow!(
+                    "Object '{coin_id}' has type '{}', expected '{object_type}'",
+                    object.object_type
+                )));
+            }
+            return Ok(sui::types::ObjectReference::new(
+                coin_id,
+                object.version,
+                object.digest,
+            ));
+        }
+
         let mut coins = self.fetch_coins_by_type(object_type).await?;
 
         if coins.is_empty() {
@@ -671,27 +737,14 @@ impl NexusClient {
             )));
         }
 
-        match coin_id {
-            Some(coin_id) => coins
-                .into_iter()
-                .find(|(coin, _)| *coin.object_id() == coin_id)
-                .map(|(coin, _)| coin)
-                .ok_or_else(|| {
-                    NexusError::Wallet(anyhow::anyhow!(
-                        "Object '{coin_id}' with {label} not found in wallet"
-                    ))
-                }),
-            None => {
-                sort_coins_for_ordinal_selection(&mut coins);
-                if ordinal >= coins.len() {
-                    return Err(NexusError::Wallet(anyhow::anyhow!(
-                        "The wallet does not have enough {label} to select object #{ordinal}"
-                    )));
-                }
-
-                Ok(coins.swap_remove(ordinal).0)
-            }
+        sort_coins_for_ordinal_selection(&mut coins);
+        if ordinal >= coins.len() {
+            return Err(NexusError::Wallet(anyhow::anyhow!(
+                "The wallet does not have enough {label} to select object #{ordinal}"
+            )));
         }
+
+        Ok(coins.swap_remove(ordinal).0)
     }
 
     /// Return the RPC URL configured for this client.
@@ -722,13 +775,83 @@ impl NexusClient {
         &self,
         filter_source: sui::types::Address,
     ) -> Result<NexusEventIngestor, NexusError> {
+        self.event_ingestor_inner(filter_source, None).await
+    }
+
+    /// Returns a [`NexusEventIngestor`] that omits compiled protocol events
+    /// rejected by `filter` before resolving emitter packages or decoding BCS.
+    ///
+    /// Events unknown to this SDK are retained so consumers still fail closed
+    /// when a compatible package introduces unsupported protocol behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns compatibility, object state, or RPC errors reported by
+    /// [`Self::context_for_object`].
+    pub async fn filtered_event_ingestor(
+        &self,
+        filter_source: sui::types::Address,
+        filter: fn(&str) -> bool,
+    ) -> Result<NexusEventIngestor, NexusError> {
+        self.event_ingestor_inner(filter_source, Some(filter)).await
+    }
+
+    /// Returns an event ingestor whose server filter uses the complete package
+    /// graph selected by the current runtime authority.
+    ///
+    /// Use this when accepted event types span package roles that are not
+    /// dependencies of one canonical root. Historical emitter metadata still
+    /// selects the decoder for each event.
+    ///
+    /// Events unknown to this SDK are retained so consumers still fail closed
+    /// when a compatible package introduces unsupported protocol behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns runtime authority, package compatibility, object state, or RPC
+    /// errors reported by [`Self::runtime_context`].
+    pub async fn filtered_runtime_event_ingestor(
+        &self,
+        filter: fn(&str) -> bool,
+    ) -> Result<NexusEventIngestor, NexusError> {
+        let context = self.runtime_context(&[]).await?;
+        Ok(self.filtered_event_ingestor_for_context(context, filter))
+    }
+
+    /// Returns a filtered event ingestor for an already verified package graph.
+    ///
+    /// This avoids reading [`crate::move_bindings::kernel::runtime_authority::RuntimeAuthority`]
+    /// again when a caller has just established runtime compatibility. Event
+    /// decoding still resolves each historical emitter independently.
+    pub fn filtered_event_ingestor_for_context(
+        &self,
+        context: Arc<NexusContext>,
+        filter: fn(&str) -> bool,
+    ) -> NexusEventIngestor {
+        self.event_ingestor_for_context(context, Some(filter))
+    }
+
+    async fn event_ingestor_inner(
+        &self,
+        filter_source: sui::types::Address,
+        filter: Option<fn(&str) -> bool>,
+    ) -> Result<NexusEventIngestor, NexusError> {
         let context = self.context_for_object(filter_source).await?;
+        Ok(self.event_ingestor_for_context(context, filter))
+    }
+
+    fn event_ingestor_for_context(
+        &self,
+        context: Arc<NexusContext>,
+        filter: Option<fn(&str) -> bool>,
+    ) -> NexusEventIngestor {
         let decoder =
             NexusEventDecoder::new(self.state_resolver.clone(), Arc::clone(&self.nexus_objects));
-        Ok(NexusEventIngestor::new(
-            &self.rpc_url,
-            NexusEventQuery::new(context, decoder),
-        ))
+        let mut query = NexusEventQuery::new(context, decoder);
+        if let Some(filter) = filter {
+            query = query.with_supported_event_filter(filter);
+        }
+        NexusEventIngestor::new(&self.rpc_url, query)
     }
 
     /// Attaches the gas source shared by this client, its clones, and action facades.
@@ -941,6 +1064,40 @@ mod tests {
             });
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+
+        NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build")
+    }
+
+    async fn client_with_exact_object(
+        pk: sui::crypto::Ed25519PrivateKey,
+        object: sui::grpc::Object,
+    ) -> NexusClient {
+        let expected_id = object
+            .object_id_opt()
+            .expect("test object has an ID")
+            .to_owned();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(expected_id.as_str())
+            })
+            .times(1)
+            .return_once(move |_| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                response.set_object(object);
+                Ok(response.into())
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
 
@@ -1466,17 +1623,10 @@ mod tests {
             sui::types::Address::from_static("0xc"),
         )
         .coin_type_tag();
-        let first_coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x20"));
         let requested_coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x21"));
-        let client = client_with_owned_coins(
-            pk,
-            object_type.clone(),
-            vec![
-                owned_coin_object(first_coin, owner, 200, &object_type),
-                owned_coin_object(requested_coin.clone(), owner, 100, &object_type),
-            ],
-        )
-        .await;
+        let mut object = owned_coin_object(requested_coin.clone(), owner, 100, &object_type);
+        object.set_previous_transaction(sui::types::Digest::from([7; 32]));
+        let client = client_with_exact_object(pk, object).await;
 
         let selected = client
             .fetch_coin_by_type(Some(*requested_coin.object_id()), 0, object_type)
@@ -2005,6 +2155,129 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.digest, submitted.digest());
+    }
+
+    #[tokio::test]
+    async fn node_checkpoint_wait_avoids_subscription_and_ledger_probe() {
+        let mut rng = rand::thread_rng();
+        let chain = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let submitted = sui_mocks::grpc::mock_checkpointed_execute_transaction_without_gas(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            true,
+            vec![],
+            vec![],
+            vec![],
+            |_| {},
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            checkpoint_wait_supported: true,
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let signer = client
+            .signer()
+            .expect("mock client should configure a signer");
+        let sender = signer.get_active_address();
+        let transaction = crate::nexus::address_balance::finish_transaction(
+            sui::types::ProgrammableTransaction {
+                inputs: vec![],
+                commands: vec![],
+            },
+            sender,
+            1000,
+            crate::nexus::address_balance::SubmissionContext {
+                reference_gas_price: 1000,
+                epoch: 1,
+                chain,
+            },
+            0,
+        );
+        let signature = signer.sign_tx(&transaction).await.unwrap();
+
+        let response = signer
+            .execute_tx_without_gas_coin(transaction, signature)
+            .await
+            .unwrap();
+
+        assert_eq!(response.digest, submitted.digest());
+        assert_eq!(response.checkpoint, 1);
+    }
+
+    #[tokio::test]
+    async fn node_checkpoint_wait_preserves_unconfirmed_execution() {
+        let mut rng = rand::thread_rng();
+        let chain = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let submitted = sui_mocks::grpc::mock_uncheckpointed_execute_transaction_without_gas(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            true,
+            vec![],
+            vec![],
+            vec![],
+            |_| {},
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            checkpoint_wait_supported: true,
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let signer = client
+            .signer()
+            .expect("mock client should configure a signer");
+        let sender = signer.get_active_address();
+        let transaction = crate::nexus::address_balance::finish_transaction(
+            sui::types::ProgrammableTransaction {
+                inputs: vec![],
+                commands: vec![],
+            },
+            sender,
+            1000,
+            crate::nexus::address_balance::SubmissionContext {
+                reference_gas_price: 1000,
+                epoch: 1,
+                chain,
+            },
+            0,
+        );
+        let signature = signer.sign_tx(&transaction).await.unwrap();
+
+        let Err(error) = signer
+            .execute_tx_without_gas_coin(transaction, signature)
+            .await
+        else {
+            panic!("checkpoint confirmation should be unknown");
+        };
+
+        let NexusError::Transaction(error) = error else {
+            panic!("expected a transaction error");
+        };
+        assert_eq!(error.digest(), &submitted.digest());
+        assert_eq!(
+            error.state(),
+            crate::nexus::error::TransactionErrorState::ConfirmationUnknown
+        );
+        assert!(error.response().is_some());
     }
 
     #[tokio::test]

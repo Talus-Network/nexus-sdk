@@ -259,6 +259,12 @@ pub enum NexusError {
         object: sui::types::Address,
         reason: String,
     },
+    /// A transaction response contains inconsistent output identity or state.
+    #[error("Transaction '{transaction}' outputs are invalid: {reason}")]
+    InvalidTransactionOutput {
+        transaction: sui::types::Digest,
+        reason: String,
+    },
     /// A package is structurally valid but incompatible with an operation graph.
     #[error("Package '{package}' is incompatible: {reason}")]
     IncompatiblePackage {

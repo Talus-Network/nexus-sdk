@@ -1,6 +1,8 @@
 use {
     super::query::EventQuery,
     crate::sui,
+    futures::TryStreamExt as _,
+    std::num::NonZeroUsize,
     sui_rpc::field::FieldMaskUtil as _,
     thiserror::Error,
     tokio::sync::mpsc,
@@ -8,6 +10,7 @@ use {
 };
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 100;
+const DEFAULT_REPLAY_CONCURRENCY: NonZeroUsize = NonZeroUsize::MIN;
 const ENGINE_EVENT_FIELDS: [&str; 3] = ["checkpoint", "transaction_digest", "event_index"];
 
 /// Failure produced while ingesting events for an [`EventQuery`].
@@ -102,6 +105,15 @@ impl EventIngestionError {
     }
 }
 
+/// Source phase for one event page.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EventPageSource {
+    /// Historical events requested from the Ledger service.
+    Replay,
+    /// Events received from the live subscription.
+    Live,
+}
+
 /// Events and progress observed at one checkpoint position.
 #[derive(Clone, Debug)]
 pub struct EventPage<T> {
@@ -109,6 +121,8 @@ pub struct EventPage<T> {
     pub events: Vec<T>,
     /// Checkpoint observed for this page.
     pub checkpoint: u64,
+    /// Whether this progress came from replay or the live subscription.
+    pub source: EventPageSource,
 }
 
 /// Receives pages and failures from an [`EventIngestor`].
@@ -116,35 +130,70 @@ pub type EventPageReceiver<T> = mpsc::Receiver<Result<EventPage<T>, EventIngesti
 
 /// Streams the output of an [`EventQuery`] from Sui.
 pub struct EventIngestor<Q: EventQuery> {
-    pub(super) rpc_url: String,
+    pub(super) subscription_rpc_url: String,
+    pub(super) replay_rpc_url: Option<String>,
     pub(super) query: Q,
     pub(super) filter: sui::grpc::EventFilter,
     pub(super) read_mask: sui::grpc::FieldMask,
     pub(super) channel_capacity: usize,
+    pub(super) replay_concurrency: NonZeroUsize,
     pub(super) cancellation_token: CancellationToken,
     pub(super) recover_replay_gap: bool,
 }
 
 impl<Q: EventQuery> EventIngestor<Q> {
     /// Creates an ingestor for `query`.
-    pub fn new(rpc_url: impl Into<String>, query: Q) -> Self {
+    pub fn new(subscription_rpc_url: impl Into<String>, query: Q) -> Self {
         let filter = query.filter();
         let read_mask = Self::effective_read_mask(query.read_mask());
 
         Self {
-            rpc_url: rpc_url.into(),
+            subscription_rpc_url: subscription_rpc_url.into(),
+            replay_rpc_url: None,
             query,
             filter,
             read_mask,
             channel_capacity: DEFAULT_CHANNEL_CAPACITY,
+            replay_concurrency: DEFAULT_REPLAY_CONCURRENCY,
             cancellation_token: CancellationToken::new(),
             recover_replay_gap: false,
         }
     }
 
+    /// Uses a distinct Sui service for the live event subscription.
+    ///
+    /// Historical replay continues to use the endpoint selected by
+    /// [`Self::with_replay_rpc_url`]. This permits the subscription to bypass
+    /// index publication without routing indexed state queries through an
+    /// unindexed fullnode.
+    pub fn with_subscription_rpc_url(mut self, rpc_url: impl Into<String>) -> Self {
+        self.subscription_rpc_url = rpc_url.into();
+        self
+    }
+
+    /// Uses a distinct Ledger service for historical replay.
+    ///
+    /// The endpoint passed to [`EventIngestor::new`] still owns the live
+    /// subscription. This permits callers to read pruned history from an
+    /// archival service without routing current object reads or transaction
+    /// submission through that service.
+    pub fn with_replay_rpc_url(mut self, rpc_url: impl Into<String>) -> Self {
+        self.replay_rpc_url = Some(rpc_url.into());
+        self
+    }
+
     /// Sets the number of pages that may wait for the consumer.
     pub fn with_channel_capacity(mut self, capacity: usize) -> Self {
         self.channel_capacity = capacity;
+        self
+    }
+
+    /// Sets the maximum number of disjoint checkpoint ranges replayed at once.
+    ///
+    /// Range results are delivered in ascending checkpoint order. This changes
+    /// only recovery throughput; it does not change the event stream order.
+    pub fn with_replay_concurrency(mut self, concurrency: NonZeroUsize) -> Self {
+        self.replay_concurrency = concurrency;
         self
     }
 
@@ -164,6 +213,60 @@ impl<Q: EventQuery> EventIngestor<Q> {
         self
     }
 
+    /// Returns the earliest checkpoint accepted by the configured
+    /// [`EventQuery::filter`].
+    ///
+    /// The query uses the replay endpoint when one was configured with
+    /// [`Self::with_replay_rpc_url`]. It requests one indexed event in explicit
+    /// ascending order and does not decode its payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EventIngestionError::ReplayGap`] when the endpoint no longer
+    /// retains genesis history. Other endpoint and stream failures retain their
+    /// normal [`EventIngestionError`] classification.
+    pub async fn first_matching_checkpoint(&self) -> Result<Option<u64>, EventIngestionError> {
+        let rpc_url = self
+            .replay_rpc_url
+            .as_deref()
+            .unwrap_or(&self.subscription_rpc_url);
+        let mut client = sui::grpc::client(rpc_url).map_err(|error| {
+            EventIngestionError::Configuration(format!(
+                "invalid replay gRPC URL '{rpc_url}': {error}"
+            ))
+        })?;
+        let request = sui::grpc::ListEventsRequest::default()
+            .with_read_mask(sui::grpc::FieldMask::from_paths(["checkpoint"]))
+            .with_filter(self.filter.clone())
+            .with_options(
+                sui::grpc::QueryOptions::default()
+                    .with_limit(1)
+                    .with_ordering(sui::grpc::Ordering::Ascending),
+            );
+        let mut stream = client
+            .ledger_client()
+            .list_events(request)
+            .await
+            .map_err(|status| {
+                EventIngestionError::replay_rpc(0, "locating the first matching event", status)
+            })?
+            .into_inner();
+
+        while let Some(frame) = stream.try_next().await.map_err(|status| {
+            EventIngestionError::replay_rpc(0, "reading the first matching event", status)
+        })? {
+            if let Some(event) = frame.event {
+                return event.checkpoint.map(Some).ok_or_else(|| {
+                    EventIngestionError::Protocol(
+                        "the first matching event omitted its checkpoint".to_owned(),
+                    )
+                });
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Starts ingestion from an inclusive checkpoint.
     ///
     /// Passing [`None`] starts at the current stream position.
@@ -181,12 +284,19 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 "channel capacity must be greater than zero".to_owned(),
             ));
         }
-        sui::grpc::client(&self.rpc_url).map_err(|error| {
+        sui::grpc::client(&self.subscription_rpc_url).map_err(|error| {
             EventIngestionError::Configuration(format!(
-                "invalid gRPC URL '{}': {error}",
-                self.rpc_url
+                "invalid subscription gRPC URL '{}': {error}",
+                self.subscription_rpc_url
             ))
         })?;
+        if let Some(replay_rpc_url) = &self.replay_rpc_url {
+            sui::grpc::client(replay_rpc_url).map_err(|error| {
+                EventIngestionError::Configuration(format!(
+                    "invalid replay gRPC URL '{replay_rpc_url}': {error}"
+                ))
+            })?;
+        }
         self.read_mask
             .validate::<sui::grpc::Event>()
             .map_err(|path| {

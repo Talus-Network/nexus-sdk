@@ -445,6 +445,33 @@ impl ToolActions {
         self.submit_action(transaction).await
     }
 
+    /// Changes the Registry verification status of a registered Tool.
+    ///
+    /// The configured [`crate::types::NexusObjects::tool_registry_admin_cap`]
+    /// must be owned by this client's signer.
+    pub async fn set_verified(
+        &self,
+        fqn: &ToolFqn,
+        verified: bool,
+    ) -> Result<ToolActionResult, NexusError> {
+        let tool_ref = self.client.fetch_tool(fqn).await?;
+        let objects = self.client.get_nexus_objects();
+        let context = self
+            .client
+            .context_for_object_with_roots(
+                *tool_ref.object_id(),
+                std::slice::from_ref(&objects.tool_registry),
+            )
+            .await?;
+        let admin = self
+            .client
+            .object_reference(objects.tool_registry_admin_cap.object_id())
+            .await?;
+        let transaction = tool::set_verified_ptb(&context, &tool_ref, &admin, verified)
+            .map_err(NexusError::TransactionBuilding)?;
+        self.submit_action(transaction).await
+    }
+
     /// Enables registered key verification for a registered off chain Tool.
     pub async fn configure_registered_key_verifier(
         &self,
@@ -1531,15 +1558,18 @@ impl ToolActions {
 
     async fn registry_state(&self) -> Result<(Arc<NexusContext>, ToolRegistryInnerV1), NexusError> {
         let root = &self.client.nexus_objects.tool_registry;
-        let context = self.client.context_for_root(root).await?;
+        let (snapshot, context) = self
+            .client
+            .state_resolver()
+            .resolve_context_snapshot(self.client.get_nexus_objects(), root.object_id())
+            .await?;
+        let context = Arc::new(context);
         let state = self
             .client
             .state_resolver()
-            .load_inner_for_supported_witness::<ToolRegistry, ToolRegistryInnerV1>(
-                root.object_id(),
-                &context,
-            )
-            .await?;
+            .load_inner_for_supported_witness_from_snapshot::<ToolRegistry, ToolRegistryInnerV1>(
+                &snapshot, &context,
+            )?;
         Ok((context, state.data))
     }
 
@@ -1647,20 +1677,22 @@ impl ToolActions {
             }
         }
 
-        let observed = match self.client.state_resolver().observe(tool_id).await {
-            Ok(observed) => observed,
+        let snapshot = match self.client.state_resolver().observe_snapshot(tool_id).await {
+            Ok(snapshot) => snapshot,
             Err(error) => {
                 inspection.detail = Some(error.to_string());
                 return inspection;
             }
         };
+        let observed = snapshot.observed();
+        inspection.owner = Some(observed.owner);
         inspection.witness_type = Some(observed.witness_type().clone());
         inspection.inner_type = Some(observed.inner_type().clone());
 
         let packages = match self
             .client
             .state_resolver()
-            .resolve_package_graph(&observed)
+            .resolve_package_graph(observed)
             .await
         {
             Ok(packages) => packages,
@@ -1683,9 +1715,9 @@ impl ToolActions {
         let inner = match self
             .client
             .state_resolver()
-            .load_inner_for_supported_witness::<ToolAnchor, ToolInnerV1>(tool_id, &context)
-            .await
-        {
+            .load_inner_for_supported_witness_from_snapshot::<ToolAnchor, ToolInnerV1>(
+                &snapshot, &context,
+            ) {
             Ok(inner) => inner.data,
             Err(error) => {
                 inspection.compatibility = ToolCompatibility::Unsupported;
@@ -1729,49 +1761,35 @@ impl ToolActions {
     ) -> Result<(), NexusError> {
         let fqn_key = ascii::String::from(inspection.fqn.to_string());
         let fqn_type = crate::move_bindings::type_tag::<ascii::String>(context);
-        inspection.timeout_ms = self
-            .client
-            .crawler()
-            .get_dynamic_field_by_key::<ascii::String, Node<ascii::String, u64>>(
+        let id_type = crate::move_bindings::type_tag::<ID>(context);
+        let crawler = self.client.crawler();
+        let (timeout, invocation_cost, verifier_support, external_verifier) = tokio::try_join!(
+            crawler.get_dynamic_field_by_key::<ascii::String, Node<ascii::String, u64>>(
                 registry.timeouts.id(),
                 fqn_key.clone(),
                 &fqn_type,
-            )
-            .await
-            .map_err(NexusError::Rpc)?
-            .map(|node| node.value);
-        inspection.invocation_cost_mist = self
-            .client
-            .crawler()
-            .get_dynamic_field_by_key::<ascii::String, u64>(
+            ),
+            crawler.get_dynamic_field_by_key::<ascii::String, u64>(
                 registry.invocation_costs_mist.id(),
                 fqn_key,
                 &fqn_type,
-            )
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let id_type = crate::move_bindings::type_tag::<ID>(context);
-        inspection.verifier_support = self
-            .client
-            .crawler()
-            .get_dynamic_field_by_key::<ID, ToolVerifierSupport>(
+            ),
+            crawler.get_dynamic_field_by_key::<ID, ToolVerifierSupport>(
                 registry.verifier_support.id(),
                 ID::new(inspection.tool_id),
                 &id_type,
-            )
-            .await
-            .map_err(NexusError::Rpc)?;
-        inspection.external_verifier = self
-            .client
-            .crawler()
-            .get_dynamic_field_by_key::<ID, ExternalVerifier>(
+            ),
+            crawler.get_dynamic_field_by_key::<ID, ExternalVerifier>(
                 registry.external_verifiers.id(),
                 ID::new(inspection.tool_id),
                 &id_type,
             )
-            .await
-            .map_err(NexusError::Rpc)?;
+        )
+        .map_err(NexusError::Rpc)?;
+        inspection.timeout_ms = timeout.map(|node| node.value);
+        inspection.invocation_cost_mist = invocation_cost;
+        inspection.verifier_support = verifier_support;
+        inspection.external_verifier = external_verifier;
         Ok(())
     }
 

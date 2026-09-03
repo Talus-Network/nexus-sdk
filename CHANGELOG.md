@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Added capability negotiated checkpoint waits, indexed dynamic field discovery, and exact linked table traversal while current object authority remains on the live RPC.
+- Added one PTB helper that deposits a gas coin into several independent SUI address balances.
+- Added exact inner state object references to validated snapshots so consumers can establish causal RPC visibility before evaluating dependent transactions.
+- Added distinct archival replay endpoints for live event ingestors and exposed Move extracted protocol limits for consumers that must plan exact protocol windows.
+
 #### Fixed
 
 - Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.

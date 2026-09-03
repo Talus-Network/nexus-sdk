@@ -259,6 +259,18 @@ macro_rules! events {
         pub(super) fn supports_event(name: &str) -> bool {
             matches!(name, $($name)|*)
         }
+
+        pub(super) fn event_struct_tag(
+            context: &crate::types::NexusContext,
+            name: &str,
+        ) -> Option<crate::sui::types::StructTag> {
+            match name {
+                $(
+                    $name => Some(crate::move_bindings::struct_tag::<$event_ty>(context)),
+                )*
+                _ => None,
+            }
+        }
     };
 }
 
