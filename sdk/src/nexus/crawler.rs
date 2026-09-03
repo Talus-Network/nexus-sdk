@@ -1751,10 +1751,12 @@ impl Crawler {
     /// Advances one validated object state snapshot from a finalized response.
     ///
     /// Sui returns only objects named by transaction effects: input and output
-    /// versions of changed objects. The existing snapshot therefore supplies
-    /// unchanged anchor and witness data, while the response must supply the
-    /// inner value written by `transaction`. A mentioned object with no output
-    /// was removed and cannot be reused. No Sui request is performed.
+    /// versions of changed objects. This remains necessary for immediate
+    /// execution responses even when a causal stream can return complete
+    /// retained state. The existing snapshot supplies unchanged anchor and
+    /// witness data, while the response must supply the inner value written by
+    /// `transaction`. A mentioned object with no output was removed and cannot
+    /// be reused. No Sui request is performed.
     pub(crate) fn advance_object_state_snapshot(
         &self,
         basis: &ObjectStateSnapshot,

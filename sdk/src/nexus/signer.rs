@@ -31,7 +31,7 @@ pub struct Signer {
     pub(super) pk: sui::crypto::Ed25519PrivateKey,
     pub(super) transaction_timeout: Duration,
     event_decoder: NexusEventDecoder,
-    checkpoint_wait_supported: bool,
+    server_checkpoint_wait_supported: bool,
 }
 
 impl Signer {
@@ -41,22 +41,22 @@ impl Signer {
         transaction_timeout: Duration,
         event_decoder: NexusEventDecoder,
     ) -> Self {
-        Self::with_checkpoint_wait(client, pk, transaction_timeout, event_decoder, false)
+        Self::with_server_checkpoint_wait(client, pk, transaction_timeout, event_decoder, false)
     }
 
-    pub(super) fn with_checkpoint_wait(
+    pub(super) fn with_server_checkpoint_wait(
         client: Arc<sui::grpc::Client>,
         pk: sui::crypto::Ed25519PrivateKey,
         transaction_timeout: Duration,
         event_decoder: NexusEventDecoder,
-        checkpoint_wait_supported: bool,
+        server_checkpoint_wait_supported: bool,
     ) -> Self {
         Self {
             client,
             pk,
             transaction_timeout,
             event_decoder,
-            checkpoint_wait_supported,
+            server_checkpoint_wait_supported,
         }
     }
 
@@ -200,7 +200,8 @@ impl Signer {
                 "checkpoint",
             ]));
 
-        let response = if self.checkpoint_wait_supported {
+        let response = if self.server_checkpoint_wait_supported {
+            // Request metadata makes the node wait inside ExecuteTransaction.
             client
                 .execution_client()
                 .execute_transaction(sui::grpc::checkpoint_wait::execution_request(tx_request))

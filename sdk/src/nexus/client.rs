@@ -268,7 +268,8 @@ impl NexusClientBuilder {
             .get_service_info(sui::grpc::GetServiceInfoRequest::default())
             .await
             .map_err(|error| NexusError::Rpc(error.into()))?;
-        let checkpoint_wait_supported = sui::grpc::checkpoint_wait::is_supported(&service_info);
+        let server_checkpoint_wait_supported =
+            sui::grpc::checkpoint_wait::is_supported(&service_info);
         let actual_chain = service_info
             .into_inner()
             .chain_id
@@ -310,7 +311,7 @@ impl NexusClientBuilder {
         let state_resolver = StateResolver::new(Arc::clone(&crawler));
 
         let signer = self.pk.map(|pk| {
-            Signer::with_checkpoint_wait(
+            Signer::with_server_checkpoint_wait(
                 client,
                 pk,
                 self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
@@ -318,7 +319,7 @@ impl NexusClientBuilder {
                     state_resolver.clone(),
                     Arc::clone(&nexus_objects),
                 ),
-                checkpoint_wait_supported,
+                server_checkpoint_wait_supported,
             )
         });
 

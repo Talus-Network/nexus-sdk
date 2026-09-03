@@ -28,7 +28,8 @@ use {
 /// Known direct events ordered by their measured frequency in execution
 /// workloads. A filtered consumer can exclude the first eight events it does
 /// not use while retaining both wrapper heads inside Sui's ten literal
-/// default.
+/// default. The generated event catalog validates these names, while their
+/// order remains explicit because the IR does not contain workload frequency.
 const DIRECT_FILTER_EXCLUSION_CANDIDATES: [&str; 8] = [
     "ExecutionPaymentFeesRecordedEvent",
     "GasPaymentConsumedEvent",
@@ -366,6 +367,20 @@ mod tests {
             &event_wrapper("FutureProtocolEvent"),
             only_tasks
         ));
+    }
+
+    #[test]
+    fn direct_filter_exclusions_match_the_generated_event_catalog() {
+        for (index, name) in DIRECT_FILTER_EXCLUSION_CANDIDATES.iter().enumerate() {
+            assert!(
+                crate::events::NexusEventKind::NAMES.contains(name),
+                "{name} is absent from the generated event catalog"
+            );
+            assert!(
+                !DIRECT_FILTER_EXCLUSION_CANDIDATES[..index].contains(name),
+                "{name} appears more than once"
+            );
+        }
     }
 
     #[cfg(feature = "test_utils")]
