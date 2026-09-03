@@ -1,9 +1,11 @@
 module {{ package_name }}::{{ module_name }};
 
-/// Minimal third-party TAP package scaffold.
-/// Fill this package with business logic, endpoint state, and standard TAP exports.
+/// Minimal TAP package scaffold.
+///
+/// Add the application logic and public TAP functions for this skill here.
 public struct {{ witness }} has drop {}
 
-public fun init_for_test(): {{ witness }} {
+/// Creates the initial TAP value.
+public fun new(): {{ witness }} {
     {{ witness }} {}
 }

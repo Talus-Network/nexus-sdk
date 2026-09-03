@@ -86,7 +86,21 @@ nexus-toolkit = { version = "2.0.0", path = "toolkit-rust" }
 nexus-sdk = { version = "2.0.0", path = "sdk" }
 
 # === Move package build deps ===
+move-binary-format = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-bytecode-verifier = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-compiler = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-ir-to-bytecode = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-package-alt = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-package-alt-compilation = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-unit-test = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-vm-config = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+move-vm-runtime = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2", features = ["tiered-gas"] }
 sui-move-build = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+sui-adapter = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2", package = "sui-adapter-latest" }
+sui-move-natives = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2", package = "sui-move-natives-latest" }
+sui-package-alt = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+sui-protocol-config = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+sui-types = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
 
 [profile.release]
 # debug = 1 means line tables only, which is minimum needed for good stack traces

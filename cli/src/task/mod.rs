@@ -111,6 +111,10 @@ Funding:
   address balance. Inspect both balance stores with `nexus gas balance`. Move
   MIST from an owned SUI coin with `nexus gas deposit --amount <MIST>`.
 
+Authorization:
+  Agent skills with onchain Tools that require grants must bind every such DAG
+  vertex to its recipient with repeatable --authorization-binding values.
+
 Examples:
   nexus task schedule --dag-id 0x42 \
     --prepay-amount-mist 500000000 \
@@ -123,7 +127,11 @@ Examples:
   nexus task schedule --dag-id 0x42 \
     --prepay-amount-mist 500000000 \
     --occurrence-budget-mist 500000000 \
-    --recurrence-interval-ms 60000 --recurrence-occurrences 10"#;
+    --recurrence-interval-ms 60000 --recurrence-occurrences 10
+  nexus task schedule --agent-id 0x42 --skill-id 0 \
+    --authorization-binding check_message=0x43 \
+    --prepay-amount-mist 500000000 \
+    --occurrence-budget-mist 500000000 --now"#;
 
 const ADD_OCCURRENCE_HELP: &str = r#"Adds one standalone occurrence to an existing Task.
 
