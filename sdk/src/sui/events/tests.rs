@@ -1,5 +1,8 @@
 use {
-    super::{driver::RECONNECT_DELAY, *},
+    super::{
+        driver::{MIN_REPLAY_RANGE_CHECKPOINTS, RECONNECT_DELAY},
+        *,
+    },
     crate::{sui, test_utils::sui_mocks},
     futures::StreamExt as _,
     std::sync::{
@@ -7,7 +10,10 @@ use {
         Arc,
     },
     sui_rpc::field::FieldMaskUtil as _,
-    tokio::time::{timeout, Duration},
+    tokio::{
+        sync::Barrier,
+        time::{timeout, Duration},
+    },
     tokio_util::sync::CancellationToken,
 };
 
@@ -88,6 +94,96 @@ fn invalid_event_field_is_a_configuration_error() {
     }
 }
 
+#[test]
+fn invalid_replay_endpoint_is_a_configuration_error() {
+    let query = RawEventQuery::new(
+        sui::grpc::EventFilter::default(),
+        sui::grpc::FieldMask::default(),
+    );
+    let result = EventIngestor::new("http://127.0.0.1:1", query)
+        .with_replay_rpc_url("not a url")
+        .start(Some(0));
+
+    match result {
+        Err(EventIngestionError::Configuration(message)) => {
+            assert!(message.contains("invalid replay gRPC URL"));
+        }
+        Err(other) => {
+            panic!("expected configuration failure, found {other:?}");
+        }
+        Ok(_) => panic!("invalid replay endpoint was accepted"),
+    }
+}
+
+#[tokio::test]
+async fn first_matching_checkpoint_uses_the_exact_filter_and_ascending_order() {
+    let filter = sui::grpc::EventFilter::default();
+    let expected_filter = filter.clone();
+    let mut event = sui::grpc::Event::default();
+    event.set_checkpoint(17);
+
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger
+        .expect_list_events()
+        .once()
+        .returning(move |request| {
+            let request = request.into_inner();
+            assert_eq!(request.filter(), &expected_filter);
+            assert_eq!(request.options().limit_opt(), Some(1));
+            assert_eq!(
+                request.options().ordering,
+                Some(sui::grpc::Ordering::Ascending as i32)
+            );
+            assert_eq!(request.read_mask.as_ref().unwrap().paths, ["checkpoint"]);
+            let frame = list_frame(
+                Some(event.clone()),
+                watermark(b"first", Some(17)),
+                sui::grpc::QueryEndReason::ItemLimit,
+            );
+            Ok(tonic::Response::new(
+                Box::pin(futures::stream::iter([Ok(frame)]))
+                    as sui_mocks::grpc::BoxListEventsStream,
+            ))
+        });
+    let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger),
+        ..Default::default()
+    });
+    let query = RawEventQuery::new(filter, sui::grpc::FieldMask::default());
+    let ingestor = EventIngestor::new(rpc_url, query);
+
+    assert_eq!(
+        ingestor.first_matching_checkpoint().await.unwrap(),
+        Some(17)
+    );
+}
+
+#[tokio::test]
+async fn first_matching_checkpoint_returns_none_for_an_empty_index() {
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger.expect_list_events().once().returning(|_request| {
+        let frame = list_frame(
+            None,
+            watermark(b"end", Some(17)),
+            sui::grpc::QueryEndReason::LedgerTip,
+        );
+        Ok(tonic::Response::new(
+            Box::pin(futures::stream::iter([Ok(frame)])) as sui_mocks::grpc::BoxListEventsStream,
+        ))
+    });
+    let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger),
+        ..Default::default()
+    });
+    let query = RawEventQuery::new(
+        sui::grpc::EventFilter::default(),
+        sui::grpc::FieldMask::default(),
+    );
+    let ingestor = EventIngestor::new(rpc_url, query);
+
+    assert_eq!(ingestor.first_matching_checkpoint().await.unwrap(), None);
+}
+
 #[tokio::test]
 async fn ingestor_adds_engine_fields_and_returns_raw_events() {
     let mut event = sui::grpc::Event::default();
@@ -145,6 +241,7 @@ async fn ingestor_adds_engine_fields_and_returns_raw_events() {
         .unwrap();
     assert_eq!(page.checkpoint, 12);
     assert_eq!(page.events, [expected_event]);
+    assert_eq!(page.source, EventPageSource::Live);
 }
 
 #[tokio::test]
@@ -181,6 +278,7 @@ async fn replay_uses_the_live_query_and_stops_at_its_cursor() {
                 request.options().before.as_deref(),
                 Some(b"live".as_slice())
             );
+            assert!(request.end_checkpoint.is_none());
             assert_eq!(request.filter(), &expected_filter);
             let paths = &request.read_mask.as_ref().unwrap().paths;
             for path in [
@@ -226,6 +324,175 @@ async fn replay_uses_the_live_query_and_stops_at_its_cursor() {
 
     assert_eq!(page.checkpoint, 8);
     assert_eq!(page.events, [expected_event]);
+    assert_eq!(page.source, EventPageSource::Replay);
+}
+
+#[tokio::test]
+async fn replay_and_subscription_use_their_configured_endpoints() {
+    let mut event = sui::grpc::Event::default();
+    event.set_checkpoint(8);
+    event.set_transaction_digest(sui::types::Digest::ZERO);
+    event.set_event_index(2);
+
+    let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
+    subscription
+        .expect_subscribe_events()
+        .once()
+        .returning(move |_request| {
+            let first = subscription_frame(None, watermark(b"live", Some(8)));
+            let stream = futures::stream::iter([Ok(first)]).chain(futures::stream::pending());
+            Ok(tonic::Response::new(
+                Box::pin(stream) as sui_mocks::grpc::BoxEventStream
+            ))
+        });
+    let live_rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        subscription_service_mock: Some(subscription),
+        ..Default::default()
+    });
+
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger
+        .expect_list_events()
+        .once()
+        .returning(move |request| {
+            let request = request.into_inner();
+            assert_eq!(request.start_checkpoint, Some(7));
+            assert!(request.options().before.is_none());
+            assert_eq!(request.end_checkpoint, Some(9));
+            let frame = list_frame(
+                Some(event.clone()),
+                watermark(b"live", Some(8)),
+                sui::grpc::QueryEndReason::CheckpointBound,
+            );
+            Ok(tonic::Response::new(
+                Box::pin(futures::stream::iter([Ok(frame)]))
+                    as sui_mocks::grpc::BoxListEventsStream,
+            ))
+        });
+    let replay_rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger),
+        ..Default::default()
+    });
+
+    let query = RawEventQuery::new(
+        sui::grpc::EventFilter::default(),
+        sui::grpc::FieldMask::default(),
+    );
+    let mut pages = EventIngestor::new("not a url", query)
+        .with_subscription_rpc_url(&live_rpc_url)
+        .with_replay_rpc_url(replay_rpc_url)
+        .start(Some(7))
+        .expect("ingestor should start");
+
+    let page = timeout(Duration::from_secs(2), async {
+        loop {
+            let page = pages.recv().await.unwrap().unwrap();
+            if !page.events.is_empty() {
+                return page;
+            }
+        }
+    })
+    .await
+    .expect("archive replay did not emit the event");
+
+    assert_eq!(page.checkpoint, 8);
+    assert_eq!(page.source, EventPageSource::Replay);
+}
+
+#[tokio::test]
+async fn checkpoint_ranges_fetch_concurrently_and_emit_in_order() {
+    let replay_end = MIN_REPLAY_RANGE_CHECKPOINTS * 2;
+    let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
+    subscription
+        .expect_subscribe_events()
+        .once()
+        .returning(move |_request| {
+            let first =
+                subscription_frame(None, watermark(b"live", Some(replay_end.saturating_sub(1))));
+            let stream = futures::stream::iter([Ok(first)]).chain(futures::stream::pending());
+            Ok(tonic::Response::new(
+                Box::pin(stream) as sui_mocks::grpc::BoxEventStream
+            ))
+        });
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let maximum_active = Arc::new(AtomicUsize::new(0));
+    let concurrent_requests = Arc::new(Barrier::new(2));
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger.expect_list_events().times(2).returning({
+        let active = Arc::clone(&active);
+        let maximum_active = Arc::clone(&maximum_active);
+        let concurrent_requests = Arc::clone(&concurrent_requests);
+        move |request| {
+            let request = request.into_inner();
+            let start = request.start_checkpoint.unwrap();
+            let end = request.end_checkpoint.unwrap();
+            assert_eq!(end, start + MIN_REPLAY_RANGE_CHECKPOINTS);
+            assert_eq!(
+                request.options().ordering,
+                Some(sui::grpc::Ordering::Ascending as i32)
+            );
+
+            let active = Arc::clone(&active);
+            let maximum_active = Arc::clone(&maximum_active);
+            let concurrent_requests = Arc::clone(&concurrent_requests);
+            let stream = futures::stream::once(async move {
+                let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                maximum_active.fetch_max(current, Ordering::SeqCst);
+                concurrent_requests.wait().await;
+                let mut event = sui::grpc::Event::default();
+                event.set_contents(vec![(start / MIN_REPLAY_RANGE_CHECKPOINTS) as u8]);
+                event.set_checkpoint(start);
+                event.set_transaction_digest(sui::types::Digest::ZERO);
+                event.set_event_index(0);
+                let frame = list_frame(
+                    Some(event),
+                    watermark(&start.to_be_bytes(), Some(end - 1)),
+                    sui::grpc::QueryEndReason::CheckpointBound,
+                );
+                active.fetch_sub(1, Ordering::SeqCst);
+                Ok(frame)
+            });
+            Ok(tonic::Response::new(
+                Box::pin(stream) as sui_mocks::grpc::BoxListEventsStream
+            ))
+        }
+    });
+
+    let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger),
+        subscription_service_mock: Some(subscription),
+        ..Default::default()
+    });
+    let query = RawEventQuery::new(
+        sui::grpc::EventFilter::default(),
+        sui::grpc::FieldMask::from_paths(["contents"]),
+    );
+    let mut pages = EventIngestor::new(&rpc_url, query)
+        .with_replay_concurrency(std::num::NonZeroUsize::new(2).unwrap())
+        .start(Some(0))
+        .expect("ingestor should start");
+
+    let pages = timeout(Duration::from_secs(2), async {
+        let mut replay = Vec::new();
+        while replay.len() != 2 {
+            let page = pages.recv().await.unwrap().unwrap();
+            if !page.events.is_empty() {
+                replay.push(page);
+            }
+        }
+        replay
+    })
+    .await
+    .expect("parallel replay did not finish");
+
+    assert_eq!(maximum_active.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        pages.iter().map(|page| page.checkpoint).collect::<Vec<_>>(),
+        [MIN_REPLAY_RANGE_CHECKPOINTS - 1, replay_end - 1]
+    );
+    assert_eq!(pages[0].events[0].contents().value(), &[0]);
+    assert_eq!(pages[1].events[0].contents().value(), &[1]);
 }
 
 #[tokio::test]
@@ -433,6 +700,7 @@ async fn replay_gap_recovery_reports_the_gap_and_resumes_live() {
         .expect("live ingestion failed after unavailable replay");
     assert_eq!(page.checkpoint, 20);
     assert!(page.events.is_empty());
+    assert_eq!(page.source, EventPageSource::Live);
 }
 
 #[tokio::test]

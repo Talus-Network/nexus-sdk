@@ -482,6 +482,8 @@ pub mod grpc {
     pub struct ServerMocks {
         /// Chain identity reported by the mock Sui service.
         pub chain_id: sui::types::Digest,
+        /// Whether service metadata advertises node side checkpoint waiting.
+        pub checkpoint_wait_supported: bool,
         pub ledger_service_mock: Option<MockLedgerService>,
         pub package_service_mock: Option<MockMovePackageService>,
         pub execution_service_mock: Option<MockTransactionExecutionService>,
@@ -503,13 +505,21 @@ pub mod grpc {
 
         let mut ledger_service = mocks.ledger_service_mock.take().unwrap_or_default();
         let chain_id = mocks.chain_id;
+        let checkpoint_wait_supported = mocks.checkpoint_wait_supported;
         ledger_service
             .expect_get_service_info()
             .times(0..)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetServiceInfoResponse::default();
                 response.chain_id = Some(chain_id.to_string());
-                Ok(tonic::Response::new(response))
+                let mut response = tonic::Response::new(response);
+                if checkpoint_wait_supported {
+                    response.metadata_mut().insert(
+                        "x-sui-checkpoint-wait",
+                        tonic::metadata::MetadataValue::from_static("true"),
+                    );
+                }
+                Ok(response)
             });
         let ledger_service = Some(LedgerServiceServer::new(ledger_service));
         let package_service = mocks
@@ -743,6 +753,10 @@ pub mod grpc {
             tx_service,
             sub_service,
             ledger_service,
+            true,
+            true,
+            2,
+            false,
             Some(gas_coin_ref),
             objects,
             changed_objects,
@@ -770,6 +784,10 @@ pub mod grpc {
             tx_service,
             sub_service,
             ledger_service,
+            true,
+            true,
+            2,
+            false,
             None,
             objects,
             changed_objects,
@@ -778,11 +796,130 @@ pub mod grpc {
         )
     }
 
+    /// Configures a checkpointed execution response that must not open a
+    /// checkpoint subscription or probe the ledger. When requested, the
+    /// execution must carry the node checkpoint wait header.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mock_checkpointed_execute_transaction_without_gas<F>(
+        tx_service: &mut MockTransactionExecutionService,
+        sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
+        require_checkpoint_wait: bool,
+        objects: Vec<sui::types::Object>,
+        changed_objects: Vec<sui::types::ChangedObject>,
+        events: Vec<sui::types::Event>,
+        assert_request: F,
+    ) -> SubmittedTransaction
+    where
+        F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
+    {
+        mock_execute_transaction_and_wait_for_checkpoint_inner(
+            tx_service,
+            sub_service,
+            ledger_service,
+            false,
+            true,
+            0,
+            require_checkpoint_wait,
+            None,
+            objects,
+            changed_objects,
+            events,
+            assert_request,
+        )
+    }
+
+    /// Configures finalized execution without checkpoint inclusion. No
+    /// confirmation RPC is permitted. When requested, the execution must
+    /// carry the node checkpoint wait header.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mock_uncheckpointed_execute_transaction_without_gas<F>(
+        tx_service: &mut MockTransactionExecutionService,
+        sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
+        require_checkpoint_wait: bool,
+        objects: Vec<sui::types::Object>,
+        changed_objects: Vec<sui::types::ChangedObject>,
+        events: Vec<sui::types::Event>,
+        assert_request: F,
+    ) -> SubmittedTransaction
+    where
+        F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
+    {
+        mock_execute_transaction_and_wait_for_checkpoint_inner(
+            tx_service,
+            sub_service,
+            ledger_service,
+            false,
+            false,
+            0,
+            require_checkpoint_wait,
+            None,
+            objects,
+            changed_objects,
+            events,
+            assert_request,
+        )
+    }
+
+    /// Configures an ambiguous execution response followed by exact digest
+    /// recovery from the ledger. No checkpoint subscription is permitted.
+    pub fn mock_ambiguous_execute_transaction_recovered_by_ledger<F>(
+        tx_service: &mut MockTransactionExecutionService,
+        sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
+        assert_request: F,
+    ) -> SubmittedTransaction
+    where
+        F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
+    {
+        let (submitted_digest, observed_digest) = tokio::sync::watch::channel(None);
+
+        sub_service.expect_subscribe_checkpoints().times(0);
+        tx_service
+            .expect_execute_transaction()
+            .times(1)
+            .returning(move |request| {
+                assert_request(request.get_ref());
+                let transaction =
+                    sui::types::Transaction::try_from(request.get_ref().transaction())
+                        .expect("the submitted transaction should decode");
+                submitted_digest
+                    .send(Some(transaction.digest()))
+                    .expect("the digest observer should remain active");
+                Err(tonic::Status::unavailable("execution response was lost"))
+            });
+        ledger_service
+            .expect_get_transaction()
+            .times(1)
+            .returning(|request| {
+                let digest = request
+                    .get_ref()
+                    .digest_opt()
+                    .expect("the recovery request should contain the exact digest")
+                    .to_owned();
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(digest);
+                transaction.set_checkpoint(1);
+                let mut response = sui::grpc::GetTransactionResponse::default();
+                response.set_transaction(transaction);
+                Ok(tonic::Response::new(response))
+            });
+
+        SubmittedTransaction {
+            digest: observed_digest,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn mock_execute_transaction_and_wait_for_checkpoint_inner<F>(
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
         ledger_service: &mut MockLedgerService,
+        expect_confirmation_rpcs: bool,
+        response_checkpointed: bool,
+        ledger_probe_count: usize,
+        expect_checkpoint_wait: bool,
         gas_coin_ref: Option<sui::types::ObjectReference>,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
@@ -813,7 +950,7 @@ pub mod grpc {
 
         sub_service
             .expect_subscribe_checkpoints()
-            .times(1)
+            .times(usize::from(expect_confirmation_rpcs))
             .returning(move |_request| {
                 let mut checkpoint_digest = checkpoint_digest.clone();
                 let stream = futures::stream::once(async move {
@@ -843,6 +980,15 @@ pub mod grpc {
             .expect_execute_transaction()
             .times(1)
             .returning(move |request| {
+                if expect_checkpoint_wait {
+                    assert_eq!(
+                        request
+                            .metadata()
+                            .get("x-sui-checkpoint-wait")
+                            .and_then(|value| value.to_str().ok()),
+                        Some("true")
+                    );
+                }
                 assert_request(request.get_ref());
                 let transaction =
                     sui::types::Transaction::try_from(request.get_ref().transaction())
@@ -886,7 +1032,9 @@ pub mod grpc {
                 tx_events.set_events(events.clone().into_iter().map(Into::into).collect());
                 tx.set_events(tx_events);
                 tx.set_digest(digest);
-                tx.set_checkpoint(1);
+                if response_checkpointed {
+                    tx.set_checkpoint(1);
+                }
 
                 response.set_transaction(tx);
 
@@ -902,16 +1050,16 @@ pub mod grpc {
             );
         }
 
+        let ledger_probe_requires_timestamp = response_checkpointed;
         ledger_service
             .expect_get_transaction()
-            .withf(|request| {
-                request
-                    .get_ref()
-                    .read_mask
-                    .as_ref()
-                    .is_some_and(|mask| mask.paths.iter().any(|path| path == "timestamp"))
+            .withf(move |request| {
+                request.get_ref().read_mask.as_ref().is_some_and(|mask| {
+                    !ledger_probe_requires_timestamp
+                        || mask.paths.iter().any(|path| path == "timestamp")
+                })
             })
-            .times(2)
+            .times(ledger_probe_count)
             .returning(|_| Err(tonic::Status::not_found("transaction is not indexed yet")));
 
         SubmittedTransaction {
@@ -1162,6 +1310,7 @@ pub mod grpc {
         object_ref: sui::types::ObjectReference,
         owner: sui::types::Owner,
         anchor: A,
+        inner_contents: Option<Vec<u8>>,
     ) -> (
         sui::types::Address,
         crate::move_bindings::primitives::object_state::Inner,
@@ -1201,13 +1350,18 @@ pub mod grpc {
         };
         let witness_field_type = dynamic_field_type(witness_key_type, witness_type.clone());
         let inner_field_type = dynamic_field_type(inner_key_type, inner_type.clone());
+        let batch_anchor_type = anchor_type.clone();
+        let batch_witness_field_type = witness_field_type.clone();
+        let batch_inner_field_type = inner_field_type.clone();
+        let batch_anchor = anchor.clone();
+        let batch_object_ref = object_ref.clone();
 
         let expected_parent = object_id.to_string();
         let listed_inner_field_type = inner_field_type.clone();
         state_service
             .expect_list_dynamic_fields()
             .withf(move |request| request.get_ref().parent_opt() == Some(expected_parent.as_str()))
-            .times(1..)
+            .times(0..)
             .returning(move |_request| {
                 let mut response = sui::grpc::ListDynamicFieldsResponse::default();
                 let mut witness_field = sui::grpc::DynamicField::default();
@@ -1242,7 +1396,7 @@ pub mod grpc {
                         !mask.paths.iter().any(|path| path == "previous_transaction")
                     })
             })
-            .times(1..)
+            .times(0..)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
                 let mut object = sui::grpc::Object::default();
@@ -1257,6 +1411,74 @@ pub mod grpc {
                 object.set_contents(contents);
                 response.set_object(object);
                 Ok(tonic::Response::new(response))
+            });
+
+        let expected_batch_ids = [object_id, witness_field_id, inner_field_id]
+            .map(|id| id.to_string())
+            .to_vec();
+        ledger_service
+            .expect_batch_get_objects()
+            .withf(move |request| {
+                request
+                    .get_ref()
+                    .requests
+                    .iter()
+                    .map(|request| request.object_id.clone().unwrap_or_default())
+                    .collect::<Vec<_>>()
+                    == expected_batch_ids
+            })
+            .times(0..)
+            .returning(move |_request| {
+                let object = |id,
+                              owner,
+                              object_type: &sui::types::StructTag,
+                              object_ref: Option<&sui::types::ObjectReference>,
+                              contents: Option<Vec<u8>>| {
+                    let mut object = sui::grpc::Object::default();
+                    object.set_object_id(id);
+                    object.set_owner(sui::grpc::Owner::from(owner));
+                    object.set_object_type(object_type.to_string());
+                    if let Some(object_ref) = object_ref {
+                        object.set_version(object_ref.version());
+                        object.set_digest(*object_ref.digest());
+                    }
+                    if let Some(contents) = contents {
+                        let mut bcs = sui::grpc::Bcs::default();
+                        bcs.set_name(object_type.to_string());
+                        bcs.set_value(contents);
+                        object.set_contents(bcs);
+                    }
+                    sui::grpc::GetObjectResult::new_object(object)
+                };
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::new(vec![
+                        object(
+                            object_id,
+                            owner,
+                            &batch_anchor_type,
+                            Some(&batch_object_ref),
+                            Some(bcs::to_bytes(&batch_anchor).expect("Anchor serializes")),
+                        ),
+                        object(
+                            witness_field_id,
+                            sui::types::Owner::Object(object_id),
+                            &batch_witness_field_type,
+                            None,
+                            None,
+                        ),
+                        object(
+                            inner_field_id,
+                            sui::types::Owner::Object(object_id),
+                            &batch_inner_field_type,
+                            Some(&sui::types::ObjectReference::new(
+                                inner_field_id,
+                                1,
+                                sui::types::Digest::from([1; 32]),
+                            )),
+                            inner_contents.clone(),
+                        ),
+                    ]),
+                ))
             });
 
         (inner_field_id, inner_key, inner_field_type)
@@ -1287,6 +1509,7 @@ pub mod grpc {
             object_ref,
             owner,
             anchor,
+            None,
         );
     }
 
@@ -1318,21 +1541,92 @@ pub mod grpc {
         }
 
         let object_id = *object_ref.object_id();
-        let (inner_field_id, inner_key, inner_field_type) = mock_object_state_metadata::<A, W, V>(
-            ledger_service,
-            state_service,
-            context,
-            object_ref,
-            owner,
-            anchor,
+        let batch_object_ref = object_ref.clone();
+        let batch_anchor = anchor.clone();
+        let batch_anchor_type = crate::move_bindings::struct_tag::<A>(context);
+        let inner_key = crate::move_bindings::primitives::object_state::Inner::new(false);
+        let inner_key_type = crate::move_bindings::type_tag::<
+            crate::move_bindings::primitives::object_state::Inner,
+        >(context);
+        let inner_field_id = object_id.derive_dynamic_child_id(
+            &inner_key_type,
+            &bcs::to_bytes(&inner_key).expect("Inner key serializes"),
         );
-
         let inner_field = DynamicFieldValue {
             id: inner_field_id,
             name: inner_key,
-            value: inner,
+            value: inner.clone(),
         };
         let inner_contents = bcs::to_bytes(&inner_field).expect("Inner field serializes");
+        let (observed_inner_field_id, observed_inner_key, inner_field_type) =
+            mock_object_state_metadata::<A, W, V>(
+                ledger_service,
+                state_service,
+                context,
+                object_ref,
+                owner,
+                anchor,
+                Some(inner_contents.clone()),
+            );
+        assert_eq!(observed_inner_field_id, inner_field_id);
+        assert_eq!(observed_inner_key, inner_key);
+        let batch_inner_contents = inner_contents.clone();
+        let batch_inner_field_type = inner_field_type.clone();
+        let batch_expected_ids = [object_id, inner_field_id]
+            .map(|id| id.to_string())
+            .to_vec();
+        ledger_service
+            .expect_batch_get_objects()
+            .withf(move |request| {
+                request
+                    .get_ref()
+                    .requests
+                    .iter()
+                    .map(|request| request.object_id.clone().unwrap_or_default())
+                    .collect::<Vec<_>>()
+                    == batch_expected_ids
+            })
+            .times(0..)
+            .returning(move |_request| {
+                let object = |id,
+                              owner,
+                              version,
+                              digest,
+                              object_type: &sui::types::StructTag,
+                              contents: Vec<u8>| {
+                    let mut object = sui::grpc::Object::default();
+                    object.set_object_id(id);
+                    object.set_owner(sui::grpc::Owner::from(owner));
+                    object.set_version(version);
+                    object.set_digest(digest);
+                    object.set_object_type(object_type.to_string());
+                    let mut bcs = sui::grpc::Bcs::default();
+                    bcs.set_name(object_type.to_string());
+                    bcs.set_value(contents);
+                    object.set_contents(bcs);
+                    sui::grpc::GetObjectResult::new_object(object)
+                };
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::new(vec![
+                        object(
+                            object_id,
+                            owner,
+                            batch_object_ref.version(),
+                            *batch_object_ref.digest(),
+                            &batch_anchor_type,
+                            bcs::to_bytes(&batch_anchor).expect("Anchor serializes"),
+                        ),
+                        object(
+                            inner_field_id,
+                            sui::types::Owner::Object(object_id),
+                            1,
+                            sui::types::Digest::from([1; 32]),
+                            &batch_inner_field_type,
+                            batch_inner_contents.clone(),
+                        ),
+                    ]),
+                ))
+            });
         let expected_inner_id = inner_field_id.to_string();
         ledger_service
             .expect_get_object()
@@ -1573,9 +1867,22 @@ pub mod grpc {
                 )
             })
             .collect::<Vec<_>>();
+        let expected_ids = objects
+            .iter()
+            .map(|(object_ref, _, _)| object_ref.object_id().to_string())
+            .collect::<Vec<_>>();
 
         ledger_service
             .expect_batch_get_objects()
+            .withf(move |request| {
+                request
+                    .get_ref()
+                    .requests
+                    .iter()
+                    .map(|request| request.object_id.clone().unwrap_or_default())
+                    .collect::<Vec<_>>()
+                    == expected_ids
+            })
             .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::BatchGetObjectsResponse::default();

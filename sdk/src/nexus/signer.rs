@@ -31,6 +31,7 @@ pub struct Signer {
     pub(super) pk: sui::crypto::Ed25519PrivateKey,
     pub(super) transaction_timeout: Duration,
     event_decoder: NexusEventDecoder,
+    checkpoint_wait_supported: bool,
 }
 
 impl Signer {
@@ -40,11 +41,22 @@ impl Signer {
         transaction_timeout: Duration,
         event_decoder: NexusEventDecoder,
     ) -> Self {
+        Self::with_checkpoint_wait(client, pk, transaction_timeout, event_decoder, false)
+    }
+
+    pub(super) fn with_checkpoint_wait(
+        client: Arc<sui::grpc::Client>,
+        pk: sui::crypto::Ed25519PrivateKey,
+        transaction_timeout: Duration,
+        event_decoder: NexusEventDecoder,
+        checkpoint_wait_supported: bool,
+    ) -> Self {
         Self {
             client,
             pk,
             transaction_timeout,
             event_decoder,
+            checkpoint_wait_supported,
         }
     }
 
@@ -185,13 +197,25 @@ impl Signer {
                 "events.events",
                 "objects.objects",
                 "digest",
+                "checkpoint",
             ]));
 
-        let response = client
-            .execute_transaction_and_wait_for_checkpoint(tx_request, self.transaction_timeout)
-            .await
-            .map_err(|error| map_execute_and_wait_error(digest, self.transaction_timeout, error))?
-            .into_inner();
+        let response = if self.checkpoint_wait_supported {
+            client
+                .execution_client()
+                .execute_transaction(sui::grpc::checkpoint_wait::execution_request(tx_request))
+                .await
+                .map_err(|source| map_execute_rpc_error(digest, source))?
+                .into_inner()
+        } else {
+            client
+                .execute_transaction_and_wait_for_checkpoint(tx_request, self.transaction_timeout)
+                .await
+                .map_err(|error| {
+                    map_execute_and_wait_error(digest, self.transaction_timeout, error)
+                })?
+                .into_inner()
+        };
 
         let (executed, checkpoint) = validated_execution_response(digest, response)?;
         Ok((executed, digest, checkpoint))
@@ -242,12 +266,7 @@ fn map_execute_and_wait_error(
     error: ExecuteAndWaitError,
 ) -> NexusError {
     match error {
-        ExecuteAndWaitError::RpcError(source) if is_submission_rejection(source.code()) => {
-            TransactionError::submission_rejected(digest, source).into()
-        }
-        ExecuteAndWaitError::RpcError(source) => {
-            TransactionError::submission_unknown(digest, source).into()
-        }
+        ExecuteAndWaitError::RpcError(source) => map_execute_rpc_error(digest, source),
         ExecuteAndWaitError::MissingTransaction => NexusError::TransactionBuilding(
             anyhow::anyhow!("transaction {digest} request is missing the transaction"),
         ),
@@ -263,6 +282,14 @@ fn map_execute_and_wait_error(
         other => NexusError::TransactionBuilding(anyhow::anyhow!(
             "transaction {digest} could not be executed: {other}"
         )),
+    }
+}
+
+fn map_execute_rpc_error(digest: sui::types::Digest, source: tonic::Status) -> NexusError {
+    if is_submission_rejection(source.code()) {
+        TransactionError::submission_rejected(digest, source).into()
+    } else {
+        TransactionError::submission_unknown(digest, source).into()
     }
 }
 

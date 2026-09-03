@@ -8,7 +8,7 @@ use {
             payment::SkillPaymentPolicy,
             version::InterfaceVersion,
         },
-        nexus::workflow::fetch_dag_vertices_bcs,
+        nexus::workflow::fetch_dag_vertices_from_links_bcs,
         types::{tap_input_commitment_from_dag_inputs, validate_requirements},
     },
 };
@@ -124,7 +124,7 @@ async fn fetch_input_commitment_with_client(
                 "failed to fetch DAG '{dag_id}' for TAP input commitment: {error}"
             ))
         })?;
-    let vertices = fetch_dag_vertices_bcs(nexus_client.crawler(), &dag.data)
+    let vertices = fetch_dag_vertices_from_links_bcs(nexus_client.crawler(), &context, &dag.data)
         .await
         .map_err(|error| {
             NexusCliError::Any(anyhow!(

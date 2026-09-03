@@ -1180,7 +1180,7 @@ mod tests {
             .next()
             .unwrap();
 
-        let package = crate::move_package::compile_move_package(
+        let package = crate::move_package::compile_move_package_fixture(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../sdk/tests/move/onchain_tool_test"),
             &[],

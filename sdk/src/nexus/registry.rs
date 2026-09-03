@@ -3,10 +3,16 @@
 use {
     crate::{
         move_bindings::{
+            move_std::type_name::TypeName,
             primitives,
-            registry::{self, leader::LeaderRegistryInnerV1},
+            registry::{
+                self,
+                era::V1 as RegistryWitnessV1,
+                leader::{Leader, LeaderRegistry, LeaderRegistryInnerV1, LeaderStatus},
+            },
+            sui_framework::object::ID,
         },
-        nexus::crawler::Crawler,
+        nexus::{client::NexusClient, crawler::Crawler},
         sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
         transactions::tool::{ExternalVerifierObjectInput, ExternalVerifierRegistrationInput},
         types::{NexusContext, PackageRole},
@@ -17,6 +23,142 @@ use {
 
 type AnyCloneableOwnerCap =
     primitives::owner_cap::CloneableOwnerCap<registry::leader_cap::OverNetwork>;
+
+const STAKE_WEIGHTED_RANK_DOMAIN: &[u8] = b"nexus_registry::leader::stake_weighted_rank_v1";
+
+/// Current eligible leaders and the exact Move work domain used for ranking.
+#[derive(Clone, Debug)]
+pub struct WorkAdmissionCommittee {
+    eligible: Vec<(sui::types::Address, u64)>,
+    work_type: TypeName,
+}
+
+impl WorkAdmissionCommittee {
+    /// Select the two leaders for one Scheduler seed.
+    pub fn rank(&self, seed: &[u8]) -> anyhow::Result<[sui::types::Address; 2]> {
+        rank_stake_weighted(self.eligible.clone(), &self.work_type, seed)
+    }
+
+    /// Returns whether `leader` is currently eligible for any work seed.
+    pub fn contains(&self, leader: sui::types::Address) -> bool {
+        self.eligible
+            .iter()
+            .any(|(candidate, _)| *candidate == leader)
+    }
+}
+
+/// Read the current Move inputs shared by all Scheduler committee rankings.
+pub async fn fetch_work_admission_committee(
+    client: &NexusClient,
+    context: &NexusContext,
+) -> anyhow::Result<WorkAdmissionCommittee> {
+    let registry_id = client.get_nexus_objects().leader_registry.object_id();
+    let registry = client
+        .state_resolver()
+        .load_inner::<LeaderRegistry, RegistryWitnessV1, LeaderRegistryInnerV1>(
+            registry_id,
+            context,
+        )
+        .await?;
+    let leader_ids = registry.data.leaders.contents.clone();
+    let records = client
+        .crawler()
+        .get_dynamic_fields_by_keys::<ID, Leader, _>(
+            registry.data.records.id(),
+            leader_ids.iter().cloned(),
+            &crate::move_bindings::type_tag::<ID>(context),
+        )
+        .await?;
+
+    let mut eligible = Vec::with_capacity(leader_ids.len());
+    for id in leader_ids {
+        let leader = records.get(&id).ok_or_else(|| {
+            anyhow!(
+                "leader registry record {} is missing from its dynamic field table",
+                id.bytes
+            )
+        })?;
+        if leader.status == LeaderStatus::Active
+            && leader.stake_manager.pool.value >= registry.data.min_stake_us
+        {
+            eligible.push((id.bytes, leader.stake_manager.pool.value));
+        }
+    }
+    let origin = context.type_origin(PackageRole::Scheduler, "era", "WorkAdmissionV1")?;
+    let work_type = TypeName::new(&format!(
+        "{}::era::WorkAdmissionV1",
+        hex::encode(origin.as_bytes())
+    ));
+
+    Ok(WorkAdmissionCommittee {
+        eligible,
+        work_type,
+    })
+}
+
+/// Reproduce the current Scheduler work admission committee selected by Move.
+///
+/// This reads the current [`LeaderRegistry`] and mirrors
+/// `leader::rank_active_leaders_stake_weighted` exactly. The returned order is
+/// advisory. A transaction must still pass Move admission because registry
+/// state can change after this read.
+pub async fn rank_work_admission_leaders(
+    client: &NexusClient,
+    context: &NexusContext,
+    seed: &[u8],
+) -> anyhow::Result<[sui::types::Address; 2]> {
+    fetch_work_admission_committee(client, context)
+        .await?
+        .rank(seed)
+}
+
+fn rank_stake_weighted(
+    mut remaining: Vec<(sui::types::Address, u64)>,
+    work_type: &TypeName,
+    seed: &[u8],
+) -> anyhow::Result<[sui::types::Address; 2]> {
+    anyhow::ensure!(!remaining.is_empty(), "no eligible leader exists");
+    if remaining.len() == 1 {
+        return Ok([remaining[0].0, remaining[0].0]);
+    }
+
+    let mut selected = [sui::types::Address::ZERO; 2];
+    for (step, slot) in selected.iter_mut().enumerate() {
+        let total = remaining
+            .iter()
+            .try_fold(0_u128, |total, (_, weight)| {
+                total.checked_add(u128::from(*weight))
+            })
+            .ok_or_else(|| anyhow!("eligible leader stake overflow"))?;
+        anyhow::ensure!(total > 0, "eligible leader stake is zero");
+        let random = stake_weighted_u64(work_type, seed, step as u64)? as u128;
+        let mut cursor = random % total;
+        let chosen = remaining
+            .iter()
+            .position(|(_, weight)| {
+                if cursor < u128::from(*weight) {
+                    true
+                } else {
+                    cursor -= u128::from(*weight);
+                    false
+                }
+            })
+            .ok_or_else(|| anyhow!("stake weighted selection did not choose a leader"))?;
+        *slot = remaining.swap_remove(chosen).0;
+    }
+    Ok(selected)
+}
+
+fn stake_weighted_u64(work_type: &TypeName, seed: &[u8], step: u64) -> anyhow::Result<u64> {
+    let mut message = STAKE_WEIGHTED_RANK_DOMAIN.to_vec();
+    message.extend(bcs::to_bytes(work_type)?);
+    message.extend(bcs::to_bytes(&seed.to_vec())?);
+    message.extend(bcs::to_bytes(&step)?);
+    let digest = sui::types::hash::Hasher::digest(message).into_inner();
+    Ok(u64::from_be_bytes(
+        digest[..8].try_into().expect("digest has eight bytes"),
+    ))
+}
 
 /// Decode the registry network ID from a loaded leader registry payload.
 pub fn extract_network_id_from_leader_registry(
@@ -368,6 +510,56 @@ mod tests {
     fn sample_leader_registry_bytes(network: sui::types::Address) -> Vec<u8> {
         let object_id = sui::types::Address::generate(rand::thread_rng());
         bcs::to_bytes(&LeaderRegistryInnerV1::new_for_test(object_id, network)).unwrap()
+    }
+
+    #[test]
+    fn stake_weighted_ranking_matches_the_move_hash_vector() {
+        let work_type = TypeName::new(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::era::WorkAdmissionV1",
+        );
+        let seed = b"fixed-seed";
+
+        assert_eq!(
+            stake_weighted_u64(&work_type, seed, 0).unwrap(),
+            8_542_078_142_993_533_861
+        );
+        assert_eq!(
+            stake_weighted_u64(&work_type, seed, 1).unwrap(),
+            6_899_840_498_555_412_980
+        );
+
+        let leader_a = sui::types::Address::from_static("0xa");
+        let leader_b = sui::types::Address::from_static("0xb");
+        let leader_c = sui::types::Address::from_static("0xc");
+        let ranked = rank_stake_weighted(
+            vec![(leader_a, 10), (leader_b, 20), (leader_c, 70)],
+            &work_type,
+            seed,
+        )
+        .unwrap();
+
+        assert_eq!(ranked, [leader_c, leader_b]);
+    }
+
+    #[test]
+    fn stake_weighted_ranking_matches_move_edge_cases() {
+        let work_type = TypeName::new("a::m::W");
+        let leader = sui::types::Address::from_static("0xa");
+
+        assert_eq!(
+            rank_stake_weighted(vec![(leader, 1)], &work_type, b"seed").unwrap(),
+            [leader, leader]
+        );
+        assert!(rank_stake_weighted(Vec::new(), &work_type, b"seed").is_err());
+        assert!(rank_stake_weighted(
+            vec![
+                (sui::types::Address::from_static("0xa"), 0),
+                (sui::types::Address::from_static("0xb"), 0),
+            ],
+            &work_type,
+            b"seed",
+        )
+        .is_err());
     }
 
     fn owned_capability_object(

@@ -85,6 +85,12 @@ const PROTOCOL_LIMIT_MODULES: &[(&str, &str, &str, &[&str])] = &[
             "MAX_NEXUS_DATA_BYTES",
         ],
     ),
+    (
+        "scheduler",
+        "scheduler",
+        "scheduler/sources/scheduler.move",
+        &["LEADER_SUBMISSION_WINDOW_MS"],
+    ),
 ];
 
 type ProtocolLimits = BTreeMap<String, BTreeMap<String, BTreeMap<String, u64>>>;

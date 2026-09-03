@@ -11,8 +11,6 @@
 mod history;
 
 #[cfg(test)]
-use self::history::MAX_TRANSACTION_NOT_FOUND_RETRIES;
-#[cfg(test)]
 use crate::move_bindings::tool::era::V1 as ToolWitnessV1;
 #[cfg(feature = "walrus")]
 use crate::walrus::StorageConf;
@@ -491,6 +489,7 @@ async fn fetch_dag_in_context(
 
 fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     match event {
+        NexusEventKind::AgentSkillExecutionRequested(e) => Some(e.execution_id),
         NexusEventKind::OccurrenceDispatched(e) => Some(e.execution_id.into()),
         NexusEventKind::ExecutionPaymentFeesRecorded(e) => Some(e.execution_id),
         NexusEventKind::ExecutionPaymentToolCostSnapshotted(e) => Some(e.execution_id),
@@ -667,6 +666,72 @@ pub async fn fetch_dag_vertices_bcs(
         .collect())
 }
 
+/// Fetches every DAG vertex by traversing its stored linked table.
+///
+/// Each field ID is derived from the preceding vertex and read from the exact
+/// object service. This path needs no collection index and validates the size,
+/// links, and tail recorded by the table.
+///
+/// # Errors
+///
+/// Returns an error when the table links are incomplete, cyclic, inconsistent,
+/// or a field cannot be fetched and decoded.
+pub async fn fetch_dag_vertices_from_links_bcs(
+    crawler: &Crawler,
+    context: &NexusContext,
+    dag: &dag_move::DAGInnerV1,
+) -> anyhow::Result<HashMap<graph_move::Vertex, graph_move::VertexInfo>> {
+    let expected_size = dag.vertices.size();
+    let head = dag.vertices.head.cloned_option();
+    let tail = dag.vertices.tail.cloned_option();
+    if expected_size == 0 {
+        if head.is_some() || tail.is_some() {
+            bail!("Empty DAG vertex table records a head or tail");
+        }
+        return Ok(HashMap::new());
+    }
+
+    let mut current = head.ok_or_else(|| anyhow!("DAG vertex table has no head"))?;
+    let key_type = crate::move_bindings::type_tag::<graph_move::Vertex>(context);
+    let mut previous = None;
+    let mut vertices = HashMap::with_capacity(expected_size);
+
+    for position in 0..expected_size {
+        if vertices.contains_key(&current) {
+            bail!("DAG vertex table contains a cycle at position {position}");
+        }
+        let node = crawler
+            .get_dynamic_field_by_key::<
+                graph_move::Vertex,
+                linked_table::Node<graph_move::Vertex, graph_move::VertexInfo>,
+            >(dag.vertices.id(), current.clone(), &key_type)
+            .await?
+            .ok_or_else(|| anyhow!("DAG vertex table is missing position {position}"))?;
+        if node.prev.cloned_option() != previous {
+            bail!("DAG vertex table has an invalid previous link at position {position}");
+        }
+
+        let next = node.next.cloned_option();
+        previous = Some(current.clone());
+        vertices.insert(current.clone(), node.value);
+
+        if position + 1 == expected_size {
+            if next.is_some() {
+                bail!("DAG vertex table exceeds its declared size");
+            }
+        } else {
+            current = next.ok_or_else(|| {
+                anyhow!("DAG vertex table ends before its declared size at position {position}")
+            })?;
+        }
+    }
+
+    if previous != tail {
+        bail!("DAG vertex table tail does not match its final link");
+    }
+    Ok(vertices)
+}
+
 /// Fetch one vertex from a DAG by its typed key.
 ///
 /// The lookup derives the dynamic field identifier from the vertex key and
@@ -764,14 +829,7 @@ pub(crate) async fn fetch_dag_snapshot(
             (entry_group.key.name.as_str().to_owned(), vertices)
         })
         .collect();
-    let vertices = fetch_dag_vertices_bcs(client.crawler(), &dag.data).await?;
-    if vertices.len() != dag.data.vertices.size() {
-        bail!(
-            "DAG '{dag_id}' linked vertex count {} differs from declared count {}",
-            vertices.len(),
-            dag.data.vertices.size()
-        );
-    }
+    let vertices = fetch_dag_vertices_from_links_bcs(client.crawler(), context, &dag.data).await?;
     let vertex_meta_schemas = vertices
         .into_iter()
         .map(|(vertex, info)| {
@@ -817,6 +875,50 @@ pub async fn fetch_committed_tool_result_for_walk(
         )
         .await
         .map(|value| value.map(CommittedToolResultView::from))
+}
+
+/// Decodes the committed result written by one finalized transaction.
+///
+/// The value is read from the output objects in `executed`; this function does
+/// not issue a Sui request. The dynamic field identity, parent execution, key,
+/// value type, and writing transaction are all validated before decoding. An
+/// absent output returns [`None`].
+///
+/// # Errors
+///
+/// Returns an error when the finalized response has a different transaction
+/// identity or contains an invalid committed result output.
+pub fn committed_tool_result_from_finalized_output(
+    crawler: &Crawler,
+    context: &NexusContext,
+    executed: &sui::grpc::ExecutedTransaction,
+    transaction: sui::types::Digest,
+    execution_id: sui::types::Address,
+    walk_index: u64,
+) -> anyhow::Result<Option<CommittedToolResultView>> {
+    let key = execution_move::CommittedToolResultKey { walk_index };
+    let outputs = crawler.transaction_dynamic_field_outputs::<
+        execution_move::CommittedToolResultKey,
+        execution_move::CommittedToolResult,
+    >(
+        executed,
+        transaction,
+        &key,
+        &crate::move_bindings::type_tag::<execution_move::CommittedToolResultKey>(context),
+        &crate::move_bindings::type_tag::<execution_move::CommittedToolResult>(context),
+    )?;
+    let mut matching = outputs
+        .into_iter()
+        .filter(|output| output.object_id == execution_id);
+    let output = matching.next();
+    if matching.next().is_some() {
+        bail!(
+            "Transaction '{transaction}' wrote more than one committed result for execution \
+             '{execution_id}' walk {walk_index}"
+        );
+    }
+
+    Ok(output.map(|output| CommittedToolResultView::from(output.data)))
 }
 
 pub async fn inspect_expired_walk_resolution(
@@ -1301,6 +1403,36 @@ where
         .get_dynamic_fields::<graph_move::VertexInputPort, T>(
             dag.defaults_to_input_ports.id(),
             dag.defaults_to_input_ports.size(),
+        )
+        .await
+}
+
+/// Fetch the requested DAG default values by their typed input port keys.
+///
+/// Duplicate keys are fetched once. Missing defaults are omitted. The amount
+/// of work depends on the requested ports rather than every default stored in
+/// the DAG. Use [`fetch_dag_default_values_bcs`] only when the complete table
+/// is required.
+///
+/// # Errors
+///
+/// Returns an error when a key cannot be encoded or a field cannot be fetched,
+/// validated, or decoded.
+pub async fn fetch_dag_default_values_by_keys_bcs<T, I>(
+    crawler: &Crawler,
+    context: &NexusContext,
+    dag: &dag_move::DAGInnerV1,
+    ports: I,
+) -> anyhow::Result<HashMap<graph_move::VertexInputPort, T>>
+where
+    T: serde::de::DeserializeOwned,
+    I: IntoIterator<Item = graph_move::VertexInputPort>,
+{
+    crawler
+        .get_dynamic_fields_by_keys::<graph_move::VertexInputPort, T, _>(
+            dag.defaults_to_input_ports.id(),
+            ports,
+            &crate::move_bindings::type_tag::<graph_move::VertexInputPort>(context),
         )
         .await
 }
@@ -2587,6 +2719,7 @@ mod tests {
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
+                        AgentSkillExecutionRequestedEvent,
                         CommittedToolResultEvent,
                         EndStateReachedEvent,
                         ExecutionFinishedEvent,
@@ -2757,6 +2890,9 @@ mod tests {
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let mut state = dag_bcs(1);
         let vertices_id = state.vertices.id();
+        let vertex = graph_move::Vertex::new("sum");
+        state.vertices.head = Some(vertex.clone()).into();
+        state.vertices.tail = Some(vertex.clone()).into();
         state
             .entry_groups
             .contents
@@ -2776,21 +2912,12 @@ mod tests {
             });
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        let vertex = graph_move::Vertex::new("sum");
-        let vertex_field_ref = sui_mocks::mock_sui_object_ref();
-        sui_mocks::grpc::mock_list_dynamic_fields_for(
-            &mut state_service_mock,
-            vertices_id,
-            vec![(vertex.clone(), *vertex_field_ref.object_id())],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+        sui_mocks::grpc::mock_get_dynamic_field_by_key(
             &mut ledger_service_mock,
-            vec![(
-                vertex_field_ref,
-                sui::types::Owner::Object(vertices_id),
-                vertex,
-                offchain_vertex_node_bcs(&fqn!("xyz.taluslabs.fixture@1")),
-            )],
+            vertices_id,
+            &crate::move_bindings::type_tag::<graph_move::Vertex>(&nexus_objects),
+            vertex,
+            offchain_vertex_node_bcs(&fqn!("xyz.taluslabs.fixture@1")),
         );
         mock_get_dag_bcs(
             &mut ledger_service_mock,
@@ -4059,7 +4186,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inspect_execution_retries_transaction_not_found_after_visible_object_update() {
+    async fn inspect_execution_retries_missing_transaction_until_deadline() {
         let mut rng = rand::thread_rng();
         let nexus_objects = sui_mocks::mock_nexus_context();
         let dag_object_id = sui::types::Address::generate(&mut rng);
@@ -4126,7 +4253,7 @@ mod tests {
         ledger_service_mock
             .expect_get_transaction()
             .withf(move |request| request.get_ref().digest_opt() == Some(tx_7.to_string().as_str()))
-            .times(1)
+            .times(6)
             .returning(|_| Err(tonic::Status::not_found("transaction not visible yet")));
         expect_transaction_update(
             &mut ledger_service_mock,
@@ -4360,7 +4487,7 @@ mod tests {
             .withf(move |request| {
                 request.get_ref().digest_opt() == Some(missing_tx.to_string().as_str())
             })
-            .times(1 + MAX_TRANSACTION_NOT_FOUND_RETRIES)
+            .times(1..)
             .returning(|_| Err(tonic::Status::not_found("transaction pruned")));
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -4385,9 +4512,18 @@ mod tests {
         assert!(result.next_event.recv().await.is_none());
         let error = result.poller.await.unwrap().expect_err("history must fail");
         let message = error.to_string();
-        assert!(message.contains(&execution_object_id.to_string()));
-        assert!(message.contains(&missing_tx.to_string()));
-        assert!(message.contains("last successfully reconstructed version none"));
+        assert!(
+            message.contains(&execution_object_id.to_string()),
+            "unexpected inspection error: {message}"
+        );
+        assert!(
+            message.contains(&missing_tx.to_string()),
+            "unexpected inspection error: {message}"
+        );
+        assert!(
+            message.contains("last successfully reconstructed version none"),
+            "unexpected inspection error: {message}"
+        );
     }
 
     #[tokio::test]
@@ -4662,6 +4798,21 @@ mod tests {
             execution_id: object_id(execution),
             dispatched_at_ms: 11,
         });
+
+        assert_eq!(event_execution_id(&event), Some(execution));
+    }
+
+    #[test]
+    fn execution_history_includes_the_agent_skill_request() {
+        let execution = sui::types::Address::TWO;
+        let event =
+            NexusEventKind::AgentSkillExecutionRequested(AgentSkillExecutionRequestedEvent {
+                execution_id: execution,
+                agent_id: object_id(sui::types::Address::THREE),
+                skill_id: 7,
+                interface_revision: InterfaceVersion::new(1),
+                payment_id: sui::types::Address::from_static("0x4"),
+            });
 
         assert_eq!(event_execution_id(&event), Some(execution));
     }

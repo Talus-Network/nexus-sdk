@@ -531,6 +531,26 @@ impl NetworkAuthReader {
         }
     }
 
+    /// Creates a reader that preserves the state catalog configured on
+    /// `client`.
+    ///
+    /// Current objects are read through the client's primary Sui service. An
+    /// indexed catalog configured by
+    /// [`NexusClientBuilder::with_state_catalog_rpc_url`](crate::nexus::client::NexusClientBuilder::with_state_catalog_rpc_url)
+    /// remains available when a state key lineage must be discovered.
+    pub fn from_client(
+        client: &NexusClient,
+        registry_type_origin_pkg_id: sui::types::Address,
+        network_auth_object_id: sui::types::Address,
+    ) -> Self {
+        Self {
+            crawler: client.crawler().clone(),
+            state_resolver: client.state_resolver().clone(),
+            registry_type_origin_pkg_id,
+            network_auth_object_id,
+        }
+    }
+
     /// Creates a reader backed by the Sui gRPC endpoint at `rpc_url`.
     ///
     /// # Errors

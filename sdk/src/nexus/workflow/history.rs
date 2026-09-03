@@ -12,8 +12,6 @@ use {
     tokio::time::{Duration, Instant},
 };
 
-pub(crate) const MAX_TRANSACTION_NOT_FOUND_RETRIES: usize = 3;
-
 /// Input that anchors one shared object history reconstruction.
 pub(crate) struct ObjectHistoryRequest<'a> {
     pub object_name: &'a str,
@@ -45,23 +43,22 @@ async fn fetch_transaction_update_with_visibility_retry(
     poll_interval: Duration,
     deadline: Instant,
 ) -> anyhow::Result<TransactionUpdate> {
-    let mut retries = 0;
-
     loop {
         match crawler.get_transaction_update(digest).await {
             Ok(update) => return Ok(update),
-            Err(error)
-                if retries < MAX_TRANSACTION_NOT_FOUND_RETRIES
-                    && is_transaction_not_found(&error) =>
-            {
+            Err(error) if is_transaction_not_found(&error) => {
                 let Some(retry_at) = Instant::now().checked_add(poll_interval) else {
                     return Err(error);
                 };
-                if retry_at >= deadline {
+                let Some(retry_window_end) = retry_at.checked_add(poll_interval) else {
+                    return Err(error);
+                };
+                // Keep the final interval for returning the missing digest and
+                // version context before the enclosing inspection times out.
+                if retry_window_end >= deadline {
                     return Err(error);
                 }
 
-                retries += 1;
                 tokio::time::sleep_until(retry_at).await;
             }
             Err(error) => return Err(error),

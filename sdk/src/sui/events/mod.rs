@@ -6,7 +6,7 @@ mod metrics;
 mod query;
 
 pub use {
-    ingestor::{EventIngestionError, EventIngestor, EventPage, EventPageReceiver},
+    ingestor::{EventIngestionError, EventIngestor, EventPage, EventPageReceiver, EventPageSource},
     query::{EventQuery, RawEventQuery},
 };
 

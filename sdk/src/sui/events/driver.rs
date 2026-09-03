@@ -1,16 +1,35 @@
 use {
     super::{
-        ingestor::{EventIngestionError, EventIngestor, EventPage},
+        ingestor::{EventIngestionError, EventIngestor, EventPage, EventPageSource},
         metrics::*,
         query::EventQuery,
     },
     crate::sui,
-    futures::TryStreamExt as _,
+    futures::{stream, StreamExt as _, TryStreamExt as _},
     std::time::{Duration, Instant},
     tokio::sync::mpsc,
 };
 
+enum ReplayBound {
+    Cursor(Vec<u8>),
+    Checkpoint(u64),
+}
+
+struct ReplayRange<T> {
+    end_checkpoint: u64,
+    events: Vec<T>,
+}
+
 const INDEX_PROGRESS_DELAY: Duration = Duration::from_millis(50);
+// Sui clamps this request to the endpoint's supported maximum. Asking for the
+// current maximum avoids restarting a stream after every default 50 items.
+const REPLAY_REQUEST_LIMIT: u32 = 1_000;
+// Two waves keep every permitted request active without partitioning sparse
+// history into one empty request per small checkpoint interval. The upper
+// bound limits speculative decoded output independently of total chain age.
+pub(super) const MIN_REPLAY_RANGE_CHECKPOINTS: u64 = 512;
+const MAX_REPLAY_RANGE_CHECKPOINTS: u64 = 4_096;
+const REPLAY_RANGE_WAVES: u64 = 2;
 #[cfg(not(test))]
 pub(super) const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 #[cfg(test)]
@@ -55,10 +74,10 @@ impl<Q: EventQuery> EventIngestor<Q> {
         highest_output_checkpoint: &mut Option<u64>,
         send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
     ) -> Result<(), EventIngestionError> {
-        let mut client = sui::grpc::client(&self.rpc_url).map_err(|error| {
+        let mut client = sui::grpc::client(&self.subscription_rpc_url).map_err(|error| {
             EventIngestionError::Configuration(format!(
-                "invalid gRPC URL '{}': {error}",
-                self.rpc_url
+                "invalid subscription gRPC URL '{}': {error}",
+                self.subscription_rpc_url
             ))
         })?;
         let request = sui::grpc::SubscribeEventsRequest::default()
@@ -89,11 +108,32 @@ impl<Q: EventQuery> EventIngestor<Q> {
 
         let live_start_cursor = Self::response_cursor(first.watermark.as_ref())?.to_vec();
         if let Some(start_checkpoint) = *resume_checkpoint {
+            let replay_bound = match first
+                .watermark
+                .as_ref()
+                .and_then(|watermark| watermark.checkpoint_opt())
+            {
+                Some(checkpoint) => {
+                    ReplayBound::Checkpoint(checkpoint.checked_add(1).ok_or_else(|| {
+                        EventIngestionError::Protocol(
+                            "the live event checkpoint cannot form an exclusive replay bound"
+                                .to_owned(),
+                        )
+                    })?)
+                }
+                None if self.replay_rpc_url.is_some() => {
+                    return Err(EventIngestionError::Protocol(
+                        "the live event stream did not expose a complete checkpoint bound for \
+                         archive replay"
+                            .to_owned(),
+                    ));
+                }
+                None => ReplayBound::Cursor(live_start_cursor),
+            };
             let replay_result = self
                 .replay_events(
-                    &mut client,
                     start_checkpoint,
-                    live_start_cursor,
+                    replay_bound,
                     resume_checkpoint,
                     highest_output_checkpoint,
                     send_page,
@@ -119,6 +159,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
             .process_frame(
                 first.event,
                 first.watermark.as_ref(),
+                EventPageSource::Live,
                 resume_checkpoint,
                 highest_output_checkpoint,
                 send_page,
@@ -146,6 +187,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 .process_frame(
                     response.event,
                     response.watermark.as_ref(),
+                    EventPageSource::Live,
                     resume_checkpoint,
                     highest_output_checkpoint,
                     send_page,
@@ -159,27 +201,244 @@ impl<Q: EventQuery> EventIngestor<Q> {
 
     async fn replay_events(
         &self,
-        client: &mut sui::grpc::Client,
         start_checkpoint: u64,
-        live_start_cursor: Vec<u8>,
+        bound: ReplayBound,
         resume_checkpoint: &mut Option<u64>,
         highest_output_checkpoint: &mut Option<u64>,
         send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
     ) -> Result<bool, EventIngestionError> {
+        if let ReplayBound::Checkpoint(end_checkpoint) = bound {
+            return self
+                .replay_checkpoint_ranges(
+                    start_checkpoint,
+                    end_checkpoint,
+                    resume_checkpoint,
+                    highest_output_checkpoint,
+                    send_page,
+                )
+                .await;
+        }
+
+        self.replay_to_cursor(
+            start_checkpoint,
+            bound,
+            resume_checkpoint,
+            highest_output_checkpoint,
+            send_page,
+        )
+        .await
+    }
+
+    async fn replay_checkpoint_ranges(
+        &self,
+        start_checkpoint: u64,
+        end_checkpoint: u64,
+        resume_checkpoint: &mut Option<u64>,
+        highest_output_checkpoint: &mut Option<u64>,
+        send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
+    ) -> Result<bool, EventIngestionError> {
+        if start_checkpoint >= end_checkpoint {
+            return Ok(true);
+        }
+
+        let replay_rpc_url = self
+            .replay_rpc_url
+            .as_deref()
+            .unwrap_or(&self.subscription_rpc_url);
+        let range_checkpoints = replay_range_checkpoints(
+            start_checkpoint,
+            end_checkpoint,
+            self.replay_concurrency.get(),
+        );
+        let ranges = std::iter::successors(Some(start_checkpoint), move |start| {
+            let next = start.saturating_add(range_checkpoints);
+            (next < end_checkpoint).then_some(next)
+        })
+        .map(|start| {
+            (
+                start,
+                start.saturating_add(range_checkpoints).min(end_checkpoint),
+            )
+        });
+        let mut ranges = stream::iter(ranges)
+            .map(|(start, end)| {
+                self.collect_checkpoint_range(replay_rpc_url, start, end, send_page)
+            })
+            .buffered(self.replay_concurrency.get());
+
+        while let Some(range) = ranges.next().await {
+            let Some(range) = range? else {
+                return Ok(false);
+            };
+            let checkpoint = range.end_checkpoint.saturating_sub(1);
+            let should_send = !range.events.is_empty()
+                || highest_output_checkpoint.is_none_or(|current| checkpoint > current);
+            if should_send {
+                EVENTS_PER_PAGE.observe(range.events.len() as f64);
+                if !self
+                    .send_page(
+                        EventPage {
+                            events: range.events,
+                            checkpoint,
+                            source: EventPageSource::Replay,
+                        },
+                        send_page,
+                    )
+                    .await
+                {
+                    return Ok(false);
+                }
+                Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
+            }
+            Self::advance_checkpoint(resume_checkpoint, checkpoint);
+        }
+
+        Ok(true)
+    }
+
+    async fn collect_checkpoint_range(
+        &self,
+        replay_rpc_url: &str,
+        start_checkpoint: u64,
+        end_checkpoint: u64,
+        send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
+    ) -> Result<Option<ReplayRange<Q::Output>>, EventIngestionError> {
+        let started = Instant::now();
+        let mut client = sui::grpc::client(replay_rpc_url).map_err(|error| {
+            EventIngestionError::Configuration(format!(
+                "invalid replay gRPC URL '{replay_rpc_url}': {error}"
+            ))
+        })?;
+        let mut after_cursor: Option<Vec<u8>> = None;
+        let mut events = Vec::new();
+
+        loop {
+            let mut options = sui::grpc::QueryOptions::default()
+                .with_limit(REPLAY_REQUEST_LIMIT)
+                .with_ordering(sui::grpc::Ordering::Ascending);
+            if let Some(after) = &after_cursor {
+                options.set_after(after.clone());
+            }
+            let request = sui::grpc::ListEventsRequest::default()
+                .with_read_mask(self.read_mask.clone())
+                .with_start_checkpoint(start_checkpoint)
+                .with_end_checkpoint(end_checkpoint)
+                .with_filter(self.filter.clone())
+                .with_options(options);
+            REPLAY_REQUESTS.inc();
+            let mut ledger_client = client.ledger_client();
+            let response = tokio::select! {
+                _ = self.cancellation_token.cancelled() => return Ok(None),
+                _ = send_page.closed() => return Ok(None),
+                response = ledger_client.list_events(request) => response,
+            }
+            .map_err(|status| {
+                EventIngestionError::replay_rpc(start_checkpoint, "requesting event replay", status)
+            })?;
+            let mut response = response.into_inner();
+
+            let terminal_reason = loop {
+                let frame = tokio::select! {
+                    _ = self.cancellation_token.cancelled() => return Ok(None),
+                    _ = send_page.closed() => return Ok(None),
+                    frame = response.try_next() => frame,
+                }
+                .map_err(|status| {
+                    EventIngestionError::replay_rpc(
+                        start_checkpoint,
+                        "receiving an event replay frame",
+                        status,
+                    )
+                })?
+                .ok_or_else(|| {
+                    EventIngestionError::Protocol(
+                        "event replay ended without a terminal frame".to_owned(),
+                    )
+                })?;
+
+                after_cursor = Some(Self::response_cursor(frame.watermark.as_ref())?.to_vec());
+                if let Some(event) = frame.event {
+                    let (event, checkpoint) = self.decode_event(event).await?;
+                    if !(start_checkpoint..end_checkpoint).contains(&checkpoint) {
+                        return Err(EventIngestionError::Protocol(format!(
+                            "event replay range [{start_checkpoint}, {end_checkpoint}) returned \
+                             checkpoint {checkpoint}"
+                        )));
+                    }
+                    events.extend(event);
+                }
+                let end = frame
+                    .end
+                    .as_ref()
+                    .and_then(|end| end.reason)
+                    .and_then(|reason| sui::grpc::QueryEndReason::try_from(reason).ok());
+                if let Some(reason) = end {
+                    break reason;
+                }
+            };
+
+            match terminal_reason {
+                sui::grpc::QueryEndReason::CheckpointBound => {
+                    REPLAY_RANGE_DURATION.observe(started.elapsed().as_secs_f64());
+                    REPLAY_RANGE_EVENTS.observe(events.len() as f64);
+                    return Ok(Some(ReplayRange {
+                        end_checkpoint,
+                        events,
+                    }));
+                }
+                sui::grpc::QueryEndReason::ItemLimit | sui::grpc::QueryEndReason::ScanLimit => {}
+                sui::grpc::QueryEndReason::LedgerTip => {
+                    if !self.wait(INDEX_PROGRESS_DELAY, send_page).await {
+                        return Ok(None);
+                    }
+                }
+                reason => {
+                    return Err(EventIngestionError::Protocol(format!(
+                        "checkpoint event replay stopped for an unsupported reason: {reason:?}"
+                    )));
+                }
+            }
+        }
+    }
+
+    async fn replay_to_cursor(
+        &self,
+        start_checkpoint: u64,
+        bound: ReplayBound,
+        resume_checkpoint: &mut Option<u64>,
+        highest_output_checkpoint: &mut Option<u64>,
+        send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
+    ) -> Result<bool, EventIngestionError> {
+        let replay_rpc_url = self
+            .replay_rpc_url
+            .as_deref()
+            .unwrap_or(&self.subscription_rpc_url);
+        let mut client = sui::grpc::client(replay_rpc_url).map_err(|error| {
+            EventIngestionError::Configuration(format!(
+                "invalid replay gRPC URL '{replay_rpc_url}': {error}"
+            ))
+        })?;
         let mut after_cursor: Option<Vec<u8>> = None;
 
         loop {
-            let mut options =
-                sui::grpc::QueryOptions::default().with_before(live_start_cursor.clone());
+            let mut options = sui::grpc::QueryOptions::default()
+                .with_limit(REPLAY_REQUEST_LIMIT)
+                .with_ordering(sui::grpc::Ordering::Ascending);
+            if let ReplayBound::Cursor(cursor) = &bound {
+                options.set_before(cursor.clone());
+            }
             if let Some(after) = &after_cursor {
                 options.set_after(after.clone());
             }
 
-            let request = sui::grpc::ListEventsRequest::default()
+            let mut request = sui::grpc::ListEventsRequest::default()
                 .with_read_mask(self.read_mask.clone())
                 .with_start_checkpoint(start_checkpoint)
                 .with_filter(self.filter.clone())
                 .with_options(options);
+            if let ReplayBound::Checkpoint(end_checkpoint) = &bound {
+                request.set_end_checkpoint(*end_checkpoint);
+            }
             REPLAY_REQUESTS.inc();
             let mut ledger_client = client.ledger_client();
             let response = tokio::select! {
@@ -221,6 +480,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
                     .process_frame(
                         response.event,
                         response.watermark.as_ref(),
+                        EventPageSource::Replay,
                         resume_checkpoint,
                         highest_output_checkpoint,
                         send_page,
@@ -259,6 +519,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         &self,
         event: Option<sui::grpc::Event>,
         watermark: Option<&sui::grpc::Watermark>,
+        source: EventPageSource,
         resume_checkpoint: &mut Option<u64>,
         highest_output_checkpoint: &mut Option<u64>,
         send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
@@ -281,6 +542,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
                             EventPage {
                                 events: Vec::new(),
                                 checkpoint,
+                                source,
                             },
                             send_page,
                         )
@@ -293,6 +555,41 @@ impl<Q: EventQuery> EventIngestor<Q> {
             }
             return Ok(true);
         };
+        let (event, event_checkpoint) = self.decode_event(event).await?;
+        let events = event.into_iter().collect::<Vec<_>>();
+        EVENTS_PER_PAGE.observe(events.len() as f64);
+        let checkpoint = watermark
+            .checkpoint_opt()
+            .map_or(event_checkpoint, |checkpoint| {
+                checkpoint.max(event_checkpoint)
+            });
+        Self::advance_checkpoint(resume_checkpoint, checkpoint);
+        let should_send = !events.is_empty()
+            || highest_output_checkpoint.is_none_or(|current| checkpoint > current);
+        if should_send {
+            if !self
+                .send_page(
+                    EventPage {
+                        events,
+                        checkpoint,
+                        source,
+                    },
+                    send_page,
+                )
+                .await
+            {
+                return Ok(false);
+            }
+            Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
+        }
+
+        Ok(true)
+    }
+
+    async fn decode_event(
+        &self,
+        event: sui::grpc::Event,
+    ) -> Result<(Option<Q::Output>, u64), EventIngestionError> {
         FILTERED_EVENTS_RECEIVED.inc();
         let event_checkpoint = event.checkpoint.ok_or_else(|| {
             EventIngestionError::Protocol("event is missing its checkpoint".to_owned())
@@ -320,27 +617,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
             event_index,
             source: anyhow::Error::new(source),
         })?;
-        let events = event.into_iter().collect::<Vec<_>>();
-        EVENTS_PER_PAGE.observe(events.len() as f64);
-        let checkpoint = watermark
-            .checkpoint_opt()
-            .map_or(event_checkpoint, |checkpoint| {
-                checkpoint.max(event_checkpoint)
-            });
-        Self::advance_checkpoint(resume_checkpoint, checkpoint);
-        let should_send = !events.is_empty()
-            || highest_output_checkpoint.is_none_or(|current| checkpoint > current);
-        if should_send {
-            if !self
-                .send_page(EventPage { events, checkpoint }, send_page)
-                .await
-            {
-                return Ok(false);
-            }
-            Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
-        }
-
-        Ok(true)
+        Ok((event, event_checkpoint))
     }
 
     async fn send_error(
@@ -398,4 +675,14 @@ impl<Q: EventQuery> EventIngestor<Q> {
             *checkpoint = Some(candidate);
         }
     }
+}
+
+fn replay_range_checkpoints(start: u64, end: u64, concurrency: usize) -> u64 {
+    let checkpoints = end.saturating_sub(start);
+    let target_ranges = (concurrency as u64)
+        .saturating_mul(REPLAY_RANGE_WAVES)
+        .max(1);
+    checkpoints
+        .div_ceil(target_ranges)
+        .clamp(MIN_REPLAY_RANGE_CHECKPOINTS, MAX_REPLAY_RANGE_CHECKPOINTS)
 }

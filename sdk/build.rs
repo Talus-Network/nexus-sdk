@@ -55,7 +55,12 @@ fn render_protocol_limit_modules(limits: &toml::Table) -> String {
         let modules = modules
             .as_table()
             .unwrap_or_else(|| panic!("Protocol limit package '{package}' must be a table"));
-        writeln!(output, "pub(crate) mod {package} {{").expect("writing to String cannot fail");
+        writeln!(
+            output,
+            "/// Protocol limits extracted from the `{package}` Move package."
+        )
+        .expect("writing to String cannot fail");
+        writeln!(output, "pub mod {package} {{").expect("writing to String cannot fail");
         let mut modules = modules.iter().collect::<Vec<_>>();
         modules.sort_by_key(|(module, _)| *module);
         for (module, constants) in modules {
@@ -63,8 +68,15 @@ fn render_protocol_limit_modules(limits: &toml::Table) -> String {
             let constants = constants.as_table().unwrap_or_else(|| {
                 panic!("Protocol limit module '{package}.{module}' must be a table")
             });
-            writeln!(output, "    pub(crate) mod {module} {{")
-                .expect("writing to String cannot fail");
+            writeln!(
+                output,
+                "    /// Protocol limits extracted from the `{module}` Move module."
+            )
+            .expect("writing to String cannot fail");
+            if package == module {
+                output.push_str("    #[allow(clippy::module_inception)]\n");
+            }
+            writeln!(output, "    pub mod {module} {{").expect("writing to String cannot fail");
             let mut constants = constants.iter().collect::<Vec<_>>();
             constants.sort_by_key(|(constant, _)| *constant);
             for (constant, value) in constants {
@@ -76,6 +88,11 @@ fn render_protocol_limit_modules(limits: &toml::Table) -> String {
                     value >= 0,
                     "Protocol limit '{package}.{module}.{constant}' must be non-negative"
                 );
+                writeln!(
+                    output,
+                    "        /// Value extracted from the `{constant}` Move constant."
+                )
+                .expect("writing to String cannot fail");
                 writeln!(output, "        pub const {constant}: u64 = {value};")
                     .expect("writing to String cannot fail");
             }

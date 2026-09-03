@@ -7,7 +7,7 @@ use {
         nexus::error::NexusError,
         sui::{self, traits::FieldMaskUtil},
     },
-    anyhow::{anyhow, bail, Context as _},
+    anyhow::{anyhow, bail, ensure, Context as _},
     serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
     std::{
         collections::{HashMap, HashSet},
@@ -15,6 +15,22 @@ use {
         sync::Arc,
     },
 };
+
+lazy_static::lazy_static! {
+    static ref DYNAMIC_FIELD_LIST_REQUESTS: prometheus::CounterVec =
+        prometheus::register_counter_vec!(
+            "nexus_dynamic_field_list_requests_total",
+            "ListDynamicFields requests issued by each typed crawler operation",
+            &["operation"],
+        )
+        .unwrap();
+}
+
+fn observe_dynamic_field_list(operation: &'static str) {
+    DYNAMIC_FIELD_LIST_REQUESTS
+        .with_label_values(&[operation])
+        .inc();
+}
 
 #[derive(Debug, Deserialize)]
 struct DynamicFieldNameBcs<K> {
@@ -49,7 +65,7 @@ where
         .or_else(|_| bcs::from_bytes::<DynamicFieldNameBcs<K>>(bytes).map(|field| field.name))
 }
 
-fn derive_dynamic_field_id<K>(
+pub(crate) fn derive_dynamic_field_id<K>(
     parent_id: sui::types::Address,
     key: &K,
     key_type: &sui::types::TypeTag,
@@ -78,6 +94,81 @@ where
     Ok(())
 }
 
+enum FinalizedObjectChange {
+    Unchanged,
+    Written(Box<sui::grpc::Object>),
+    Removed,
+}
+
+fn validate_executed_transaction(
+    executed: &sui::grpc::ExecutedTransaction,
+    transaction: sui::types::Digest,
+) -> anyhow::Result<()> {
+    let observed = executed
+        .digest_opt()
+        .ok_or_else(|| anyhow!("Transaction '{transaction}' response has no digest"))?
+        .parse::<sui::types::Digest>()
+        .map_err(|error| {
+            anyhow!("Transaction '{transaction}' response has an invalid digest: {error}")
+        })?;
+    if observed != transaction {
+        bail!("Requested transaction '{transaction}', received transaction '{observed}'");
+    }
+    Ok(())
+}
+
+fn finalized_transaction_object_change(
+    objects: &[sui::grpc::Object],
+    transaction: sui::types::Digest,
+    object_id: sui::types::Address,
+) -> anyhow::Result<FinalizedObjectChange> {
+    let mut mentioned = false;
+    let mut output = None;
+    for object in objects {
+        if Crawler::parse_object_id(object)? != object_id {
+            continue;
+        }
+        mentioned = true;
+        let previous_transaction = object
+            .previous_transaction_opt()
+            .ok_or_else(|| {
+                anyhow!(
+                    "Finalized transaction '{transaction}' returned object '{object_id}' without \
+                     its previous transaction"
+                )
+            })?
+            .parse::<sui::types::Digest>()
+            .map_err(|error| {
+                anyhow!(
+                    "Finalized transaction '{transaction}' returned object '{object_id}' with an \
+                     invalid previous transaction: {error}"
+                )
+            })?;
+        if previous_transaction == transaction && output.replace(object.clone()).is_some() {
+            bail!(
+                "Finalized transaction '{transaction}' returned output object '{object_id}' \
+                 more than once"
+            );
+        }
+    }
+
+    match (mentioned, output) {
+        (_, Some(output)) => Ok(FinalizedObjectChange::Written(Box::new(output))),
+        (true, None) => Ok(FinalizedObjectChange::Removed),
+        (false, None) => Ok(FinalizedObjectChange::Unchanged),
+    }
+}
+
+fn reject_removed_state_object(
+    transaction: sui::types::Digest,
+    object_id: sui::types::Address,
+    role: &str,
+) -> ObjectStateSnapshotError {
+    ObjectStateSnapshotError::Invalid(format!(
+        "Finalized transaction '{transaction}' removed the {role} object '{object_id}'"
+    ))
+}
+
 fn dynamic_object_field_wrapper_type(key_type: &sui::types::TypeTag) -> sui::types::TypeTag {
     sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
         sui::types::Address::from_static("0x2"),
@@ -91,6 +182,7 @@ fn dynamic_object_field_wrapper_type(key_type: &sui::types::TypeTag) -> sui::typ
 #[derive(Clone)]
 pub struct Crawler {
     client: Arc<sui::grpc::Client>,
+    state_catalog: Arc<sui::grpc::Client>,
 }
 
 #[derive(Debug)]
@@ -135,6 +227,60 @@ pub struct ObjectMetadata {
     pub object_type: sui::types::StructTag,
 }
 
+/// One live anchor and its state fields returned by one Sui batch read.
+///
+/// The snapshot retains object bytes only until the caller validates the
+/// complete anchor, witness, and inner type identity. This lets typed state
+/// reads decode the value without a second RPC.
+#[derive(Clone, Debug)]
+pub(crate) struct ObjectStateSnapshot {
+    pub(crate) object: ObjectMetadata,
+    pub(crate) witness: DynamicFieldMetadata,
+    pub(crate) inner: DynamicFieldMetadata,
+    anchor_object: sui::grpc::Object,
+    inner_object: sui::grpc::Object,
+}
+
+impl ObjectStateSnapshot {
+    pub(crate) fn inner_object_reference(&self) -> anyhow::Result<sui::types::ObjectReference> {
+        let object_id = Crawler::parse_object_id(&self.inner_object)?;
+        ensure!(
+            object_id == self.inner.field_id,
+            "State inner object '{}' does not match expected field '{}'",
+            object_id,
+            self.inner.field_id,
+        );
+        let version = self
+            .inner_object
+            .version_opt()
+            .ok_or_else(|| anyhow!("Version missing for state inner object '{object_id}'"))?;
+        let digest = self
+            .inner_object
+            .digest_opt()
+            .ok_or_else(|| anyhow!("Digest missing for state inner object '{object_id}'"))?
+            .parse()
+            .map_err(|_| anyhow!("Invalid digest for state inner object '{object_id}'"))?;
+
+        Ok(sui::types::ObjectReference::new(object_id, version, digest))
+    }
+}
+
+/// Failure while reading a typed state snapshot.
+#[derive(Debug)]
+pub(crate) enum ObjectStateSnapshotError {
+    /// Sui transport or object availability failed.
+    Rpc(anyhow::Error),
+    /// Returned object identity, ownership, or type metadata was invalid.
+    Invalid(String),
+}
+
+#[derive(Debug)]
+struct ObjectStateObjects {
+    anchor: sui::grpc::Object,
+    witness: sui::grpc::Object,
+    inner: sui::grpc::Object,
+}
+
 fn parse_dynamic_field_metadata(
     parent_id: sui::types::Address,
     field: &sui::grpc::DynamicField,
@@ -158,22 +304,7 @@ fn parse_dynamic_field_metadata(
         .field_object_opt()
         .and_then(|object| object.object_type_opt())
         .ok_or_else(|| anyhow!("Dynamic field '{field_id}' has no field object type"))?;
-    let field_type = object_type
-        .parse::<sui::types::StructTag>()
-        .map_err(|error| anyhow!("Dynamic field '{field_id}' has invalid type: {error}"))?;
-    if *field_type.address() != sui::types::Address::from_static("0x2")
-        || field_type.module().as_str() != "dynamic_field"
-        || field_type.name().as_str() != "Field"
-        || field_type.type_params().len() != 2
-    {
-        bail!(
-            "Dynamic field '{field_id}' has object type '{field_type}', expected \
-             '0x2::dynamic_field::Field<K, V>'"
-        );
-    }
-
-    let key_type = field_type.type_params()[0].clone();
-    let value_type = field_type.type_params()[1].clone();
+    let (key_type, value_type) = parse_dynamic_field_type(field_id, object_type)?;
     if let Some(reported_value_type) = field.value_type_opt() {
         let reported_value_type =
             reported_value_type
@@ -194,6 +325,29 @@ fn parse_dynamic_field_metadata(
         key_type,
         value_type,
     }))
+}
+
+fn parse_dynamic_field_type(
+    field_id: sui::types::Address,
+    object_type: &str,
+) -> anyhow::Result<(sui::types::TypeTag, sui::types::TypeTag)> {
+    let field_type = object_type
+        .parse::<sui::types::StructTag>()
+        .map_err(|error| anyhow!("Dynamic field '{field_id}' has invalid type: {error}"))?;
+    if *field_type.address() != sui::types::Address::from_static("0x2")
+        || field_type.module().as_str() != "dynamic_field"
+        || field_type.name().as_str() != "Field"
+        || field_type.type_params().len() != 2
+    {
+        bail!(
+            "Dynamic field '{field_id}' has object type '{field_type}', expected \
+             '0x2::dynamic_field::Field<K, V>'"
+        );
+    }
+
+    let key_type = field_type.type_params()[0].clone();
+    let value_type = field_type.type_params()[1].clone();
+    Ok((key_type, value_type))
 }
 
 /// One RPC page of typed dynamic field values.
@@ -282,7 +436,25 @@ pub struct TransactionUpdate {
 
 impl Crawler {
     pub fn new(client: Arc<sui::grpc::Client>) -> Self {
-        Self { client }
+        Self {
+            state_catalog: Arc::clone(&client),
+            client,
+        }
+    }
+
+    /// Uses `state_catalog` for indexed dynamic field discovery.
+    ///
+    /// Exact objects, transactions, and packages continue to come from
+    /// `client`. Collection identities can therefore be discovered without
+    /// making an indexed service the authority for current object state.
+    pub fn with_state_catalog(
+        client: Arc<sui::grpc::Client>,
+        state_catalog: Arc<sui::grpc::Client>,
+    ) -> Self {
+        Self {
+            client,
+            state_catalog,
+        }
     }
 
     pub(crate) fn grpc_client(&self) -> Arc<sui::grpc::Client> {
@@ -291,6 +463,10 @@ impl Crawler {
 
     pub(crate) fn clone_grpc_client(&self) -> sui::grpc::Client {
         self.client.as_ref().clone()
+    }
+
+    fn clone_state_catalog_client(&self) -> sui::grpc::Client {
+        self.state_catalog.as_ref().clone()
     }
 
     /// Fetches stable identity, owner, and exact Move type for `object_id`.
@@ -311,7 +487,14 @@ impl Crawler {
                 sui::grpc::FieldMask::from_paths(["object_id", "owner", "object_type"]),
             )
             .await?;
-        let returned_id = Self::parse_object_id(&object)?;
+        Self::parse_observed_object_metadata(object_id, &object)
+    }
+
+    fn parse_observed_object_metadata(
+        object_id: sui::types::Address,
+        object: &sui::grpc::Object,
+    ) -> anyhow::Result<ObjectMetadata> {
+        let returned_id = Self::parse_object_id(object)?;
         if returned_id != object_id {
             bail!("Requested object '{object_id}', received object '{returned_id}'");
         }
@@ -331,6 +514,261 @@ impl Crawler {
             owner,
             object_type,
         })
+    }
+
+    /// Observes one anchor and two known dynamic field wrappers in one batch.
+    ///
+    /// The field IDs must already have been derived from their exact typed
+    /// keys. A missing wrapper returns [`None`] so the caller can discover a
+    /// different key lineage. All present identities, owners, and complete
+    /// `0x2::dynamic_field::Field<K, V>` types are validated.
+    pub(crate) async fn observe_object_state_fields(
+        &self,
+        object_id: sui::types::Address,
+        witness_field_id: sui::types::Address,
+        inner_field_id: sui::types::Address,
+    ) -> anyhow::Result<Option<(ObjectMetadata, Vec<DynamicFieldMetadata>)>> {
+        let field_mask = sui::grpc::FieldMask::from_paths(["object_id", "owner", "object_type"]);
+        let Some(objects) = self
+            .fetch_object_state_objects(object_id, witness_field_id, inner_field_id, field_mask)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let object = Self::parse_observed_object_metadata(object_id, &objects.anchor)?;
+        let witness =
+            Self::parse_state_field_metadata(object_id, witness_field_id, &objects.witness)?;
+        let inner = Self::parse_state_field_metadata(object_id, inner_field_id, &objects.inner)?;
+
+        Ok(Some((object, vec![witness, inner])))
+    }
+
+    /// Reads one anchor and both known state fields in one batch.
+    ///
+    /// The returned bytes remain opaque until the caller validates the exact
+    /// state pair. Missing derived fields return [`None`] so an unknown key
+    /// lineage can be discovered through the metadata path.
+    pub(crate) async fn object_state_snapshot(
+        &self,
+        object_id: sui::types::Address,
+        witness_field_id: sui::types::Address,
+        inner_field_id: sui::types::Address,
+    ) -> Result<Option<ObjectStateSnapshot>, ObjectStateSnapshotError> {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "object_type",
+            "version",
+            "digest",
+            "balance",
+            "contents",
+        ]);
+        let Some(objects) = self
+            .fetch_object_state_objects(object_id, witness_field_id, inner_field_id, field_mask)
+            .await
+            .map_err(ObjectStateSnapshotError::Rpc)?
+        else {
+            return Ok(None);
+        };
+        let invalid = |error: anyhow::Error| ObjectStateSnapshotError::Invalid(error.to_string());
+        let object =
+            Self::parse_observed_object_metadata(object_id, &objects.anchor).map_err(invalid)?;
+        let witness =
+            Self::parse_state_field_metadata(object_id, witness_field_id, &objects.witness)
+                .map_err(invalid)?;
+        let inner = Self::parse_state_field_metadata(object_id, inner_field_id, &objects.inner)
+            .map_err(invalid)?;
+
+        Ok(Some(ObjectStateSnapshot {
+            object,
+            witness,
+            inner,
+            anchor_object: objects.anchor,
+            inner_object: objects.inner,
+        }))
+    }
+
+    /// Build one state snapshot from a verified causal transaction view.
+    ///
+    /// The view may contain objects inherited from finalized ancestors, so an
+    /// object's `previous_transaction` need not equal `transaction`. Exact
+    /// object identity, ownership, field derivation, and Move types are still
+    /// validated before any bytes can become application authority.
+    pub(crate) fn object_state_snapshot_from_transaction_view(
+        &self,
+        object_id: sui::types::Address,
+        witness_field_id: sui::types::Address,
+        inner_field_id: sui::types::Address,
+        executed: &sui::grpc::ExecutedTransaction,
+        transaction: sui::types::Digest,
+    ) -> Result<Option<ObjectStateSnapshot>, ObjectStateSnapshotError> {
+        let invalid = |error: anyhow::Error| ObjectStateSnapshotError::Invalid(error.to_string());
+        validate_executed_transaction(executed, transaction).map_err(invalid)?;
+
+        let find =
+            |id| -> anyhow::Result<Option<sui::grpc::Object>> {
+                let mut matches = executed.objects().objects.iter().filter_map(|object| {
+                    match Self::parse_object_id(object) {
+                        Ok(returned) if returned == id => Some(Ok(object.clone())),
+                        Ok(_) => None,
+                        Err(error) => Some(Err(error)),
+                    }
+                });
+                let Some(object) = matches.next().transpose()? else {
+                    return Ok(None);
+                };
+                ensure!(
+                    matches.next().transpose()?.is_none(),
+                    "Causal transaction view contains object '{id}' more than once"
+                );
+                Ok(Some(object))
+            };
+
+        let Some(anchor) = find(object_id).map_err(invalid)? else {
+            return Ok(None);
+        };
+        let Some(witness_object) = find(witness_field_id).map_err(invalid)? else {
+            return Ok(None);
+        };
+        let Some(inner_object) = find(inner_field_id).map_err(invalid)? else {
+            return Ok(None);
+        };
+
+        let object = Self::parse_observed_object_metadata(object_id, &anchor).map_err(invalid)?;
+        let witness =
+            Self::parse_state_field_metadata(object_id, witness_field_id, &witness_object)
+                .map_err(invalid)?;
+        let inner = Self::parse_state_field_metadata(object_id, inner_field_id, &inner_object)
+            .map_err(invalid)?;
+
+        Ok(Some(ObjectStateSnapshot {
+            object,
+            witness,
+            inner,
+            anchor_object: anchor,
+            inner_object,
+        }))
+    }
+
+    async fn fetch_object_state_objects(
+        &self,
+        object_id: sui::types::Address,
+        witness_field_id: sui::types::Address,
+        inner_field_id: sui::types::Address,
+        field_mask: sui::grpc::FieldMask,
+    ) -> anyhow::Result<Option<ObjectStateObjects>> {
+        let object_ids = [object_id, witness_field_id, inner_field_id];
+        let results = self.fetch_object_results(&object_ids, field_mask).await?;
+        if results.len() != object_ids.len() {
+            bail!(
+                "Batch object response contained {} results for {} state objects",
+                results.len(),
+                object_ids.len()
+            );
+        }
+
+        let mut results = results.into_iter();
+        let anchor = results
+            .next()
+            .expect("response length was validated")
+            .to_result()
+            .map_err(|status| {
+                if status.code == i32::from(tonic::Code::NotFound) {
+                    anyhow::Error::new(NexusError::ObjectNotFound { object: object_id })
+                } else {
+                    anyhow!("Could not fetch object '{object_id}': {}", status.message)
+                }
+            })?;
+        let field = |field_id, result: sui::grpc::GetObjectResult| match result.to_result() {
+            Ok(field) => Ok(Some(field)),
+            Err(status) if status.code == i32::from(tonic::Code::NotFound) => Ok(None),
+            Err(status) => Err(anyhow!(
+                "Could not fetch dynamic field '{field_id}': {}",
+                status.message
+            )),
+        };
+        let Some(witness) = field(
+            witness_field_id,
+            results.next().expect("response length was validated"),
+        )?
+        else {
+            return Ok(None);
+        };
+        let Some(inner) = field(
+            inner_field_id,
+            results.next().expect("response length was validated"),
+        )?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(ObjectStateObjects {
+            anchor,
+            witness,
+            inner,
+        }))
+    }
+
+    fn parse_state_field_metadata(
+        parent_id: sui::types::Address,
+        field_id: sui::types::Address,
+        field: &sui::grpc::Object,
+    ) -> anyhow::Result<DynamicFieldMetadata> {
+        let returned_id = Self::parse_object_id(field)?;
+        if returned_id != field_id {
+            bail!("Requested dynamic field '{field_id}', received '{returned_id}'");
+        }
+        let owner: sui::types::Owner = field
+            .owner_opt()
+            .ok_or_else(|| anyhow!("Owner missing for dynamic field '{field_id}'"))?
+            .try_into()
+            .map_err(|_| anyhow!("Could not parse owner for dynamic field '{field_id}'"))?;
+        if owner != sui::types::Owner::Object(parent_id) {
+            bail!(
+                "Dynamic field '{field_id}' has owner '{owner:?}', expected object '{parent_id}'"
+            );
+        }
+        let object_type = field
+            .object_type_opt()
+            .ok_or_else(|| anyhow!("Object type missing for dynamic field '{field_id}'"))?;
+        let (key_type, value_type) = parse_dynamic_field_type(field_id, object_type)?;
+        Ok(DynamicFieldMetadata {
+            field_id,
+            key_type,
+            value_type,
+        })
+    }
+
+    /// Decodes a validated object state snapshot without another RPC.
+    pub(crate) fn decode_object_state_snapshot<A, K, V>(
+        &self,
+        snapshot: &ObjectStateSnapshot,
+        key: &K,
+    ) -> anyhow::Result<(Response<A>, V)>
+    where
+        A: DeserializeOwned,
+        K: DeserializeOwned + Eq,
+        V: DeserializeOwned,
+    {
+        let object_id = snapshot.object.object_id;
+        let (owner, digest, version, balance) =
+            self.parse_object_metadata(object_id, &snapshot.anchor_object)?;
+        let data = self.parse_object_contents_bcs::<A>(&snapshot.anchor_object)?;
+        let field =
+            self.parse_object_contents_bcs::<DynamicFieldValue<K, V>>(&snapshot.inner_object)?;
+        validate_dynamic_field(snapshot.inner.field_id, key, &field)?;
+        Ok((
+            Response {
+                object_id,
+                owner,
+                version,
+                data,
+                digest,
+                balance,
+            },
+            field.value,
+        ))
     }
 
     /// Lists exact key and value types for every dynamic field below `parent_id`.
@@ -355,9 +793,10 @@ impl Crawler {
         ]);
         let mut metadata = Vec::new();
         let mut page_token = None;
-        let mut client = self.clone_grpc_client();
+        let mut client = self.clone_state_catalog_client();
 
         loop {
+            observe_dynamic_field_list("state_metadata");
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
                 .with_parent(parent_id)
                 .with_page_size(1000)
@@ -544,6 +983,119 @@ impl Crawler {
 
         self.get_object_parsed(object_id, field_mask, Self::parse_object_contents_bcs::<T>)
             .await
+    }
+
+    /// Fetches one object and one of its ordinary dynamic fields in one batch.
+    ///
+    /// The object and field identities, current owner, anchor type, field value
+    /// type, embedded field ID, and field key are validated before values are
+    /// returned.
+    pub(crate) async fn get_object_with_dynamic_field<A, K, V>(
+        &self,
+        object_id: sui::types::Address,
+        expected_object_type: &sui::types::StructTag,
+        field_id: sui::types::Address,
+        expected_value_type: &sui::types::TypeTag,
+        key: &K,
+    ) -> anyhow::Result<(Response<A>, V)>
+    where
+        A: DeserializeOwned,
+        K: DeserializeOwned + Eq,
+        V: DeserializeOwned,
+    {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "object_type",
+            "version",
+            "digest",
+            "balance",
+            "contents",
+        ]);
+        let requested = [object_id, field_id];
+        let results = self.fetch_object_results(&requested, field_mask).await?;
+        if results.len() != requested.len() {
+            bail!(
+                "Batch object response contained {} results for {} requests",
+                results.len(),
+                requested.len()
+            );
+        }
+        let mut results = results.into_iter();
+        let object = results
+            .next()
+            .expect("response length was validated")
+            .to_result()
+            .map_err(|status| {
+                anyhow!("Could not fetch object '{object_id}': {}", status.message)
+            })?;
+        let field = results
+            .next()
+            .expect("response length was validated")
+            .to_result()
+            .map_err(|status| {
+                anyhow!(
+                    "Could not fetch dynamic field '{field_id}': {}",
+                    status.message
+                )
+            })?;
+
+        let returned_object_id = Self::parse_object_id(&object)?;
+        if returned_object_id != object_id {
+            bail!("Requested object '{object_id}', received object '{returned_object_id}'");
+        }
+        let object_type = object
+            .object_type_opt()
+            .ok_or_else(|| anyhow!("Object type missing for object '{object_id}'"))?
+            .parse::<sui::types::StructTag>()
+            .map_err(|error| anyhow!("Could not parse type for object '{object_id}': {error}"))?;
+        if &object_type != expected_object_type {
+            bail!(
+                "Object '{object_id}' has type '{object_type}', expected '{expected_object_type}'"
+            );
+        }
+
+        let returned_field_id = Self::parse_object_id(&field)?;
+        if returned_field_id != field_id {
+            bail!("Requested dynamic field '{field_id}', received '{returned_field_id}'");
+        }
+        let field_owner: sui::types::Owner = field
+            .owner_opt()
+            .ok_or_else(|| anyhow!("Owner missing for dynamic field '{field_id}'"))?
+            .try_into()
+            .map_err(|_| anyhow!("Could not parse owner for dynamic field '{field_id}'"))?;
+        if field_owner != sui::types::Owner::Object(object_id) {
+            bail!(
+                "Dynamic field '{field_id}' has owner '{field_owner:?}', expected object \
+                 '{object_id}'"
+            );
+        }
+        let field_type = field
+            .object_type_opt()
+            .ok_or_else(|| anyhow!("Object type missing for dynamic field '{field_id}'"))?;
+        let (_, value_type) = parse_dynamic_field_type(field_id, field_type)?;
+        if &value_type != expected_value_type {
+            bail!(
+                "Dynamic field '{field_id}' has value type '{value_type}', expected \
+                 '{expected_value_type}'"
+            );
+        }
+
+        let (owner, digest, version, balance) = self.parse_object_metadata(object_id, &object)?;
+        let data = self.parse_object_contents_bcs::<A>(&object)?;
+        let field = self.parse_object_contents_bcs::<DynamicFieldValue<K, V>>(&field)?;
+        validate_dynamic_field(field_id, key, &field)?;
+        Ok((
+            Response::<A> {
+                object_id,
+                owner,
+                version,
+                data,
+                digest,
+                balance,
+            },
+            field.value,
+        ))
     }
 
     /// Fetch an object when present.
@@ -836,6 +1388,453 @@ impl Crawler {
             effects,
             events,
         })
+    }
+
+    /// Fetches the object set returned for one exact transaction.
+    ///
+    /// The response can contain both input and output versions. Consumers must
+    /// select outputs by checking `previous_transaction` against `transaction`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the transaction is absent or the response names a
+    /// different transaction.
+    pub async fn get_transaction_objects(
+        &self,
+        transaction: sui::types::Digest,
+    ) -> anyhow::Result<sui::grpc::ExecutedTransaction> {
+        let request = sui::grpc::GetTransactionRequest::default()
+            .with_digest(transaction.to_string())
+            .with_read_mask(sui::grpc::FieldMask::from_paths([
+                "digest",
+                "objects.objects.object_id",
+                "objects.objects.owner",
+                "objects.objects.version",
+                "objects.objects.digest",
+                "objects.objects.balance",
+                "objects.objects.object_type",
+                "objects.objects.contents",
+                "objects.objects.previous_transaction",
+            ]));
+        let mut client = self.clone_grpc_client();
+        let executed = client
+            .ledger_client()
+            .get_transaction(request)
+            .await
+            .map(|response| response.into_inner().transaction)
+            .with_context(|| format!("Could not fetch transaction '{transaction}'"))?
+            .ok_or_else(|| anyhow!("Transaction '{transaction}' not found"))?;
+        validate_executed_transaction(&executed, transaction)?;
+        Ok(executed)
+    }
+
+    /// Decodes one object version written by an exact transaction response.
+    ///
+    /// Sui can return both input and output versions. This method accepts only
+    /// the version whose `previous_transaction` is `transaction`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the response identity is inconsistent, the output
+    /// object is absent or repeated, or its value cannot be decoded.
+    pub fn transaction_output_object<T>(
+        &self,
+        executed: &sui::grpc::ExecutedTransaction,
+        transaction: sui::types::Digest,
+        object_id: sui::types::Address,
+    ) -> anyhow::Result<Response<T>>
+    where
+        T: DeserializeOwned,
+    {
+        validate_executed_transaction(executed, transaction)?;
+
+        let mut output = executed.objects().objects.iter().filter(|object| {
+            Self::parse_object_id(object).ok() == Some(object_id)
+                && object
+                    .previous_transaction_opt()
+                    .and_then(|digest| digest.parse::<sui::types::Digest>().ok())
+                    == Some(transaction)
+        });
+        let object = output.next().ok_or_else(|| {
+            anyhow!("Transaction '{transaction}' did not write object '{object_id}'")
+        })?;
+        if output.next().is_some() {
+            bail!("Transaction '{transaction}' returned object '{object_id}' more than once");
+        }
+        let (owner, digest, version, balance) = self.parse_object_metadata(object_id, object)?;
+        let data = self.parse_object_contents_bcs::<T>(object)?;
+
+        Ok(Response {
+            object_id,
+            owner,
+            version,
+            data,
+            digest,
+            balance,
+        })
+    }
+
+    /// Returns the initial version of one shared object named by an exact
+    /// [`sui::grpc::ExecutedTransaction`].
+    ///
+    /// A transaction object set can contain both the input and output version
+    /// of the same object. Every matching version must retain the expected
+    /// type and the same shared start version. This permits a consumer to
+    /// construct a causal shared-object input without consulting a lagging
+    /// latest-object surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the response identity is inconsistent, the object
+    /// is absent, its type differs from `expected_type`, it is not shared, or
+    /// matching versions disagree about the shared start version.
+    pub fn transaction_shared_initial_version(
+        &self,
+        executed: &sui::grpc::ExecutedTransaction,
+        transaction: sui::types::Digest,
+        object_id: sui::types::Address,
+        expected_type: &sui::types::StructTag,
+    ) -> anyhow::Result<sui::types::Version> {
+        validate_executed_transaction(executed, transaction)?;
+
+        let mut initial_version = None;
+        for object in executed
+            .objects()
+            .objects
+            .iter()
+            .filter(|object| Self::parse_object_id(object).ok() == Some(object_id))
+        {
+            let object_type = object
+                .object_type_opt()
+                .ok_or_else(|| anyhow!("Object type missing for transaction object '{object_id}'"))?
+                .parse::<sui::types::StructTag>()
+                .map_err(|error| {
+                    anyhow!("Transaction object '{object_id}' has an invalid type: {error}")
+                })?;
+            ensure!(
+                &object_type == expected_type,
+                "Transaction object '{object_id}' has type '{object_type}', expected '{expected_type}'"
+            );
+            let (owner, _, _, _) = self.parse_object_metadata(object_id, object)?;
+            let observed = match owner {
+                sui::types::Owner::Shared(version) => version,
+                sui::types::Owner::ConsensusAddress { start_version, .. } => start_version,
+                owner => bail!(
+                    "Transaction object '{object_id}' is not shared; observed owner {owner:?}"
+                ),
+            };
+            match initial_version {
+                Some(expected) => ensure!(
+                    observed == expected,
+                    "Transaction object '{object_id}' has inconsistent shared start versions {expected} and {observed}"
+                ),
+                None => initial_version = Some(observed),
+            }
+        }
+
+        initial_version.ok_or_else(|| {
+            anyhow!("Transaction '{transaction}' does not name shared object '{object_id}'")
+        })
+    }
+
+    /// Fetches and decodes one object version written by an exact transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors from [`Self::get_transaction_objects`] or
+    /// [`Self::transaction_output_object`].
+    pub async fn get_transaction_output_object<T>(
+        &self,
+        transaction: sui::types::Digest,
+        object_id: sui::types::Address,
+    ) -> anyhow::Result<Response<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let executed = self.get_transaction_objects(transaction).await?;
+        self.transaction_output_object(&executed, transaction, object_id)
+    }
+
+    pub(crate) fn transaction_dynamic_field_outputs<K, V>(
+        &self,
+        executed: &sui::grpc::ExecutedTransaction,
+        transaction: sui::types::Digest,
+        key: &K,
+        expected_key_type: &sui::types::TypeTag,
+        expected_value_type: &sui::types::TypeTag,
+    ) -> anyhow::Result<Vec<TransactionStateOutput<V>>>
+    where
+        K: DeserializeOwned + Eq + Serialize,
+        V: DeserializeOwned,
+    {
+        validate_executed_transaction(executed, transaction)?;
+        let mut outputs = Vec::new();
+        for object in &executed.objects().objects {
+            let object_id = Self::parse_object_id(object)?;
+            let previous_transaction = object
+                .previous_transaction_opt()
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Transaction '{transaction}' returned object '{object_id}' without its \
+                         previous transaction"
+                    )
+                })?
+                .parse::<sui::types::Digest>()
+                .map_err(|error| {
+                    anyhow!(
+                        "Transaction '{transaction}' returned object '{object_id}' with an \
+                         invalid previous transaction: {error}"
+                    )
+                })?;
+            if previous_transaction != transaction {
+                continue;
+            }
+            if let Some(output) = self.decode_transaction_dynamic_field(
+                object,
+                object_id,
+                key,
+                expected_key_type,
+                expected_value_type,
+            )? {
+                outputs.push(output);
+            }
+        }
+        Ok(outputs)
+    }
+
+    /// Decodes matching state fields from one retained causal view.
+    ///
+    /// Unlike [`Self::transaction_dynamic_field_outputs`], values written by
+    /// ancestors are included. A direct execution response can also contain
+    /// the input and output versions of an object written by `transaction`.
+    /// In that representation the root output is the visible value. Any other
+    /// repeated object history is ambiguous and rejected.
+    pub(crate) fn causal_dynamic_field_values<K, V>(
+        &self,
+        executed: &sui::grpc::ExecutedTransaction,
+        transaction: sui::types::Digest,
+        key: &K,
+        expected_key_type: &sui::types::TypeTag,
+        expected_value_type: &sui::types::TypeTag,
+    ) -> anyhow::Result<Vec<TransactionStateOutput<V>>>
+    where
+        K: DeserializeOwned + Eq + Serialize,
+        V: DeserializeOwned,
+    {
+        validate_executed_transaction(executed, transaction)?;
+        let mut positions = HashMap::new();
+        let mut paired = HashSet::new();
+        let mut visible = Vec::new();
+        for object in &executed.objects().objects {
+            let object_id = Self::parse_object_id(object)?;
+            let previous_transaction = object
+                .previous_transaction_opt()
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Causal transaction view returned object '{object_id}' without its \
+                         previous transaction"
+                    )
+                })?
+                .parse::<sui::types::Digest>()
+                .map_err(|error| {
+                    anyhow!(
+                        "Causal transaction view returned object '{object_id}' with an invalid \
+                         previous transaction: {error}"
+                    )
+                })?;
+            let root_output = previous_transaction == transaction;
+
+            let Some(index) = positions.get(&object_id).copied() else {
+                positions.insert(object_id, visible.len());
+                visible.push((object, root_output));
+                continue;
+            };
+
+            ensure!(
+                paired.insert(object_id),
+                "Causal transaction view contains more than an input and output version of \
+                 object '{object_id}'"
+            );
+            let (selected, selected_is_root_output) = visible[index];
+            ensure!(
+                selected_is_root_output != root_output,
+                "Causal transaction view contains ambiguous versions of object '{object_id}'"
+            );
+            let (input, output) = if root_output {
+                (selected, object)
+            } else {
+                (object, selected)
+            };
+            let input_version = input
+                .version_opt()
+                .ok_or_else(|| anyhow!("Version missing for causal input object '{object_id}'"))?;
+            let output_version = output
+                .version_opt()
+                .ok_or_else(|| anyhow!("Version missing for causal output object '{object_id}'"))?;
+            ensure!(
+                output_version > input_version,
+                "Causal output object '{object_id}' has version {output_version}, not newer than \
+                 input version {input_version}"
+            );
+            if root_output {
+                visible[index] = (object, true);
+            }
+        }
+
+        let mut values = Vec::new();
+        for (object, _) in visible {
+            let object_id = Self::parse_object_id(object)?;
+            if let Some(value) = self.decode_transaction_dynamic_field(
+                object,
+                object_id,
+                key,
+                expected_key_type,
+                expected_value_type,
+            )? {
+                values.push(value);
+            }
+        }
+        Ok(values)
+    }
+
+    fn decode_transaction_dynamic_field<K, V>(
+        &self,
+        object: &sui::grpc::Object,
+        object_id: sui::types::Address,
+        key: &K,
+        expected_key_type: &sui::types::TypeTag,
+        expected_value_type: &sui::types::TypeTag,
+    ) -> anyhow::Result<Option<TransactionStateOutput<V>>>
+    where
+        K: DeserializeOwned + Eq + Serialize,
+        V: DeserializeOwned,
+    {
+        let object_type = object
+            .object_type_opt()
+            .ok_or_else(|| anyhow!("Object type missing for transaction object '{object_id}'"))?
+            .parse::<sui::types::StructTag>()
+            .map_err(|error| {
+                anyhow!("Transaction object '{object_id}' has an invalid type: {error}")
+            })?;
+        if *object_type.address() != sui::types::Address::from_static("0x2")
+            || object_type.module().as_str() != "dynamic_field"
+            || object_type.name().as_str() != "Field"
+        {
+            return Ok(None);
+        }
+        if object_type.type_params().len() != 2 {
+            bail!("Dynamic field '{object_id}' does not have two type arguments");
+        }
+        if &object_type.type_params()[0] != expected_key_type
+            || &object_type.type_params()[1] != expected_value_type
+        {
+            return Ok(None);
+        }
+
+        let (owner, digest, version, _) = self.parse_object_metadata(object_id, object)?;
+        let sui::types::Owner::Object(parent_id) = owner else {
+            bail!("Dynamic field '{object_id}' is not owned by an object");
+        };
+        let expected_field_id = derive_dynamic_field_id(parent_id, key, expected_key_type)?;
+        if object_id != expected_field_id {
+            bail!("Dynamic field '{object_id}' does not derive from parent '{parent_id}'");
+        }
+        let field = self.parse_object_contents_bcs::<DynamicFieldValue<K, V>>(object)?;
+        validate_dynamic_field(object_id, key, &field)?;
+        Ok(Some(TransactionStateOutput {
+            object_id: parent_id,
+            field_ref: sui::types::ObjectReference::new(object_id, version, digest),
+            data: field.value,
+        }))
+    }
+
+    /// Advances one validated object state snapshot from a finalized response.
+    ///
+    /// Sui returns only objects named by transaction effects: input and output
+    /// versions of changed objects. The existing snapshot therefore supplies
+    /// unchanged anchor and witness data, while the response must supply the
+    /// inner value written by `transaction`. A mentioned object with no output
+    /// was removed and cannot be reused. No Sui request is performed.
+    pub(crate) fn advance_object_state_snapshot(
+        &self,
+        basis: &ObjectStateSnapshot,
+        executed: &sui::grpc::ExecutedTransaction,
+        transaction: sui::types::Digest,
+    ) -> Result<Option<ObjectStateSnapshot>, ObjectStateSnapshotError> {
+        let invalid = |error: anyhow::Error| ObjectStateSnapshotError::Invalid(error.to_string());
+        let observed_transaction = executed
+            .digest_opt()
+            .ok_or_else(|| anyhow!("Finalized transaction response has no digest"))
+            .and_then(|digest| {
+                digest.parse::<sui::types::Digest>().map_err(|error| {
+                    anyhow!("Finalized transaction response has an invalid digest: {error}")
+                })
+            })
+            .map_err(invalid)?;
+        if observed_transaction != transaction {
+            return Err(ObjectStateSnapshotError::Invalid(format!(
+                "Finalized transaction response names '{observed_transaction}', expected \
+                 '{transaction}'"
+            )));
+        }
+        let objects = &executed.objects().objects;
+        let object_id = basis.object.object_id;
+        let witness_field_id = basis.witness.field_id;
+        let inner_field_id = basis.inner.field_id;
+        let change =
+            |id| finalized_transaction_object_change(objects, transaction, id).map_err(invalid);
+
+        let inner_object = match change(inner_field_id)? {
+            FinalizedObjectChange::Written(object) => *object,
+            FinalizedObjectChange::Unchanged => return Ok(None),
+            FinalizedObjectChange::Removed => {
+                return Err(reject_removed_state_object(
+                    transaction,
+                    inner_field_id,
+                    "inner field",
+                ));
+            }
+        };
+        let inner = Self::parse_state_field_metadata(object_id, inner_field_id, &inner_object)
+            .map_err(invalid)?;
+
+        let (object, anchor_object) = match change(object_id)? {
+            FinalizedObjectChange::Written(anchor) => {
+                let metadata =
+                    Self::parse_observed_object_metadata(object_id, &anchor).map_err(invalid)?;
+                (metadata, *anchor)
+            }
+            FinalizedObjectChange::Unchanged => (basis.object.clone(), basis.anchor_object.clone()),
+            FinalizedObjectChange::Removed => {
+                return Err(reject_removed_state_object(
+                    transaction,
+                    object_id,
+                    "anchor",
+                ));
+            }
+        };
+        let witness = match change(witness_field_id)? {
+            FinalizedObjectChange::Written(witness) => {
+                Self::parse_state_field_metadata(object_id, witness_field_id, &witness)
+                    .map_err(invalid)?
+            }
+            FinalizedObjectChange::Unchanged => basis.witness.clone(),
+            FinalizedObjectChange::Removed => {
+                return Err(reject_removed_state_object(
+                    transaction,
+                    witness_field_id,
+                    "witness field",
+                ));
+            }
+        };
+
+        Ok(Some(ObjectStateSnapshot {
+            object,
+            witness,
+            inner,
+            anchor_object,
+            inner_object,
+        }))
     }
 
     /// Fetch many objects' metadata only in batch, omitting their content.
@@ -1337,7 +2336,8 @@ impl Crawler {
             request = request.with_page_token(cursor);
         }
 
-        let mut client = self.clone_grpc_client();
+        observe_dynamic_field_list("typed_page");
+        let mut client = self.clone_state_catalog_client();
         let response = client
             .state_client()
             .list_dynamic_fields(request)
@@ -1421,9 +2421,10 @@ impl Crawler {
         let mut page_token = None;
         let field_mask =
             sui::grpc::FieldMask::from_paths(["field_id", "kind", "value", "value_type"]);
-        let mut client = self.clone_grpc_client();
+        let mut client = self.clone_state_catalog_client();
 
         loop {
+            observe_dynamic_field_list("values");
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
                 .with_parent(parent_id)
                 .with_page_size(1000)
@@ -1566,9 +2567,10 @@ impl Crawler {
         let mut child_ids = Vec::new();
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["child_id"]);
-        let mut client = self.clone_grpc_client();
+        let mut client = self.clone_state_catalog_client();
 
         loop {
+            observe_dynamic_field_list("object_children");
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
                 .with_parent(parent_id)
                 .with_page_size(1000)
@@ -1736,9 +2738,10 @@ impl Crawler {
         let mut results = Vec::with_capacity(expected_size);
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["name", "child_id", "field_id"]);
-        let mut client = self.clone_grpc_client();
+        let mut client = self.clone_state_catalog_client();
 
         loop {
+            observe_dynamic_field_list("typed_values");
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
                 .with_parent(parent_id)
                 .with_page_size(1000)
@@ -1803,9 +2806,10 @@ impl Crawler {
         let mut results = Vec::new();
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["field_id"]);
-        let mut client = self.clone_grpc_client();
+        let mut client = self.clone_state_catalog_client();
 
         loop {
+            observe_dynamic_field_list("field_ids");
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
                 .with_parent(parent_id)
                 .with_page_size(1000)
@@ -1940,6 +2944,17 @@ pub struct Response<T> {
     pub digest: sui::types::Digest,
     /// If the object is `0x2::coin::Coin`, contains the balance.
     pub balance: Option<u64>,
+}
+
+/// One typed object state value written by an exact transaction.
+///
+/// `object_id` is the stable state object which owns the written `Inner`
+/// field. `field_ref` identifies the field version written by the transaction.
+#[derive(Clone, Debug)]
+pub struct TransactionStateOutput<T> {
+    pub object_id: sui::types::Address,
+    pub field_ref: sui::types::ObjectReference,
+    pub data: T,
 }
 
 impl<T> Response<T> {
@@ -3046,13 +4061,17 @@ mod tests {
             )],
         );
 
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
+        let catalog_rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(client));
+        let live_rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let live = Arc::new(sui::grpc::client(live_rpc_url).expect("live mock client"));
+        let catalog = Arc::new(sui::grpc::client(catalog_rpc_url).expect("catalog mock client"));
+        let crawler = Crawler::with_state_catalog(live, catalog);
 
         let fields = crawler
             .get_dynamic_fields::<TestKey, TestValue>(parent_id, 1)
@@ -3679,5 +4698,321 @@ mod tests {
             .expect("transaction update loads");
 
         assert_eq!(update.checkpoint, 42);
+    }
+
+    #[tokio::test]
+    async fn transaction_output_object_selects_the_written_version() {
+        let mut rng = rand::thread_rng();
+        let transaction = sui::types::Digest::generate(&mut rng);
+        let earlier_transaction = sui::types::Digest::generate(&mut rng);
+        let object_id = sui::types::Address::generate(&mut rng);
+        let owner = sui::types::Owner::Object(sui::types::Address::generate(&mut rng));
+        let input_ref =
+            sui::types::ObjectReference::new(object_id, 1, sui::types::Digest::generate(&mut rng));
+        let output_ref =
+            sui::types::ObjectReference::new(object_id, 2, sui::types::Digest::generate(&mut rng));
+        let mut input = object_with_bcs(input_ref, owner, &TestValue { value: 3 });
+        input.set_previous_transaction(earlier_transaction);
+        let mut output = object_with_bcs(output_ref.clone(), owner, &TestValue { value: 5 });
+        output.set_previous_transaction(transaction);
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_get_transaction()
+            .withf(move |request| {
+                request.get_ref().digest_opt() == Some(transaction.to_string().as_str())
+                    && request.get_ref().read_mask.as_ref().is_some_and(|mask| {
+                        mask.paths
+                            .iter()
+                            .any(|path| path == "objects.objects.previous_transaction")
+                    })
+            })
+            .times(1)
+            .returning(move |_| {
+                let mut objects = sui::grpc::ObjectSet::default();
+                objects.set_objects(vec![input.clone(), output.clone()]);
+                let mut executed = sui::grpc::ExecutedTransaction::default();
+                executed.set_digest(transaction);
+                executed.set_objects(objects);
+                let mut response = sui::grpc::GetTransactionResponse::default();
+                response.set_transaction(executed);
+                Ok(tonic::Response::new(response))
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(client));
+
+        let observed = crawler
+            .get_transaction_output_object::<TestValue>(transaction, object_id)
+            .await
+            .expect("transaction output object loads");
+
+        assert_eq!(observed.object_ref(), output_ref);
+        assert_eq!(observed.owner, owner);
+        assert_eq!(observed.data, TestValue { value: 5 });
+    }
+
+    #[tokio::test]
+    async fn transaction_shared_initial_version_requires_exact_type_and_owner() {
+        let mut rng = rand::thread_rng();
+        let transaction = sui::types::Digest::generate(&mut rng);
+        let earlier_transaction = sui::types::Digest::generate(&mut rng);
+        let object_id = sui::types::Address::generate(&mut rng);
+        let object_type = test_value_tag();
+        let input_ref =
+            sui::types::ObjectReference::new(object_id, 9, sui::types::Digest::generate(&mut rng));
+        let output_ref =
+            sui::types::ObjectReference::new(object_id, 10, sui::types::Digest::generate(&mut rng));
+        let owner = sui::types::Owner::Shared(7);
+        let mut input =
+            typed_object_with_bcs(input_ref, owner, &object_type, &TestValue { value: 3 });
+        input.set_previous_transaction(earlier_transaction);
+        let mut output =
+            typed_object_with_bcs(output_ref, owner, &object_type, &TestValue { value: 5 });
+        output.set_previous_transaction(transaction);
+
+        let mut executed = sui::grpc::ExecutedTransaction::default();
+        executed.set_digest(transaction);
+        executed.set_objects(
+            sui::grpc::ObjectSet::default().with_objects(vec![input.clone(), output.clone()]),
+        );
+        let crawler = Crawler::new(Arc::new(
+            sui::grpc::client(sui_mocks::grpc::mock_server(Default::default()))
+                .expect("mock client builds"),
+        ));
+
+        assert_eq!(
+            crawler
+                .transaction_shared_initial_version(
+                    &executed,
+                    transaction,
+                    object_id,
+                    &object_type,
+                )
+                .expect("causal shared input validates"),
+            7,
+        );
+
+        output.set_owner(sui::grpc::Owner::from(sui::types::Owner::Address(
+            sui::types::Address::generate(&mut rng),
+        )));
+        executed
+            .set_objects(sui::grpc::ObjectSet::default().with_objects(vec![input.clone(), output]));
+        assert!(crawler
+            .transaction_shared_initial_version(&executed, transaction, object_id, &object_type,)
+            .expect_err("address-owned output must be rejected")
+            .to_string()
+            .contains("is not shared"));
+
+        let wrong_type = sui::types::StructTag::gas_coin();
+        assert!(crawler
+            .transaction_shared_initial_version(&executed, transaction, object_id, &wrong_type,)
+            .expect_err("wrong expected type must be rejected")
+            .to_string()
+            .contains("expected"));
+    }
+
+    #[tokio::test]
+    async fn transaction_dynamic_field_outputs_and_causal_values_select_root_output() {
+        let mut rng = rand::thread_rng();
+        let transaction = sui::types::Digest::generate(&mut rng);
+        let earlier_transaction = sui::types::Digest::generate(&mut rng);
+        let parent_id = sui::types::Address::generate(&mut rng);
+        let wrong_parent = sui::types::Address::generate(&mut rng);
+        let key = TestKey {
+            name: "inner".to_owned(),
+        };
+        let key_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0x1"),
+            sui::types::Identifier::from_static("state"),
+            sui::types::Identifier::from_static("Inner"),
+            vec![],
+        )));
+        let value_type = sui::types::TypeTag::Struct(Box::new(test_value_tag()));
+        let field_type = sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("dynamic_field"),
+            sui::types::Identifier::from_static("Field"),
+            vec![key_type.clone(), value_type.clone()],
+        );
+        let field_id = derive_dynamic_field_id(parent_id, &key, &key_type).unwrap();
+        let input_ref =
+            sui::types::ObjectReference::new(field_id, 1, sui::types::Digest::generate(&mut rng));
+        let output_ref =
+            sui::types::ObjectReference::new(field_id, 2, sui::types::Digest::generate(&mut rng));
+        let mut input = typed_object_with_bcs(
+            input_ref,
+            sui::types::Owner::Object(parent_id),
+            &field_type,
+            &DynamicFieldValue {
+                id: field_id,
+                name: key.clone(),
+                value: TestValue { value: 3 },
+            },
+        );
+        input.set_previous_transaction(earlier_transaction);
+        let inherited_input = input.clone();
+        let mut output = typed_object_with_bcs(
+            output_ref.clone(),
+            sui::types::Owner::Object(parent_id),
+            &field_type,
+            &DynamicFieldValue {
+                id: field_id,
+                name: key.clone(),
+                value: TestValue { value: 5 },
+            },
+        );
+        output.set_previous_transaction(transaction);
+
+        let mut executed = sui::grpc::ExecutedTransaction::default();
+        executed.set_digest(transaction);
+        let mut objects = sui::grpc::ObjectSet::default();
+        objects.set_objects(vec![input, output.clone()]);
+        executed.set_objects(objects);
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let crawler = Crawler::new(Arc::new(
+            sui::grpc::client(rpc_url).expect("mock client builds"),
+        ));
+
+        let observed = crawler
+            .transaction_dynamic_field_outputs::<TestKey, TestValue>(
+                &executed,
+                transaction,
+                &key,
+                &key_type,
+                &value_type,
+            )
+            .expect("exact output decodes");
+        assert_eq!(observed.len(), 1);
+        assert_eq!(observed[0].object_id, parent_id);
+        assert_eq!(observed[0].field_ref, output_ref);
+        assert_eq!(observed[0].data, TestValue { value: 5 });
+
+        let causal = crawler
+            .causal_dynamic_field_values::<TestKey, TestValue>(
+                &executed,
+                transaction,
+                &key,
+                &key_type,
+                &value_type,
+            )
+            .expect("the root output is the visible causal value");
+        assert_eq!(causal.len(), 1);
+        assert_eq!(causal[0].object_id, parent_id);
+        assert_eq!(causal[0].field_ref, output_ref);
+        assert_eq!(causal[0].data, TestValue { value: 5 });
+
+        let mut inherited_output = output.clone();
+        inherited_output.set_previous_transaction(earlier_transaction);
+        executed.set_objects(
+            sui::grpc::ObjectSet::default().with_objects(vec![inherited_input, inherited_output]),
+        );
+        let error = crawler
+            .causal_dynamic_field_values::<TestKey, TestValue>(
+                &executed,
+                transaction,
+                &key,
+                &key_type,
+                &value_type,
+            )
+            .expect_err("two inherited versions have no unique visible value");
+        assert!(error.to_string().contains("ambiguous versions"));
+
+        output.set_owner(sui::grpc::Owner::from(sui::types::Owner::Object(
+            wrong_parent,
+        )));
+        let mut objects = sui::grpc::ObjectSet::default();
+        objects.set_objects(vec![output]);
+        executed.set_objects(objects);
+        let error = crawler
+            .transaction_dynamic_field_outputs::<TestKey, TestValue>(
+                &executed,
+                transaction,
+                &key,
+                &key_type,
+                &value_type,
+            )
+            .expect_err("wrong parent cannot validate the deterministic field ID");
+        assert!(error.to_string().contains("does not derive from parent"));
+    }
+
+    #[tokio::test]
+    async fn causal_dynamic_field_values_include_inherited_state() {
+        let mut rng = rand::thread_rng();
+        let transaction = sui::types::Digest::generate(&mut rng);
+        let ancestor = sui::types::Digest::generate(&mut rng);
+        let parents = [
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+        ];
+        let key = TestKey {
+            name: "inner".to_owned(),
+        };
+        let key_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0x1"),
+            sui::types::Identifier::from_static("state"),
+            sui::types::Identifier::from_static("Inner"),
+            vec![],
+        )));
+        let value_type = sui::types::TypeTag::Struct(Box::new(test_value_tag()));
+        let field_type = sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("dynamic_field"),
+            sui::types::Identifier::from_static("Field"),
+            vec![key_type.clone(), value_type.clone()],
+        );
+        let objects = parents
+            .iter()
+            .copied()
+            .zip([ancestor, transaction])
+            .zip([3, 5])
+            .map(|((parent, previous), value)| {
+                let field_id = derive_dynamic_field_id(parent, &key, &key_type).unwrap();
+                let object_ref = sui::types::ObjectReference::new(
+                    field_id,
+                    1,
+                    sui::types::Digest::generate(&mut rng),
+                );
+                let mut object = typed_object_with_bcs(
+                    object_ref,
+                    sui::types::Owner::Object(parent),
+                    &field_type,
+                    &DynamicFieldValue {
+                        id: field_id,
+                        name: key.clone(),
+                        value: TestValue { value },
+                    },
+                );
+                object.set_previous_transaction(previous);
+                object
+            })
+            .collect::<Vec<_>>();
+        let mut executed = sui::grpc::ExecutedTransaction::default();
+        executed.set_digest(transaction);
+        executed.set_objects(sui::grpc::ObjectSet::default().with_objects(objects));
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let crawler = Crawler::new(Arc::new(
+            sui::grpc::client(rpc_url).expect("mock client builds"),
+        ));
+
+        let values = crawler
+            .causal_dynamic_field_values::<TestKey, TestValue>(
+                &executed,
+                transaction,
+                &key,
+                &key_type,
+                &value_type,
+            )
+            .expect("complete causal view decodes");
+        assert_eq!(
+            values
+                .iter()
+                .map(|value| (value.object_id, value.data.value))
+                .collect::<Vec<_>>(),
+            vec![(parents[0], 3), (parents[1], 5)]
+        );
     }
 }

@@ -692,28 +692,10 @@ mod tests {
                 },
             })
             .collect();
-        let state = DAGInnerV1::new(
-            true,
-            LinkedTable::new(vertices_id, ports_by_vertex.len() as u64),
-            VecMap {
-                contents: vec![VecMapEntry {
-                    key: graph::EntryGroup::new(entry_group),
-                    value: VecMap {
-                        contents: entry_ports,
-                    },
-                }],
-            },
-            Table::new(dag_id, 0),
-            Table::new(dag_id, 0),
-            Table::new(dag_id, 0),
-            MoveOption::from_option(None::<graph::PostFailureAction>),
-        );
-        let vertex_fields = ports_by_vertex
+        let vertices = ports_by_vertex
             .into_iter()
-            .enumerate()
-            .map(|(index, (vertex, ports))| {
+            .map(|(vertex, ports)| {
                 let vertex = graph::Vertex::new(vertex);
-                let field_id = sui::types::Address::new([(index + 1) as u8; 32]);
                 let input_ports = ports
                     .iter()
                     .map(|(port, _)| graph::InputPort::new(port.as_str()))
@@ -725,10 +707,9 @@ mod tests {
                         .collect(),
                     vec![],
                 );
-                let node = Node {
-                    prev: MoveOption::from_option(None::<graph::Vertex>),
-                    next: MoveOption::from_option(None::<graph::Vertex>),
-                    value: VertexInfo {
+                (
+                    vertex,
+                    VertexInfo {
                         kind: VertexKind::OffChain {
                             tool_fqn: "test::fixture".to_owned().into(),
                         },
@@ -742,32 +723,50 @@ mod tests {
                         meta_schema: MoveOption::from_option(Some(meta_schema)),
                         verifier_mode: ToolVerifierMode::None,
                     },
-                };
-                (vertex, field_id, node)
+                )
             })
             .collect::<Vec<_>>();
-        sui_mocks::grpc::mock_list_dynamic_fields_for(
-            state_service,
-            vertices_id,
-            vertex_fields
-                .iter()
-                .map(|(vertex, field_id, _)| (vertex.clone(), *field_id))
-                .collect(),
+        let vertex_keys = vertices
+            .iter()
+            .map(|(vertex, _)| vertex.clone())
+            .collect::<Vec<_>>();
+        let mut vertex_table = LinkedTable::new(vertices_id, vertices.len() as u64);
+        vertex_table.head = MoveOption::from_option(vertex_keys.first().cloned());
+        vertex_table.tail = MoveOption::from_option(vertex_keys.last().cloned());
+        let state = DAGInnerV1::new(
+            true,
+            vertex_table,
+            VecMap {
+                contents: vec![VecMapEntry {
+                    key: graph::EntryGroup::new(entry_group),
+                    value: VecMap {
+                        contents: entry_ports,
+                    },
+                }],
+            },
+            Table::new(dag_id, 0),
+            Table::new(dag_id, 0),
+            Table::new(dag_id, 0),
+            MoveOption::from_option(None::<graph::PostFailureAction>),
         );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            ledger,
-            vertex_fields
-                .into_iter()
-                .map(|(vertex, field_id, node)| {
-                    (
-                        sui_mocks::object_ref_for_id(field_id),
-                        sui::types::Owner::Object(vertices_id),
-                        vertex,
-                        node,
-                    )
-                })
-                .collect(),
-        );
+        for (index, (vertex, value)) in vertices.into_iter().enumerate() {
+            let node = Node {
+                prev: MoveOption::from_option(
+                    index
+                        .checked_sub(1)
+                        .and_then(|previous| vertex_keys.get(previous).cloned()),
+                ),
+                next: MoveOption::from_option(vertex_keys.get(index + 1).cloned()),
+                value,
+            };
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                vertices_id,
+                &nexus_sdk::move_bindings::type_tag::<graph::Vertex>(context),
+                vertex,
+                node,
+            );
+        }
         sui_mocks::grpc::mock_object_state::<DAG, InterfaceWitnessV1, DAGInnerV1>(
             ledger,
             state_service,
