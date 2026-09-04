@@ -13,6 +13,7 @@ mod payment;
 mod ports_data;
 mod priority_fee_vault;
 mod runtime_vertex;
+mod scheduler;
 mod shared_object_ref;
 mod support;
 mod tagged_output;
