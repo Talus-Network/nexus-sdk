@@ -25,7 +25,7 @@ mod tests {
         crate::move_bindings::{move_std::option::Option as MoveOption, sui_framework::object::ID},
     };
 
-    fn event(
+    fn advertised_occurrence(
         start_time_ms: u64,
         deadline_ms: Option<u64>,
         priority_fee_percentage: u64,
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn advertised_occurrence_converts_to_validated_dispatch_offer() {
-        let offer = DispatchOffer::try_from(&event(100, Some(120), 20)).unwrap();
+        let offer = DispatchOffer::try_from(&advertised_occurrence(100, Some(120), 20)).unwrap();
 
         assert_eq!(
             offer.occurrence(),
@@ -51,7 +51,7 @@ mod tests {
         assert_eq!(offer.deadline_ms(), Some(120));
         assert_eq!(offer.priority_fee_percentage(), 20);
         assert!(matches!(
-            DispatchOffer::try_from(&event(100, Some(99), 20)),
+            DispatchOffer::try_from(&advertised_occurrence(100, Some(99), 20)),
             Err(ScheduleError::DeadlineBeforeStart { .. })
         ));
     }
