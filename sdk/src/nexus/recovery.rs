@@ -62,15 +62,13 @@ impl RecoveryWindow {
             "Recovery needs history from timestamp {cutoff}, but retained history starts at \
              checkpoint {floor} with timestamp {floor_ms}"
         );
-        let window = Self {
+        let mut window = Self {
             start: floor,
             tip,
             timestamp_ms,
         };
-        Ok(Self {
-            start: window.checkpoint_at(rpc_url, cutoff).await?,
-            ..window
-        })
+        window.start = window.checkpoint_at(rpc_url, cutoff).await?;
+        Ok(window)
     }
 
     /// Finds a conservative checkpoint boundary for a timestamp in this window.
