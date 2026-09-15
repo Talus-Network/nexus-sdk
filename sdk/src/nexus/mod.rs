@@ -10,6 +10,7 @@ pub mod crawler;
 pub mod error;
 pub mod network;
 pub mod network_auth;
+pub mod recovery;
 pub mod registered_key;
 pub mod registry;
 pub mod scheduler;

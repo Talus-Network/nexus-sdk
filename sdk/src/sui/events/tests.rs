@@ -26,6 +26,99 @@ fn watermark(cursor: &[u8], checkpoint: Option<u64>) -> sui::grpc::Watermark {
     watermark
 }
 
+#[tokio::test]
+async fn partial_replay_is_bounded_and_restarts_the_incomplete_range() {
+    let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
+    subscription
+        .expect_subscribe_events()
+        .times(2)
+        .returning(|_| {
+            let first = subscription_frame(None, watermark(b"live", Some(511)));
+            Ok(tonic::Response::new(Box::pin(
+                futures::stream::iter([Ok(first)]).chain(futures::stream::pending()),
+            )
+                as sui_mocks::grpc::BoxEventStream))
+        });
+    let delivered = Arc::new(tokio::sync::Notify::new());
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger.expect_list_events().times(2).returning({
+        let delivered = Arc::clone(&delivered);
+        let attempts = Arc::clone(&attempts);
+        move |request| {
+            let request = request.into_inner();
+            // An emitted page at checkpoint 300 does not complete this range.
+            assert_eq!(request.start_checkpoint, Some(0));
+            assert_eq!(request.end_checkpoint, Some(512));
+            assert!(request.options().after.is_none());
+            let first_attempt = attempts.fetch_add(1, Ordering::SeqCst) == 0;
+            let count = if first_attempt { 64 } else { 193 };
+            let events = futures::stream::iter((0..count).map(|index: u32| {
+                let mut frame = sui::grpc::ListEventsResponse::default();
+                frame.set_event(
+                    sui::grpc::Event::default()
+                        .with_checkpoint(300)
+                        .with_transaction_digest(sui::types::Digest::ZERO)
+                        .with_event_index(index)
+                        .with_contents(vec![index as u8; 4_096]),
+                );
+                frame.set_watermark(watermark(&index.to_be_bytes(), None));
+                Ok(frame)
+            }));
+            let delivered = Arc::clone(&delivered);
+            let terminal = futures::stream::once(async move {
+                if first_attempt {
+                    // The consumer must receive a page before this range ends.
+                    delivered.notified().await;
+                    Err(tonic::Status::unavailable("interrupted dense range"))
+                } else {
+                    Ok(list_frame(
+                        None,
+                        watermark(b"end", Some(511)),
+                        sui::grpc::QueryEndReason::CheckpointBound,
+                    ))
+                }
+            });
+            Ok(tonic::Response::new(
+                Box::pin(events.chain(terminal)) as sui_mocks::grpc::BoxListEventsStream
+            ))
+        }
+    });
+    let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger),
+        subscription_service_mock: Some(subscription),
+        ..Default::default()
+    });
+    let query = RawEventQuery::new(
+        sui::grpc::EventFilter::default(),
+        sui::grpc::FieldMask::from_paths(["contents"]),
+    );
+    let mut pages = EventIngestor::new(&rpc_url, query)
+        .with_replay_concurrency(std::num::NonZeroUsize::MIN)
+        .start(Some(0))
+        .unwrap();
+    timeout(Duration::from_secs(5), async {
+        let first = pages.recv().await.unwrap().unwrap();
+        assert_eq!(first.events.len(), 64);
+        assert_eq!(first.checkpoint, 300);
+        delivered.notify_one();
+        assert!(pages.recv().await.unwrap().is_err());
+        let mut indices = Vec::new();
+        loop {
+            let page = pages.recv().await.unwrap().unwrap();
+            assert!(page.events.len() <= 64);
+            indices.extend(page.events.iter().map(|event| event.event_index()));
+            if page.checkpoint == 511 {
+                break;
+            }
+        }
+        assert_eq!(indices, (0..193).collect::<Vec<_>>());
+    })
+    .await
+    .expect("dense replay did not progress");
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+}
+
 fn subscription_frame(
     event: Option<sui::grpc::Event>,
     watermark: sui::grpc::Watermark,
