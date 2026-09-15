@@ -22,7 +22,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.
 - `TapActions::bind_agent_skill` now transfers the newly created Agent to the signer after registering its first skill, preventing Sui from rejecting the PTB with an unused value that cannot be dropped.
 - Dense event replay now delivers bounded pages and resumes interrupted ranges without skipping events.
-- Updated locked TLS dependencies to rustls 0.23.45 and webpki 0.103.15 to address RUSTSEC-2026-0285.
 
 ### `nexus-cli`
 
