@@ -160,15 +160,9 @@ mod tests {
         let scheduler = packages.scheduler.as_mut().unwrap();
         scheduler.storage_id = address("0xa6");
         scheduler.version = 2;
-        packages
-            .interface
-            .as_mut()
-            .unwrap()
-            .insert_type_origin(
-                crate::types::DatatypeKey::new("distributed_event", "DistributedEventWrapper"),
-                address("0xa3"),
-            )
-            .unwrap();
+        let interface = packages.interface.as_mut().unwrap();
+        interface.storage_id = address("0xa7");
+        interface.version = 2;
         let context = crate::types::NexusContext::new(std::sync::Arc::new(objects), packages);
 
         let event = TaskCreatedEvent::new(
@@ -216,6 +210,6 @@ mod tests {
         let distributed_wrapper = crate::move_bindings::struct_tag::<
             distributed_event_move::DistributedEventWrapper<MoveNexusData>,
         >(&context);
-        assert_eq!(*distributed_wrapper.address(), address("0xa3"));
+        assert_eq!(*distributed_wrapper.address(), address("0xa2"));
     }
 }

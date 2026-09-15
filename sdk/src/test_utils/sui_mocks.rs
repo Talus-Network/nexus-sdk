@@ -126,6 +126,7 @@ pub fn mock_nexus_packages() -> NexusPackages {
             "0xa2",
             &[
                 ("era", "V1"),
+                ("distributed_event", "DistributedEventWrapper"),
                 ("agent", "Agent"),
                 ("agent", "AgentInnerV1"),
                 ("agent", "AgentPaymentVault"),
@@ -319,6 +320,11 @@ pub mod grpc {
                 &self,
                 request: Request<ListEventsRequest>,
             ) -> Result<Response<BoxListEventsStream>, Status>;
+
+            async fn list_transactions(
+                &self,
+                request: Request<ListTransactionsRequest>,
+            ) -> Result<Response<BoxListTransactionsStream>, Status>;
         }
     }
 
@@ -400,6 +406,10 @@ pub mod grpc {
 
     pub type BoxListEventsStream = std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<ListEventsResponse, Status>> + Send + 'static>,
+    >;
+
+    pub type BoxListTransactionsStream = std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<ListTransactionsResponse, Status>> + Send + 'static>,
     >;
 
     /// The digest observed from a transaction submitted to a mock server.

@@ -784,7 +784,12 @@ fn append_dispatch_occurrence_(
     Ok(())
 }
 
-pub(crate) fn settle_occurrence_ptb(
+/// Compiles settlement of a finished Task execution from current shared objects.
+///
+/// # Errors
+///
+/// Returns an error when an object reference or transaction argument is invalid.
+pub fn settle_occurrence_ptb(
     objects: &NexusContext,
     task: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,

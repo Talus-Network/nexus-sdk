@@ -15,10 +15,12 @@ enum ReplayBound {
     Checkpoint(u64),
 }
 
-struct ReplayRange<T> {
-    end_checkpoint: u64,
-    events: Vec<T>,
+enum ReplayFrame<T> {
+    Page(EventPage<T>),
+    Complete,
 }
+
+const REPLAY_PAGE_EVENTS: usize = 64;
 
 const INDEX_PROGRESS_DELAY: Duration = Duration::from_millis(50);
 // Sui clamps this request to the endpoint's supported maximum. Asking for the
@@ -260,39 +262,51 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 start.saturating_add(range_checkpoints).min(end_checkpoint),
             )
         });
-        let mut ranges = stream::iter(ranges)
-            .map(|(start, end)| {
-                self.collect_checkpoint_range(replay_rpc_url, start, end, send_page)
-            })
-            .buffered(self.replay_concurrency.get());
-
-        while let Some(range) = ranges.next().await {
-            let Some(range) = range? else {
-                return Ok(false);
-            };
-            let checkpoint = range.end_checkpoint.saturating_sub(1);
-            let should_send = !range.events.is_empty()
-                || highest_output_checkpoint.is_none_or(|current| checkpoint > current);
-            if should_send {
-                EVENTS_PER_PAGE.observe(range.events.len() as f64);
-                if !self
-                    .send_page(
-                        EventPage {
-                            events: range.events,
-                            checkpoint,
-                            source: EventPageSource::Replay,
-                        },
-                        send_page,
-                    )
-                    .await
-                {
-                    return Ok(false);
-                }
-                Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
+        let mut waves = stream::iter(ranges).chunks(self.replay_concurrency.get());
+        while let Some(ranges) = waves.next().await {
+            let mut jobs = Vec::with_capacity(ranges.len());
+            let mut receivers = Vec::with_capacity(ranges.len());
+            for (start, end) in ranges {
+                let (send, receive) = mpsc::channel(1);
+                jobs.push((start, end, send));
+                receivers.push((end, receive));
             }
-            Self::advance_checkpoint(resume_checkpoint, checkpoint);
+            let collect = stream::iter(jobs)
+                .map(|(start, end, send)| async move {
+                    self.collect_checkpoint_range(replay_rpc_url, start, end, send_page, &send)
+                        .await
+                })
+                .buffer_unordered(self.replay_concurrency.get())
+                .try_fold(true, |complete, next| async move { Ok(complete && next) });
+            let deliver = async {
+                for (end, mut receive) in receivers {
+                    loop {
+                        let Some(frame) = receive.recv().await else {
+                            return Ok(false);
+                        };
+                        match frame {
+                            ReplayFrame::Page(page) => {
+                                let checkpoint = page.checkpoint;
+                                EVENTS_PER_PAGE.observe(page.events.len() as f64);
+                                if !self.send_page(page, send_page).await {
+                                    return Ok(false);
+                                }
+                                Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
+                            }
+                            ReplayFrame::Complete => {
+                                Self::advance_checkpoint(resume_checkpoint, end.saturating_sub(1));
+                                break;
+                            }
+                        }
+                    }
+                }
+                Ok::<_, EventIngestionError>(true)
+            };
+            let (collected, delivered) = tokio::try_join!(collect, deliver)?;
+            if !collected || !delivered {
+                return Ok(false);
+            }
         }
-
         Ok(true)
     }
 
@@ -302,7 +316,8 @@ impl<Q: EventQuery> EventIngestor<Q> {
         start_checkpoint: u64,
         end_checkpoint: u64,
         send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
-    ) -> Result<Option<ReplayRange<Q::Output>>, EventIngestionError> {
+        output: &mpsc::Sender<ReplayFrame<Q::Output>>,
+    ) -> Result<bool, EventIngestionError> {
         let started = Instant::now();
         let mut client = sui::grpc::client(replay_rpc_url).map_err(|error| {
             EventIngestionError::Configuration(format!(
@@ -310,7 +325,8 @@ impl<Q: EventQuery> EventIngestor<Q> {
             ))
         })?;
         let mut after_cursor: Option<Vec<u8>> = None;
-        let mut events = Vec::new();
+        let mut events = Vec::with_capacity(REPLAY_PAGE_EVENTS);
+        let mut event_count = 0;
 
         loop {
             let mut options = sui::grpc::QueryOptions::default()
@@ -328,8 +344,8 @@ impl<Q: EventQuery> EventIngestor<Q> {
             REPLAY_REQUESTS.inc();
             let mut ledger_client = client.ledger_client();
             let response = tokio::select! {
-                _ = self.cancellation_token.cancelled() => return Ok(None),
-                _ = send_page.closed() => return Ok(None),
+                _ = self.cancellation_token.cancelled() => return Ok(false),
+                _ = send_page.closed() => return Ok(false),
                 response = ledger_client.list_events(request) => response,
             }
             .map_err(|status| {
@@ -339,8 +355,8 @@ impl<Q: EventQuery> EventIngestor<Q> {
 
             let terminal_reason = loop {
                 let frame = tokio::select! {
-                    _ = self.cancellation_token.cancelled() => return Ok(None),
-                    _ = send_page.closed() => return Ok(None),
+                    _ = self.cancellation_token.cancelled() => return Ok(false),
+                    _ = send_page.closed() => return Ok(false),
                     frame = response.try_next() => frame,
                 }
                 .map_err(|status| {
@@ -366,6 +382,20 @@ impl<Q: EventQuery> EventIngestor<Q> {
                         )));
                     }
                     events.extend(event);
+                    if events.len() == REPLAY_PAGE_EVENTS {
+                        event_count += events.len();
+                        let page = EventPage {
+                            events: std::mem::take(&mut events),
+                            checkpoint,
+                            source: EventPageSource::Replay,
+                        };
+                        if !self
+                            .send_range_frame(ReplayFrame::Page(page), output, send_page)
+                            .await
+                        {
+                            return Ok(false);
+                        }
+                    }
                 }
                 let end = frame
                     .end
@@ -380,16 +410,26 @@ impl<Q: EventQuery> EventIngestor<Q> {
             match terminal_reason {
                 sui::grpc::QueryEndReason::CheckpointBound => {
                     REPLAY_RANGE_DURATION.observe(started.elapsed().as_secs_f64());
-                    REPLAY_RANGE_EVENTS.observe(events.len() as f64);
-                    return Ok(Some(ReplayRange {
-                        end_checkpoint,
+                    REPLAY_RANGE_EVENTS.observe((event_count + events.len()) as f64);
+                    let page = EventPage {
                         events,
-                    }));
+                        checkpoint: end_checkpoint.saturating_sub(1),
+                        source: EventPageSource::Replay,
+                    };
+                    if !self
+                        .send_range_frame(ReplayFrame::Page(page), output, send_page)
+                        .await
+                    {
+                        return Ok(false);
+                    }
+                    return Ok(self
+                        .send_range_frame(ReplayFrame::Complete, output, send_page)
+                        .await);
                 }
                 sui::grpc::QueryEndReason::ItemLimit | sui::grpc::QueryEndReason::ScanLimit => {}
                 sui::grpc::QueryEndReason::LedgerTip => {
                     if !self.wait(INDEX_PROGRESS_DELAY, send_page).await {
-                        return Ok(None);
+                        return Ok(false);
                     }
                 }
                 reason => {
@@ -398,6 +438,19 @@ impl<Q: EventQuery> EventIngestor<Q> {
                     )));
                 }
             }
+        }
+    }
+
+    async fn send_range_frame(
+        &self,
+        frame: ReplayFrame<Q::Output>,
+        output: &mpsc::Sender<ReplayFrame<Q::Output>>,
+        send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
+    ) -> bool {
+        tokio::select! {
+            _ = self.cancellation_token.cancelled() => false,
+            _ = send_page.closed() => false,
+            result = output.send(frame) => result.is_ok(),
         }
     }
 

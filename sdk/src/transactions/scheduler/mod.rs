@@ -9,6 +9,7 @@ pub use command::{
     dispatch_occurrence_ptb,
     expire_occurrence_with_gas_charge_ptb,
     reject_occurrence_with_gas_charge_ptb,
+    settle_occurrence_ptb,
 };
 pub(crate) use {
     authority::ResolvedAuthority,

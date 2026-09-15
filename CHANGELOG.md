@@ -14,11 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added one PTB helper that deposits a gas coin into several independent SUI address balances.
 - Added exact inner state object references to validated snapshots so consumers can establish causal RPC visibility before evaluating dependent transactions.
 - Added distinct archival replay endpoints for live event ingestors and exposed Move extracted protocol limits for consumers that must plan exact protocol windows.
+- Added discovery of current Task and Execution objects through recent indexed gRPC activity, with concurrent scans, cursor resumption, and one metadata read per unique object.
+- Added current Task dispatch offer reconstruction and exposed the existing occurrence settlement transaction builder.
 
 #### Fixed
 
 - Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.
 - `TapActions::bind_agent_skill` now transfers the newly created Agent to the signer after registering its first skill, preventing Sui from rejecting the PTB with an unused value that cannot be dropped.
+- Dense event replay now delivers bounded pages and resumes interrupted ranges without skipping events.
 
 ### `nexus-cli`
 
