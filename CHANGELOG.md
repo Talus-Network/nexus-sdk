@@ -2,13 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html), with the explicit compatibility exception recorded for 2.1.0 below.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
 ## [`2.1.0`] - 2026-09-17
-
-Compatibility notice: this minor release intentionally includes Rust API changes that require updates in some consumers. See the [SDK migration guide](https://github.com/Talus-Network/nexus-sdk/blob/v2.1.0/sdk/MIGRATION.md#upgrading-from-200-to-210) before upgrading.
 
 ### `nexus-sdk`
 
@@ -46,7 +44,6 @@ Compatibility notice: this minor release intentionally includes Rust API changes
 - TAP scaffolds now use MVR dependencies and include an executable published bytecode unit test with a developer module extension.
 - `tap publish-skill` now writes the canonical published DAG input commitment into its bind artifact.
 - Generated Rust Tool projects now depend on SDK and toolkit `2.1.0`.
-- Release preparation now verifies crate archives and CLI packages for Linux, Intel macOS, and Apple Silicon before creating a draft GitHub release.
 
 ### `nexus-toolkit`
 
