@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+## [`2.1.0`] - 2026-09-17
+
 ### `nexus-sdk`
 
 #### Added
@@ -17,12 +19,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added discovery of current Task and Execution objects through recent indexed gRPC activity, with concurrent scans, cursor resumption, and one metadata read per unique object.
 - Added current Task dispatch offer reconstruction and exposed the existing occurrence settlement transaction builder.
 
+#### Changed
+
+- Move binding dependencies now use the published `0.3.0` crates with Sui `0.4.0` types.
+- `NexusError` includes `ObjectNotFound` and `InvalidTransactionOutput`. Callers with exhaustive matches must handle both variants.
+- `EventPage` includes a required `source` field that distinguishes replay from live events. Callers that construct or destructure pages must account for it.
+
 #### Fixed
 
 - Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.
 - `TapActions::bind_agent_skill` now transfers the newly created Agent to the signer after registering its first skill, preventing Sui from rejecting the PTB with an unused value that cannot be dropped.
 - Dense event replay now delivers bounded pages and resumes interrupted ranges without skipping events.
 - Sui transaction decoding now supports protocol 137 validity rules through Sui 0.4.0 dependencies and matching Move binding types.
+- SDK builds with only `types` and `signed_http` now compile correctly, including toolkit consumers.
 
 ### `nexus-cli`
 
@@ -35,6 +44,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - TAP scaffolds now use MVR dependencies and include an executable published bytecode unit test with a developer module extension.
 - `tap publish-skill` now writes the canonical published DAG input commitment into its bind artifact.
+- Generated Rust Tool projects now depend on SDK and toolkit `2.1.0`.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- Toolkit `2.1.0` now resolves SDK `2.1.0` through crates.io and shares its Sui `0.4.0` types.
 
 ## [`2.0.0`] - 2026-08-27
 

@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk"]
 
 [workspace.package]
 edition = "2021"
-version = "2.0.0"
+version = "2.1.0"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -82,8 +82,8 @@ warp = { version = "0.4.3", features = ["server"] }
 zeroize = "1.7"
 
 # === Nexus deps ===
-nexus-toolkit = { version = "2.0.0", path = "toolkit-rust" }
-nexus-sdk = { version = "2.0.0", path = "sdk" }
+nexus-toolkit = { version = "2.1.0", path = "toolkit-rust" }
+nexus-sdk = { version = "2.1.0", path = "sdk" }
 
 # === Move package build deps ===
 move-binary-format = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }

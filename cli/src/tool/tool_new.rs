@@ -222,8 +222,9 @@ mod tests {
         let contents = tokio::fs::read_to_string(path).await.unwrap();
 
         assert!(contents.contains(r#"name = "test""#));
-        assert!(contents.contains(r#"nexus-sdk = "2.0.0""#));
-        assert!(contents.contains(r#"nexus-toolkit = "2.0.0""#));
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(contents.contains(&format!(r#"nexus-sdk = "{version}""#)));
+        assert!(contents.contains(&format!(r#"nexus-toolkit = "{version}""#)));
         assert!(!contents.contains("git ="));
     }
 

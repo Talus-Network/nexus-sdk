@@ -3,10 +3,10 @@
 # * checks for a Git Tag in the format v*
 # * builds artifacts (archives, installers, hashes)
 # * uploads artifacts to workflow
-# * on success, uploads the artifacts to a GitHub Release
+# * after every build succeeds, uploads artifacts to a draft GitHub Release
 #
 # The GitHub Release will be created with a generated
-# title/body based on the changelog.
+# body based on the changelog.
 
 name: Release
 
@@ -16,20 +16,26 @@ name: Release
 # If there's a prerelease-style suffix to the version, then the release(s)
 # will be marked as a prerelease.
 on:
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - "**/Cargo.toml"
+      - .github/workflows/release.yml
+      - scripts/check-packages.sh
+
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+*"
 
   workflow_dispatch:
-    inputs:
-      release:
-        description: "Create a release"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 env:
   RUST_BACKTRACE: 1
@@ -41,6 +47,27 @@ env:
     -C codegen-units=1
 
 jobs:
+  packages:
+    name: Verify crate archives
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-packages
+
+      - name: Verify crate archives
+        run: ./scripts/check-packages.sh
+
   cli:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -52,13 +79,9 @@ jobs:
             os: ubuntu-latest
             deb: true
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-15-intel
           - target: aarch64-apple-darwin
-            os: macos-latest
-
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.target }}
-      cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+            os: macos-15
 
     steps:
       - name: Checkout repository
@@ -134,26 +157,75 @@ jobs:
             fi
           done
 
+      - name: Verify packaged binary
+        env:
+          PACKAGE_VERSION: ${{ steps.get_version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          archive="nexus-cli-${PACKAGE_VERSION}-${TARGET}.tar.gz"
+          shasum -a 256 --check "$archive.sha256"
+          mkdir smoke-test
+          tar -xzf "$archive" -C smoke-test
+          test "$(smoke-test/nexus --version)" = "nexus-cli ${PACKAGE_VERSION}"
+          smoke-test/nexus --help > /dev/null
+          smoke-test/nexus tap test --help > /dev/null
+
       - name: Upload artifact
-        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
+          if-no-files-found: error
           path: |
             *.deb
             *.tar.gz
             *.zip
             *.sha256
 
+  draft:
+    name: Create draft release
+    needs: [packages, cli]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify checksums
+        working-directory: release-assets
+        run: shasum -a 256 --check *.sha256
+
+      - name: Read release notes
+        id: notes
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import tomllib
+
+          version = tomllib.loads(Path("Cargo.toml").read_text())["workspace"]["package"]["version"]
+          changelog = Path("CHANGELOG.md").read_text()
+          heading = f"## [`{version}`]"
+          body = changelog.split(heading, 1)[1].split("\n", 1)[1].split("\n## ", 1)[0].strip()
+          if not body:
+              raise SystemExit(f"Missing release notes for {version}")
+          Path("release-notes.md").write_text(body + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\n")
+          PY
+
       - name: Create release
-        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(steps.get_version.outputs.value, '-') }}
+          prerelease: ${{ contains(steps.notes.outputs.version, '-') }}
           draft: true
-          files: |
-            *.deb
-            *.tar.gz
-            *.zip
-            *.sha256
-          generate_release_notes: true
+          body_path: release-notes.md
+          files: release-assets/*
+          fail_on_unmatched_files: true

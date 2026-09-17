@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, such as v2.0.0
+        description: Existing release tag, such as v2.1.0
         required: true
         type: string
       resume:
@@ -48,10 +48,29 @@ jobs:
         run: |
           workspace_version="$(awk -F ' *= *' '$1 == "version" { gsub(/"/, "", $2); print $2; exit }' Cargo.toml)"
           test "$RELEASE_TAG" = "v$workspace_version"
+          test "$(git cat-file -t "$RELEASE_TAG")" = tag
           test "$(git rev-parse HEAD)" = "$(git rev-parse "${RELEASE_TAG}^{commit}")"
-          git fetch --quiet origin "release/v2.0.x:refs/remotes/origin/release/v2.0.x"
-          git merge-base --is-ancestor HEAD origin/release/v2.0.x
+          release_series="${workspace_version%%[-+]*}"
+          release_branch="release/v${release_series%.*}.x"
+          git fetch --quiet origin "$release_branch:refs/remotes/origin/$release_branch"
+          git merge-base --is-ancestor HEAD "origin/$release_branch"
           test -z "$(git status --porcelain)"
+
+      - name: Verify CLI release assets are ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          release_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          version="${RELEASE_TAG#v}"
+          for target in x86_64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin; do
+            archive="nexus-cli-${version}-${target}.tar.gz"
+            grep -Fx "$archive" <<< "$release_assets"
+            grep -Fx "$archive.sha256" <<< "$release_assets"
+          done
+          deb="nexus-cli_${version}-1_amd64.deb"
+          grep -Fx "$deb" <<< "$release_assets"
+          grep -Fx "$deb.sha256" <<< "$release_assets"
 
       - name: Request a crates.io token
         id: crates_io_auth
@@ -62,4 +81,4 @@ jobs:
           ALLOW_EXISTING: ${{ inputs.resume }}
           CARGO_REGISTRY_TOKEN: ${{ steps.crates_io_auth.outputs.token }}
           PUBLISH_CRATES_CONFIRM: ${{ inputs.tag }}
-        run: ./scripts/publish-crates.sh "${{ inputs.tag }}"
+        run: ./scripts/publish-crates.sh "$PUBLISH_CRATES_CONFIRM"

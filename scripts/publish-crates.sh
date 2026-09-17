@@ -36,9 +36,11 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-git fetch --quiet origin "release/v2.0.x:refs/remotes/origin/release/v2.0.x"
-if ! git merge-base --is-ancestor "$tag_commit" origin/release/v2.0.x; then
-    echo "$release_tag must point to a commit on origin/release/v2.0.x." >&2
+release_series="${workspace_version%%[-+]*}"
+release_branch="release/v${release_series%.*}.x"
+git fetch --quiet origin "$release_branch:refs/remotes/origin/$release_branch"
+if ! git merge-base --is-ancestor "$tag_commit" "origin/$release_branch"; then
+    echo "$release_tag must point to a commit on origin/$release_branch." >&2
     exit 1
 fi
 
