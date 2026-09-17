@@ -22,8 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Move binding dependencies now use the published `0.3.0` crates with Sui `0.4.0` types.
-- `NexusError` includes `ObjectNotFound` and `InvalidTransactionOutput`; callers with exhaustive matches must handle both variants.
-- `EventPage` includes a required `source` field that distinguishes replay from live events; callers that construct or destructure pages must account for it.
+- `NexusError` includes `ObjectNotFound` and `InvalidTransactionOutput`. Callers with exhaustive matches must handle both variants.
+- `EventPage` includes a required `source` field that distinguishes replay from live events. Callers that construct or destructure pages must account for it.
 
 #### Fixed
 
@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `TapActions::bind_agent_skill` now transfers the newly created Agent to the signer after registering its first skill, preventing Sui from rejecting the PTB with an unused value that cannot be dropped.
 - Dense event replay now delivers bounded pages and resumes interrupted ranges without skipping events.
 - Sui transaction decoding now supports protocol 137 validity rules through Sui 0.4.0 dependencies and matching Move binding types.
+- SDK builds with only `types` and `signed_http` now compile correctly, including toolkit consumers.
 
 ### `nexus-cli`
 

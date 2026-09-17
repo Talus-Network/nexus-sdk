@@ -49,6 +49,7 @@ sui_types = [
     "sui-crypto",
     "sui-transaction-builder",
     "tokio",
+    "tonic",
 ]
 
 # Move package transaction support for clients that provide compiled modules
