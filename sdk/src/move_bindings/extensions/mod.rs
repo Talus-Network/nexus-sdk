@@ -13,6 +13,7 @@ mod payment;
 mod ports_data;
 mod priority_fee_vault;
 mod runtime_vertex;
+#[cfg(feature = "transactions")]
 mod scheduler;
 mod shared_object_ref;
 mod support;

@@ -36,11 +36,6 @@ fmt-check: _check-cargo
 clippy: _check-cargo
     cargo +stable clippy --package {{ package }}
 
-# Publishes the CLI package to crates.io
-publish: _check-cargo
-    cargo +stable publish --package {{ package }}
-    @echo "Published {{ package }} to crates.io"
-
 # When released: `just cli run` == `nexus`
 #
 # Use the CLI locally for development purposes
