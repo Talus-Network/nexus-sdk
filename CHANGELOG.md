@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Object reads now report a definitive absence as `NexusError::ObjectNotFound` instead of an untyped RPC error, so callers can tell a missing object from an unreachable node.
 - `TapActions::bind_agent_skill` now transfers the newly created Agent to the signer after registering its first skill, preventing Sui from rejecting the PTB with an unused value that cannot be dropped.
 - Dense event replay now delivers bounded pages and resumes interrupted ranges without skipping events.
+- Sui transaction decoding now supports protocol 137 validity rules through Sui 0.4.0 dependencies and matching Move binding types.
 
 ### `nexus-cli`
 
