@@ -2,9 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html), with the explicit compatibility exception recorded for 2.1.0 below.
 
 ## Unreleased
+
+## [`2.1.0`] - 2026-09-17
+
+Compatibility notice: this minor release intentionally includes Rust API changes that require updates in some consumers. See the [SDK migration guide](https://github.com/Talus-Network/nexus-sdk/blob/v2.1.0/sdk/MIGRATION.md#upgrading-from-200-to-210) before upgrading.
 
 ### `nexus-sdk`
 
@@ -16,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added distinct archival replay endpoints for live event ingestors and exposed Move extracted protocol limits for consumers that must plan exact protocol windows.
 - Added discovery of current Task and Execution objects through recent indexed gRPC activity, with concurrent scans, cursor resumption, and one metadata read per unique object.
 - Added current Task dispatch offer reconstruction and exposed the existing occurrence settlement transaction builder.
+
+#### Changed
+
+- Move binding dependencies now use the published `0.3.0` crates with Sui `0.4.0` types.
+- `NexusError` includes `ObjectNotFound` and `InvalidTransactionOutput`; callers with exhaustive matches must handle both variants.
+- `EventPage` includes a required `source` field that distinguishes replay from live events; callers that construct or destructure pages must account for it.
 
 #### Fixed
 
@@ -35,6 +45,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - TAP scaffolds now use MVR dependencies and include an executable published bytecode unit test with a developer module extension.
 - `tap publish-skill` now writes the canonical published DAG input commitment into its bind artifact.
+- Generated Rust Tool projects now depend on SDK and toolkit `2.1.0`.
+- Release preparation now verifies crate archives and CLI packages for Linux, Intel macOS, and Apple Silicon before creating a draft GitHub release.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- Toolkit `2.1.0` now resolves SDK `2.1.0` through crates.io and shares its Sui `0.4.0` types.
 
 ## [`2.0.0`] - 2026-08-27
 

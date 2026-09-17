@@ -10,8 +10,10 @@ Most Nexus Tool projects should use the [Nexus Toolkit][nexus-toolkit-docs], whi
 Applications that need direct RPC, transaction, or protocol type access can add this crate to `Cargo.toml`:
 
 ```toml
-nexus-sdk = { version = "2.0.0", features = ["full", "move_publish"] }
+nexus-sdk = { version = "2.1.0", features = ["full", "move_publish"] }
 ```
+
+Version `2.1.0` includes Rust API changes. Read the [migration guide][migration] before updating from `2.0.0`.
 
 Move package transaction construction requires the `move_publish` feature. It accepts compiled module bytes and dependency package IDs through `MovePackageArtifact`; project compilation remains the responsibility of the caller.
 
@@ -44,3 +46,4 @@ Direct standard TAP payment creation currently follows the Move policy exactly: 
 <!-- List of references -->
 
 [nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust
+[migration]: https://github.com/Talus-Network/nexus-sdk/blob/v2.1.0/sdk/MIGRATION.md#upgrading-from-200-to-210

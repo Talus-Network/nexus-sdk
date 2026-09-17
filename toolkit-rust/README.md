@@ -25,7 +25,7 @@ You can also manually include the Nexus Toolkit in your existing project.
 Add the following lines to your project's `Cargo.toml`:
 
 ```toml
-nexus-toolkit = "2.0.0"
+nexus-toolkit = "2.1.0"
 ```
 
 ---

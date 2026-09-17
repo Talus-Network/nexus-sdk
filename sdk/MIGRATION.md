@@ -1,6 +1,18 @@
 # SDK Migration Guide
 
-This guide covers direct SDK migration after `nexus-sdk` moved to generated Move bindings. It is for code that imports `nexus-sdk` directly. Toolkit users should follow the Toolkit guide instead of depending on this crate unless they need SDK internals.
+This guide covers code that imports `nexus-sdk` directly. Toolkit users should follow the Toolkit guide instead of depending on this crate unless they need SDK internals.
+
+## Upgrading from 2.0.0 to 2.1.0
+
+Version `2.1.0` intentionally includes Rust API changes despite its minor version number. Review these changes before updating the SDK or toolkit. Cargo requirements such as `"2.0.0"` permit `2.1.0`; consumers that need time to migrate can temporarily use `"=2.0.0"`.
+
+1. Update SDK and toolkit dependencies together to `2.1.0`, then refresh the lockfile.
+1. Use Sui `0.4.0` dependencies and Move binding `0.3.0` dependencies wherever your code passes their values to the SDK. Prefer the SDK's `nexus_sdk::sui` exports to avoid mixing incompatible Rust types from Sui `0.3` and `0.4`.
+1. Handle `NexusError::ObjectNotFound` and `NexusError::InvalidTransactionOutput` in exhaustive error matches. A definitive missing object now produces `ObjectNotFound` instead of `Rpc`.
+1. Include `source: EventPageSource::Live` or `source: EventPageSource::Replay` when constructing `EventPage`. Use the source that matches the events. Destructuring can use `EventPage { events, checkpoint, .. }` if the distinction does not matter to the caller.
+1. Rebuild and test consumers, including any code that directly matches Sui transaction expiration variants. The SDK now decodes both `ValidDuring` and the protocol 137 `Validity` representation.
+
+The remaining sections describe the earlier migration to generated Move bindings.
 
 ## Goal
 
