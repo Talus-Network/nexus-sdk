@@ -20,6 +20,14 @@ Move package transaction construction requires the `move_publish` feature. It ac
 If you are upgrading direct SDK usage after the move to generated Move bindings,
 see the [SDK migration guide](./MIGRATION.md).
 
+## Recovery reads
+
+Recovery returns only a complete, validated inventory. Failed requests, interrupted streams, missing history, and invalid responses leave recovery pending while it retries. Transaction scans retain validated IDs and resume from their last confirmed cursor. Each read or wait for a stream frame times out after 30 seconds; retry delays increase to at most five seconds and include jitter.
+
+Callers can cancel recovery by dropping its future or selecting it against a cancellation signal. Keep readiness disabled until recovery completes. Warnings identify the failed operation and its next retry delay; a persistently invalid endpoint needs correction before recovery can finish.
+
+`nexus::recovery::retry_read` applies the same policy to application recovery reads. Its callback must validate a complete result and must not perform mutations.
+
 ## Signed HTTP (Leader nodes <-> Tools)
 
 This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:

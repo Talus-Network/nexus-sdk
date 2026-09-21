@@ -152,6 +152,7 @@ full = [
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true
+tracing.workspace = true
 
 [dependencies.base64]
 workspace = true
@@ -328,7 +329,7 @@ optional = true
 # === Dev deps ===
 [dev-dependencies]
 assert_matches = "1.5.0"
-tokio = { workspace = true, features = ["full", "macros"] }
+tokio = { workspace = true, features = ["full", "macros", "test-util"] }
 serde_json.workspace = true
 mockall.workspace = true
 mockito.workspace = true
