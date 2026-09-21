@@ -22,11 +22,13 @@ see the [SDK migration guide](./MIGRATION.md).
 
 ## Recovery reads
 
-Recovery returns only a complete, validated inventory. Failed requests, interrupted streams, missing history, and invalid responses leave recovery pending while it retries. Transaction scans retain validated IDs and resume from their last confirmed cursor. Each read or wait for a stream frame times out after 30 seconds; retry delays increase to at most five seconds and include jitter.
+Create a `nexus::recovery::RecoveryReader` with the RPC URL and a `ListConfig` policy. The reader shares that policy across window selection, transaction discovery, metadata, and application reads. Existing `RecoveryWindow` and `discover_work_objects` entry points use the same reader with the Sui client's defaults.
 
-Callers can cancel recovery by dropping its future or selecting it against a cancellation signal. Keep readiness disabled until recovery completes. Warnings identify the failed operation and its next retry delay; a persistently invalid endpoint needs correction before recovery can finish.
+Transaction discovery uses the Sui client's resumable List API and lets the server choose its request size. Transport deadlines bound individual RPCs and stalled response bodies; recovery has no overall read deadline. Checkpoint searches retain their bounds when a read fails. Completed scan ranges and metadata batches are retained while other reads recover.
 
-`nexus::recovery::retry_read` applies the same policy to application recovery reads. Its callback must validate a complete result and must not perform mutations.
+Recovery accepts a frame only after validating its full payload, and commits its IDs and resume cursor together. A scan completes only at its requested checkpoint bound. An earlier ledger tip, missing history, invalid response, or failed read leaves recovery pending. `RecoveryReader::read` applies the configured retry delays to application reads; its callback must validate its result and must not perform mutations. Retry delays use the policy's initial delay, maximum exponential delay, and additive jitter. List observers can report transport retries and resumed progress.
+
+Callers can cancel by dropping the recovery future or selecting it against a cancellation signal. Keep readiness disabled until recovery completes. Persistent coverage or response problems need correction before recovery can finish; the reader never reports a partial inventory as success.
 
 ## Signed HTTP (Leader nodes <-> Tools)
 
