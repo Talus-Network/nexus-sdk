@@ -367,7 +367,7 @@ pub(crate) enum OccurrenceCommand {
         occurrence_id: u64,
     },
 
-    #[command(about = "Abort runtime work after its workflow timeout")]
+    #[command(about = "Resolve expired runtime work and settle the occurrence")]
     AbortExpired {
         #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,

@@ -77,6 +77,8 @@ atomically. Task and occurrence inspection read durable object state. Run
 `nexus task occurrence list --task-id <OBJECT_ID> --json` to page through
 retained occurrence records, and `nexus task --help` for complete examples.
 
+For expired work, `nexus task occurrence abort-expired --task-id <OBJECT_ID> --occurrence-id <U64>` discovers eligible invocations automatically. It settles available results, refunds expired payment locks, and settles the occurrence when execution finishes. The output reports the resulting occurrence state and each confirmed resolution; work still awaiting its timeout remains pending. Supplying `--invocation-id` limits the command to that invocation. `nexus task occurrence cost` includes outstanding invocation IDs in both human and JSON output.
+
 For an Agent skill whose onchain Tool requires workflow authorization, bind
 each vertex that requires a grant to its recipient when creating the Task:
 

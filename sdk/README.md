@@ -30,6 +30,12 @@ Recovery accepts a frame only after validating its full payload, and commits its
 
 Callers can cancel by dropping the recovery future or selecting it against a cancellation signal. Keep readiness disabled until recovery completes. Persistent coverage or response problems need correction before recovery can finish; the reader never reports a partial inventory as success.
 
+## Execution recovery
+
+`sui::grpc::with_read_retry_until` gives concurrent crawler preparation one observation deadline. Only failed transport reads repeat; completed sibling reads remain available. End the scope before an external effect, or use `without_read_retry` around that effect. Dropping preparation cancels reads and backoff. `set_retry_request_budget` bounds recovery requests across every pooled client for an endpoint. Ordinary requests bypass this budget; `with_retry_budget` applies it to an existing recovery attempt without replaying requests or changing transaction identity.
+
+`OccurrenceHandle::resolve_expired` inspects current chain state, settles available results, refunds eligible invocations by exact identity, and settles a finished occurrence into its Task. It returns confirmed resolutions and the final observed occurrence, including work still awaiting eligibility. Repeating recovery after settlement performs no mutation. Independent executions remain concurrent. `cost().outstanding_invocation_ids()` exposes unresolved locks for inspection. The existing `abort_expired(Some(id))` operation remains available for a specific invocation.
+
 ## Signed HTTP (Leader nodes <-> Tools)
 
 This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:

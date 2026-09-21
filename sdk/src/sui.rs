@@ -11,10 +11,13 @@ pub mod crypto {
     pub use sui_crypto::{ed25519::Ed25519PrivateKey, *};
 }
 
+mod request_budget;
+
 pub mod grpc {
     use std::{
         collections::HashMap,
-        sync::{LazyLock, Mutex},
+        num::NonZeroU32,
+        sync::{Arc, LazyLock, Mutex},
         time::Duration,
     };
     pub use sui_rpc::{field::FieldMask, proto::sui::rpc::v2::*, Client};
@@ -147,6 +150,7 @@ pub mod grpc {
     struct EndpointPool {
         clients: Vec<Client>,
         next: usize,
+        budget: Arc<Mutex<super::request_budget::RequestBudget>>,
     }
 
     #[derive(Default)]
@@ -164,11 +168,15 @@ pub mod grpc {
 
             let endpoint = endpoints.entry(rpc_url.to_owned()).or_default();
             if endpoint.clients.len() < MAX_CHANNELS_PER_ENDPOINT {
+                let budget = Arc::clone(&endpoint.budget);
                 let client = {
                     let _runtime = TRANSPORT_RUNTIME.enter();
                     Client::new(rpc_url)
                         .map_err(anyhow::Error::new)?
                         .with_response_headers_timeout(RESPONSE_HEADERS_TIMEOUT)
+                        .request_layer(tower::layer::layer_fn(move |service| {
+                            super::request_budget::BudgetService::new(service, Arc::clone(&budget))
+                        }))
                 };
                 endpoint.clients.push(client.clone());
                 return Ok(client);
@@ -190,6 +198,64 @@ pub mod grpc {
     /// unavailable.
     pub fn client(rpc_url: impl AsRef<str>) -> anyhow::Result<Client> {
         CLIENT_POOL.client(rpc_url)
+    }
+
+    /// Bound recovery RPC attempts to this URL across pooled clients and their clones.
+    ///
+    /// Calls inside [`with_retry_budget`] include reads, submissions, and stream establishment. Existing
+    /// streams keep receiving without consuming tokens. No request is retried by
+    /// this layer, so callers retain control of transaction identity and deadlines.
+    /// Repeating the same configuration does not replenish the shared budget.
+    /// Ordinary calls and endpoints without a configured budget preserve unrestricted admission.
+    pub fn set_retry_request_budget(
+        rpc_url: &str,
+        requests_per_second: NonZeroU32,
+        burst: NonZeroU32,
+    ) -> anyhow::Result<()> {
+        client(rpc_url)?;
+        let endpoints = CLIENT_POOL
+            .endpoints
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Sui gRPC client pool lock was poisoned"))?;
+        endpoints[rpc_url]
+            .budget
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Sui RPC budget lock was poisoned"))?
+            .configure(requests_per_second, burst);
+        Ok(())
+    }
+
+    /// Apply the configured shared budget to every RPC made by a recovery attempt.
+    ///
+    /// This task scope leaves ordinary parallel execution unrestricted. It does
+    /// not spawn work, repeat effects, or change the identity of a submission.
+    pub async fn with_retry_budget<F: std::future::Future>(attempt: F) -> F::Output {
+        super::request_budget::scope(attempt).await
+    }
+
+    /// Retain concurrent preparation until its observation deadline.
+    ///
+    /// Crawler reads retry only transient transport failures, retaining completed
+    /// sibling reads. Dropping the scope cancels reads and waits. Use this only
+    /// for preparation before an external effect can occur.
+    pub async fn with_read_retry_until<F: std::future::Future>(
+        deadline: tokio::time::Instant,
+        preparation: F,
+    ) -> F::Output {
+        super::request_budget::read_scope(Some(deadline), preparation).await
+    }
+
+    /// End preparation retry semantics before performing or processing effects.
+    pub async fn without_read_retry<F: std::future::Future>(operation: F) -> F::Output {
+        super::request_budget::read_scope(None, operation).await
+    }
+
+    pub(crate) async fn retry_read<T, F, Fut>(operation: F) -> Result<T, tonic::Status>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<T, tonic::Status>>,
+    {
+        super::request_budget::read(operation).await
     }
 
     #[cfg(test)]

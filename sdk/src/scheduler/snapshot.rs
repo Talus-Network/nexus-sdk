@@ -492,6 +492,8 @@ pub struct OccurrenceCost {
     pub(crate) locked_budget_mist: u64,
     pub(crate) consumed_mist: u64,
     pub(crate) outstanding_locks: u64,
+    #[serde(default)]
+    pub(crate) outstanding_invocation_ids: Vec<sui::types::Address>,
     pub(crate) accomplished: bool,
     pub(crate) refunded: bool,
 }
@@ -520,6 +522,11 @@ impl OccurrenceCost {
     /// Returns the number of unresolved payment locks.
     pub const fn outstanding_locks(&self) -> u64 {
         self.outstanding_locks
+    }
+
+    /// Returns the exact invocations that still hold payment locks.
+    pub fn outstanding_invocation_ids(&self) -> &[sui::types::Address] {
+        &self.outstanding_invocation_ids
     }
 
     /// Returns whether execution accounting is complete.
@@ -722,6 +729,7 @@ mod tests {
             locked_budget_mist: 30,
             consumed_mist: 40,
             outstanding_locks: 2,
+            outstanding_invocation_ids: vec![address("0x15"), address("0x16")],
             accomplished: true,
             refunded: false,
         };
@@ -730,6 +738,22 @@ mod tests {
         assert_eq!(cost.locked_budget_mist(), 30);
         assert_eq!(cost.consumed_mist(), 40);
         assert_eq!(cost.outstanding_locks(), 2);
+        assert_eq!(
+            cost.outstanding_invocation_ids(),
+            [address("0x15"), address("0x16")]
+        );
+        let mut json = serde_json::to_value(&cost).unwrap();
+        assert_eq!(
+            serde_json::from_value::<OccurrenceCost>(json.clone()).unwrap(),
+            cost
+        );
+        json.as_object_mut()
+            .unwrap()
+            .remove("outstanding_invocation_ids");
+        assert!(serde_json::from_value::<OccurrenceCost>(json)
+            .unwrap()
+            .outstanding_invocation_ids()
+            .is_empty());
         assert!(cost.accomplished());
         assert!(!cost.refunded());
     }

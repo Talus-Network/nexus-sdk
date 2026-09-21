@@ -28,6 +28,8 @@ mod model;
 mod receipt;
 mod snapshot;
 
+#[cfg(feature = "nexus")]
+pub use receipt::RecoveryReceipt;
 pub use {
     error::{ErrorSource, ScheduleError, SchedulerError},
     model::{

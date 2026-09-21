@@ -6,6 +6,7 @@ use {
         OccurrenceSnapshot,
         OccurrenceSource,
         OccurrenceStatus,
+        RecoveryReceipt,
         TaskController,
         TaskMutationReceipt,
         TaskPointer,
@@ -148,6 +149,26 @@ pub(super) fn render_abort_receipt(receipt: &AbortReceipt) -> String {
         reference.occurrence_id(),
     )
     .expect("writing to a String cannot fail");
+    output
+}
+
+pub(super) fn render_recovery_receipt(receipt: &RecoveryReceipt) -> String {
+    let mut output = String::new();
+    for resolution in receipt.resolutions() {
+        write_field(&mut output, "Resolved walk", resolution.walk_index);
+        write_field(
+            &mut output,
+            "Resolution",
+            resolution.resolution_kind.as_str(),
+        );
+        if let Some(digest) = resolution.tx_digest {
+            write_field(&mut output, "Transaction", digest);
+        }
+    }
+    if let Some(settlement) = receipt.settlement() {
+        write_field(&mut output, "Settlement", settlement.transaction().digest());
+    }
+    output.push_str(&render_occurrence(receipt.occurrence()));
     output
 }
 
@@ -320,6 +341,9 @@ pub(super) fn render_occurrence_cost(
         format_args!("{} MIST", cost.consumed_mist()),
     );
     write_field(&mut output, "Outstanding", cost.outstanding_locks());
+    for invocation in cost.outstanding_invocation_ids() {
+        write_field(&mut output, "Invocation", invocation);
+    }
     write_field(&mut output, "Accomplished", yes_no(cost.accomplished()));
     write_field(&mut output, "Refunded", yes_no(cost.refunded()));
     output.push_str("\nNext command\n");
@@ -622,6 +646,7 @@ mod tests {
             "locked_budget_mist": 30,
             "consumed_mist": 40,
             "outstanding_locks": 2,
+            "outstanding_invocation_ids": ["0x24", "0x25"],
             "accomplished": true,
             "refunded": false
         }))
@@ -638,6 +663,29 @@ mod tests {
         assert!(
             render_occurrence_cost(task.task_id(), 7, &cost).contains("Consumed         40 MIST")
         );
+        for invocation in cost.outstanding_invocation_ids() {
+            assert!(
+                render_occurrence_cost(task.task_id(), 7, &cost).contains(&invocation.to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_reports_actual_status_when_no_work_is_eligible() {
+        let snapshot = occurrence_with_status(json!({ "status": "executing" }));
+        let receipt: nexus_sdk::scheduler::RecoveryReceipt = serde_json::from_value(json!({
+            "occurrence": snapshot,
+            "resolutions": [],
+            "settlement": null
+        }))
+        .unwrap();
+        let output = super::render_recovery_receipt(&receipt);
+        assert!(output.contains("executing"));
+        assert!(!output.contains("aborted"));
+        assert!(serde_json::to_value(&receipt).unwrap()["resolutions"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
