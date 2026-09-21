@@ -20,7 +20,7 @@ use {
     },
     anyhow::{bail, ensure, Context as _},
     futures::{stream, StreamExt as _, TryStreamExt as _},
-    std::{collections::BTreeSet, num::NonZeroUsize, ops::AsyncFnMut, time::Duration},
+    std::{collections::BTreeSet, future::Future, num::NonZeroUsize, time::Duration},
     sui_rpc::{field::FieldMaskUtil as _, proto::sui::rpc::v2::filter::transaction},
 };
 
@@ -62,24 +62,25 @@ impl<'a> RecoveryReader<'a> {
     /// The callback must only read state and validate its result. Bound individual
     /// RPCs through their transport; this method imposes no deadline on an operation
     /// containing several reads. Do not use it for mutations or transaction submission.
-    pub async fn read<T>(
-        &self,
-        operation: &str,
-        mut read: impl AsyncFnMut() -> anyhow::Result<T>,
-    ) -> T {
+    pub async fn read<T, F, Fut>(&self, operation: &str, mut read: F) -> T
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = anyhow::Result<T>>,
+    {
         let mut delay = self.policy.base_retry_delay;
         loop {
             match read().await {
                 Ok(value) => return value,
-                Err(error) => {
-                    let wait = delay
-                        .saturating_add(self.policy.retry_jitter.mul_f64(rand::random::<f64>()));
-                    tracing::warn!(operation, error = %format_args!("{error:#}"), delay = ?wait, "Recovery read will retry");
-                    tokio::time::sleep(wait).await;
-                    delay = delay.saturating_mul(2).min(self.policy.max_retry_delay);
-                }
+                Err(error) => self.wait(operation, &error, &mut delay).await,
             }
         }
+    }
+
+    async fn wait(&self, operation: &str, error: &anyhow::Error, delay: &mut Duration) {
+        let wait = delay.saturating_add(self.policy.retry_jitter.mul_f64(rand::random::<f64>()));
+        tracing::warn!(operation, error = %format_args!("{error:#}"), delay = ?wait, "Recovery read will retry");
+        tokio::time::sleep(wait).await;
+        *delay = delay.saturating_mul(2).min(self.policy.max_retry_delay);
     }
 
     /// Select a fixed interval using chain time and retained history.
@@ -93,7 +94,7 @@ impl<'a> RecoveryReader<'a> {
         ensure!(!lookback.is_zero(), "Recovery lookback must be positive");
         let lookback_ms = u64::try_from(lookback.as_millis())?;
         let mut window = self
-            .read("checking recovery coverage", async || {
+            .read("checking recovery coverage", || async {
                 let info = sui::grpc::client(self.rpc_url)?
                     .ledger_client()
                     .get_service_info(sui::grpc::GetServiceInfoRequest::default())
@@ -143,7 +144,7 @@ impl<'a> RecoveryReader<'a> {
     ) -> anyhow::Result<u64> {
         ensure!(window.start <= window.tip, "Recovery interval is reversed");
         if window.start != 0 {
-            self.read("checking active request coverage", async || {
+            self.read("checking active request coverage", || async {
                 ensure!(
                     checkpoint_time(self.rpc_url, window.start).await? <= timestamp_ms,
                     "An active request predates the recovery interval"
@@ -202,12 +203,13 @@ impl<'a> RecoveryReader<'a> {
         while let Some(discovered) = ranges.next().await {
             ids.extend(discovered);
         }
-        let ids = ids.into_iter().collect::<Vec<_>>();
-        let mut batches = stream::iter(ids.chunks(MAX_BATCH_OBJECT_REQUESTS))
-            .map(|ids| {
+        let mut batches = stream::iter(ids)
+            .chunks(MAX_BATCH_OBJECT_REQUESTS)
+            .map(|ids| async move {
                 self.read("reading recovery object metadata", || {
-                    current_types(self.rpc_url, ids)
+                    current_types(self.rpc_url, &ids)
                 })
+                .await
             })
             .buffer_unordered(concurrency.get());
         let task_type = crate::move_bindings::struct_tag::<Task>(context);
@@ -225,6 +227,7 @@ impl<'a> RecoveryReader<'a> {
         Ok(objects)
     }
 
+    #[tracing::instrument(name = "recovery_scan", skip(self, filter))]
     async fn scan(
         &self,
         filter: &sui::grpc::TransactionFilter,
@@ -235,92 +238,104 @@ impl<'a> RecoveryReader<'a> {
 
         let mut ids = BTreeSet::new();
         let mut after: Option<Vec<u8>> = None;
-        self.read("scanning recovery transactions", async || {
-            let mut options =
-                sui::grpc::QueryOptions::default().with_ordering(sui::grpc::Ordering::Ascending);
-            if let Some(cursor) = &after {
-                options.set_after(cursor.clone());
-            }
-            let request = sui::grpc::ListTransactionsRequest::default()
-                .with_start_checkpoint(start)
-                .with_end_checkpoint(end)
-                .with_filter(filter.clone())
-                .with_options(options)
-                .with_read_mask(sui::grpc::FieldMask::from_paths([
-                    "checkpoint",
-                    "effects.changed_objects.object_id",
-                    "effects.changed_objects.output_owner.kind",
-                ]));
-            let frames = sui::grpc::client(self.rpc_url)?
-                .list_transactions_with_config(request, self.policy.clone());
-            futures::pin_mut!(frames);
-            while let Some(frame) = frames.try_next().await? {
-                let watermark = frame
-                    .watermark
-                    .context("Recovery scan omitted its watermark")?;
-                let cursor = watermark
-                    .cursor
-                    .filter(|cursor| !cursor.is_empty())
-                    .context("Recovery scan omitted its cursor")?;
-                let reason = frame.end.map(|end| end.reason());
-                if let Some(reason) = reason {
-                    ensure!(
-                        matches!(reason, CheckpointBound | ItemLimit | ScanLimit | LedgerTip),
-                        "Recovery scan ended for an unsupported reason: {reason:?}"
-                    );
-                    if reason == CheckpointBound {
-                        // Empty intervals may have no covered checkpoint. When present,
-                        // the inclusive coverage must agree with the requested end.
-                        ensure!(
-                            watermark
-                                .checkpoint
-                                .is_none_or(|checkpoint| checkpoint == end - 1),
-                            "Recovery scan did not cover its requested checkpoint bound"
-                        );
-                    }
+        let mut delay = self.policy.base_retry_delay;
+        loop {
+            let result = async {
+                let mut options = sui::grpc::QueryOptions::default()
+                    .with_ordering(sui::grpc::Ordering::Ascending);
+                if let Some(cursor) = &after {
+                    options.set_after(cursor.clone());
                 }
-                let mut discovered = Vec::new();
-                if let Some(transaction) = frame.transaction {
-                    let checkpoint = transaction
-                        .checkpoint
-                        .context("Recovery transaction omitted its checkpoint")?;
-                    ensure!(
-                        (start..end).contains(&checkpoint),
-                        "Recovery transaction is outside its checkpoint range"
-                    );
-                    let effects = transaction
-                        .effects
-                        .context("Recovery transaction omitted its effects")?;
-                    for object in effects.changed_objects {
-                        if object.output_owner.as_ref().is_some_and(|owner| {
-                            owner.kind() == sui::grpc::owner::OwnerKind::Shared
-                        }) {
-                            discovered.push(
-                                object
-                                    .object_id
-                                    .context("Shared object omitted its ID")?
-                                    .parse::<sui::types::Address>()?,
+                let request = sui::grpc::ListTransactionsRequest::default()
+                    .with_start_checkpoint(start)
+                    .with_end_checkpoint(end)
+                    .with_filter(filter.clone())
+                    .with_options(options)
+                    .with_read_mask(sui::grpc::FieldMask::from_paths([
+                        "checkpoint",
+                        "effects.changed_objects.object_id",
+                        "effects.changed_objects.output_owner.kind",
+                    ]));
+                let frames = sui::grpc::client(self.rpc_url)?
+                    .list_transactions_with_config(request, self.policy.clone());
+                futures::pin_mut!(frames);
+                while let Some(frame) = frames.try_next().await? {
+                    let watermark = frame
+                        .watermark
+                        .context("Recovery scan omitted its watermark")?;
+                    let cursor = watermark
+                        .cursor
+                        .filter(|cursor| !cursor.is_empty())
+                        .context("Recovery scan omitted its cursor")?;
+                    let reason = frame.end.map(|end| end.reason());
+                    if let Some(reason) = reason {
+                        ensure!(
+                            matches!(reason, CheckpointBound | ItemLimit | ScanLimit | LedgerTip),
+                            "Recovery scan ended for an unsupported reason: {reason:?}"
+                        );
+                        if reason == CheckpointBound {
+                            // Empty intervals may have no covered checkpoint. When present,
+                            // the inclusive coverage must agree with the requested end.
+                            ensure!(
+                                watermark
+                                    .checkpoint
+                                    .is_none_or(|checkpoint| checkpoint == end - 1),
+                                "Recovery scan did not cover its requested checkpoint bound"
                             );
                         }
                     }
+                    let mut discovered = Vec::new();
+                    if let Some(transaction) = frame.transaction {
+                        let checkpoint = transaction
+                            .checkpoint
+                            .context("Recovery transaction omitted its checkpoint")?;
+                        ensure!(
+                            (start..end).contains(&checkpoint),
+                            "Recovery transaction is outside its checkpoint range"
+                        );
+                        let effects = transaction
+                            .effects
+                            .context("Recovery transaction omitted its effects")?;
+                        for object in effects.changed_objects {
+                            if object.output_owner.as_ref().is_some_and(|owner| {
+                                owner.kind() == sui::grpc::owner::OwnerKind::Shared
+                            }) {
+                                discovered.push(
+                                    object
+                                        .object_id
+                                        .context("Shared object omitted its ID")?
+                                        .parse::<sui::types::Address>()?,
+                                );
+                            }
+                        }
+                    }
+                    // Retain the application cursor only after validating the whole frame.
+                    // Dropping a rejected List stream then resumes before that frame.
+                    ids.extend(discovered);
+                    if after.as_deref() != Some(cursor.as_ref()) {
+                        delay = self.policy.base_retry_delay;
+                    }
+                    after = Some(cursor.to_vec());
+                    match reason {
+                        Some(CheckpointBound) => return Ok(()),
+                        Some(LedgerTip) => bail!(
+                            "Indexed ledger has not reached recovery checkpoint {}",
+                            end - 1
+                        ),
+                        _ => {}
+                    }
                 }
-                // Retain the application cursor only after validating the whole frame.
-                // Dropping a rejected List stream then resumes before that frame.
-                ids.extend(discovered);
-                after = Some(cursor.to_vec());
-                match reason {
-                    Some(CheckpointBound) => return Ok(()),
-                    Some(LedgerTip) => bail!(
-                        "Indexed ledger has not reached recovery checkpoint {}",
-                        end - 1
-                    ),
-                    _ => {}
+                bail!("Recovery scan ended without its checkpoint bound")
+            }
+            .await;
+            match result {
+                Ok(()) => return ids,
+                Err(error) => {
+                    self.wait("scanning recovery transactions", &error, &mut delay)
+                        .await
                 }
             }
-            bail!("Recovery scan ended without its checkpoint bound")
-        })
-        .await;
-        ids
+        }
     }
 }
 

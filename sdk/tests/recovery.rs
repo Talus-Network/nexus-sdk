@@ -655,11 +655,11 @@ async fn cancellation_releases_an_active_read() {
 #[tokio::test(start_paused = true)]
 async fn slow_healthy_reads_finish_without_restarting() {
     let reader = reader("http://localhost:1");
-    let mut attempts = 0;
+    let attempts = std::sync::atomic::AtomicUsize::new(0);
     let completed = tokio::time::timeout(
         Duration::from_secs(60),
-        reader.read("healthy sequence", async || {
-            attempts += 1;
+        reader.read("healthy sequence", || async {
+            attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             for _ in 0..8 {
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
@@ -669,7 +669,7 @@ async fn slow_healthy_reads_finish_without_restarting() {
     .await
     .expect("healthy progress did not finish");
     assert_eq!(completed, 8);
-    assert_eq!(attempts, 1);
+    assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -846,4 +846,20 @@ async fn cancelling_an_open_scan_releases_the_server_stream() {
     })
     .await
     .expect("cancelled scan retained its server stream");
+}
+
+#[test]
+fn recovery_futures_can_run_on_worker_tasks() {
+    fn assert_send(_: impl Send) {}
+    let reader = reader("http://localhost:1");
+    let window = RecoveryWindow {
+        start: 10,
+        tip: 20,
+        timestamp_ms: 0,
+    };
+    let context = sui_mocks::mock_nexus_context();
+    assert_send(reader.window(Duration::from_secs(30)));
+    assert_send(reader.checkpoint_at(window, 0));
+    assert_send(reader.discover_work_objects(&context, window, NonZeroUsize::MIN));
+    assert_send(reader.read("application read", || async { Ok(()) }));
 }
