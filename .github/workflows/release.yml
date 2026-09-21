@@ -16,14 +16,6 @@ name: Release
 # If there's a prerelease-style suffix to the version, then the release(s)
 # will be marked as a prerelease.
 on:
-  pull_request:
-    paths:
-      - Cargo.toml
-      - Cargo.lock
-      - "**/Cargo.toml"
-      - .github/workflows/release.yml
-      - scripts/check-packages.sh
-
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+*"
