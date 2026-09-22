@@ -1,6 +1,7 @@
 //! Shared admission for recovery RPC attempts to a configured endpoint.
 
 use {
+    super::observation::{Observation, Operation, Outcome},
     std::{
         num::NonZeroU32,
         sync::{Arc, Mutex},
@@ -28,22 +29,51 @@ pub(super) async fn read_scope<F: std::future::Future>(
 }
 
 /// Retain the surrounding preparation while only its failed observation waits.
-pub(super) async fn read<T, F, Fut>(mut operation: F) -> Result<T, tonic::Status>
+pub(super) async fn read<T, F, Fut>(operation: F) -> Result<T, tonic::Status>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, tonic::Status>>,
+{
+    let observation = Observation::start(Operation::Read);
+    let result = read_inner(operation).await;
+    observation.finish(read_outcome(&result));
+    result
+}
+
+fn read_outcome<T>(result: &Result<T, tonic::Status>) -> Outcome {
+    match result {
+        Ok(_) => Outcome::Success,
+        Err(status) if status.code() == tonic::Code::DeadlineExceeded => Outcome::Deadline,
+        Err(status) if status.code() == tonic::Code::Cancelled => Outcome::Cancelled,
+        Err(status) => Outcome::Error(Some(status.code())),
+    }
+}
+
+async fn attempt<T>(
+    future: impl std::future::Future<Output = Result<T, tonic::Status>>,
+) -> Result<T, tonic::Status> {
+    let observation = Observation::start(Operation::ReadAttempt);
+    let result = future.await;
+    observation.finish(read_outcome(&result));
+    result
+}
+
+async fn read_inner<T, F, Fut>(mut operation: F) -> Result<T, tonic::Status>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<T, tonic::Status>>,
 {
     let Some(deadline) = READ_DEADLINE.try_with(|deadline| *deadline).ok().flatten() else {
-        return operation().await;
+        return attempt(operation()).await;
     };
     let mut delay = Duration::from_millis(250);
     let mut retrying = false;
     loop {
         let attempt = async {
             if retrying {
-                scope(operation()).await
+                scope(attempt(operation())).await
             } else {
-                operation().await
+                attempt(operation()).await
             }
         };
         let result = tokio::time::timeout_at(deadline, attempt)
@@ -62,9 +92,14 @@ where
                 ) =>
             {
                 let wait = delay.mul_f64(0.5 + rand::random::<f64>() * 0.5);
-                tokio::time::timeout_at(deadline, tokio::time::sleep(wait))
-                    .await
-                    .map_err(|_| tonic::Status::deadline_exceeded("Observation window ended"))?;
+                let observation = Observation::start(Operation::RetryDelay);
+                let waited = tokio::time::timeout_at(deadline, tokio::time::sleep(wait)).await;
+                observation.finish(if waited.is_ok() {
+                    Outcome::Success
+                } else {
+                    Outcome::Deadline
+                });
+                waited.map_err(|_| tonic::Status::deadline_exceeded("Observation window ended"))?;
                 delay = delay.saturating_mul(2).min(Duration::from_secs(5));
                 retrying = true;
             }
@@ -109,13 +144,17 @@ impl RequestBudget {
 }
 
 pub(super) async fn acquire(budget: Arc<Mutex<RequestBudget>>) {
+    let observation = Observation::start(Operation::RequestAdmission);
     loop {
         let delay = budget
             .lock()
             .expect("RPC budget lock poisoned")
             .delay(Instant::now());
         match delay {
-            None => return,
+            None => {
+                observation.finish(Outcome::Success);
+                return;
+            }
             Some(delay) => tokio::time::sleep(delay).await,
         }
     }
@@ -251,6 +290,7 @@ mod tests {
             )
         };
         let started = Instant::now();
+        let recovery = tokio::spawn(scope(make_service().oneshot(())));
         let mut jobs = tokio::task::JoinSet::new();
         for _ in 0..100 {
             jobs.spawn(make_service().oneshot(()));
@@ -259,7 +299,7 @@ mod tests {
             result.unwrap().unwrap();
         }
         assert_eq!(started.elapsed(), Duration::ZERO);
-        scope(make_service().oneshot(())).await.unwrap();
+        recovery.await.unwrap().unwrap();
         assert!(started.elapsed() >= Duration::from_secs(1));
     }
 

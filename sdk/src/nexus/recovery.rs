@@ -15,7 +15,10 @@ use {
             scheduler::task::Task,
             workflow::execution::DAGExecution,
         },
-        sui,
+        sui::{
+            self,
+            observation::{Observation, Operation, Outcome},
+        },
         types::NexusContext,
     },
     anyhow::{bail, ensure, Context as _},
@@ -67,10 +70,21 @@ impl<'a> RecoveryReader<'a> {
         F: FnMut() -> Fut,
         Fut: Future<Output = anyhow::Result<T>>,
     {
+        let observation = Observation::start(Operation::RecoveryRead);
         let mut delay = self.policy.base_retry_delay;
         loop {
-            match read().await {
-                Ok(value) => return value,
+            let attempt = Observation::start(Operation::RecoveryAttempt);
+            let result = read().await;
+            attempt.finish(if result.is_ok() {
+                Outcome::Success
+            } else {
+                Outcome::Error(None)
+            });
+            match result {
+                Ok(value) => {
+                    observation.finish(Outcome::Success);
+                    return value;
+                }
                 Err(error) => self.wait(operation, &error, &mut delay).await,
             }
         }
@@ -79,7 +93,9 @@ impl<'a> RecoveryReader<'a> {
     async fn wait(&self, operation: &str, error: &anyhow::Error, delay: &mut Duration) {
         let wait = delay.saturating_add(self.policy.retry_jitter.mul_f64(rand::random::<f64>()));
         tracing::warn!(operation, error = %format_args!("{error:#}"), delay = ?wait, "Recovery read will retry");
+        let observation = Observation::start(Operation::RecoveryDelay);
         tokio::time::sleep(wait).await;
+        observation.finish(Outcome::Success);
         *delay = delay.saturating_mul(2).min(self.policy.max_retry_delay);
     }
 

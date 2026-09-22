@@ -11,7 +11,9 @@ pub mod crypto {
     pub use sui_crypto::{ed25519::Ed25519PrivateKey, *};
 }
 
+pub mod observation;
 mod request_budget;
+mod rpc_observation;
 
 pub mod grpc {
     use std::{
@@ -175,6 +177,7 @@ pub mod grpc {
                         .map_err(anyhow::Error::new)?
                         .with_response_headers_timeout(RESPONSE_HEADERS_TIMEOUT)
                         .request_layer(tower::layer::layer_fn(move |service| {
+                            let service = super::rpc_observation::ObservedService(service);
                             super::request_budget::BudgetService::new(service, Arc::clone(&budget))
                         }))
                 };

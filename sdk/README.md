@@ -20,6 +20,20 @@ Move package transaction construction requires the `move_publish` feature. It ac
 If you are upgrading direct SDK usage after the move to generated Move bindings,
 see the [SDK migration guide](./MIGRATION.md).
 
+## Runtime observations
+
+Applications can install a `sui::observation::Observer` once before starting SDK
+work. The optional interface reports logical reads, callback attempts, retry
+waits, recovery admission, and RPC completion through final gRPC trailers.
+Dropped futures report cancellation. RPC hooks cover clients created through
+`sui::grpc::client`; constructing the reexported raw client bypasses that layer.
+
+This interface does not register metrics or configure an exporter. The application
+owns metric names, storage, and export. Callbacks must remain fast and must not
+block, perform I/O, or panic. Operation and method variants are bounded, and no
+execution identities or raw endpoint URLs are included. Recovery traffic denotes
+admission policy and does not imply that an individual read has already failed.
+
 ## Recovery reads
 
 Create a `nexus::recovery::RecoveryReader` with the RPC URL and a `ListConfig` policy. The reader shares that policy across window selection, transaction discovery, metadata, and application reads. Existing `RecoveryWindow` and `discover_work_objects` entry points use the same reader with the Sui client's defaults.
