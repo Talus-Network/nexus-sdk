@@ -50,6 +50,11 @@ sui_types = [
     "sui-transaction-builder",
     "tokio",
     "tonic",
+    "tower",
+    "http",
+    "http-body",
+    "pin-project-lite",
+    "rand",
 ]
 
 # Move package transaction support for clients that provide compiled modules
@@ -172,6 +177,19 @@ optional = true
 
 [dependencies.http]
 version = "1"
+optional = true
+
+[dependencies.http-body]
+version = "1"
+optional = true
+
+[dependencies.pin-project-lite]
+version = "0.2"
+optional = true
+
+[dependencies.tower]
+version = "0.5"
+features = ["util"]
 optional = true
 
 [dependencies.hex]

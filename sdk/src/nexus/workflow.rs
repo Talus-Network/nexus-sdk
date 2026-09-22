@@ -71,6 +71,7 @@ const DEFAULT_EXECUTION_INSPECTION_POLL_INTERVAL: Duration = Duration::from_secs
 pub const EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON: &str =
     "walk is not double timeout expired";
 pub const EXPIRED_WALK_ALREADY_TERMINAL_REASON: &str = "walk is already terminal";
+pub const EXPIRED_WALK_OTHER_PAYMENT_LOCKS_REASON: &str = "other walks still hold payment locks";
 
 #[derive(Clone, Debug)]
 pub struct PublishResult {
@@ -211,7 +212,7 @@ pub struct ExpiredWalkResolutionPlan {
     pub kind: ExpiredWalkResolutionKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct ExpiredWalkResolutionResult {
     pub tx_digest: Option<sui::types::Digest>,
     pub tx_checkpoint: Option<u64>,
@@ -444,6 +445,7 @@ pub struct ExecutionCostResult {
     pub locked_budget_mist: u64,
     pub consumed: u64,
     pub outstanding_locks: u64,
+    pub outstanding_invocation_ids: Vec<sui::types::Address>,
     pub accomplished: bool,
     pub refunded: bool,
 }
@@ -939,6 +941,15 @@ pub async fn inspect_expired_walk_resolution_at(
     clock_ms: u64,
 ) -> anyhow::Result<ExpiredWalkResolutionPlan> {
     let resolved = fetch_execution(client, params.dag_execution_id, &[]).await?;
+    inspect_expired_walk_in_execution(client, params, clock_ms, &resolved).await
+}
+
+async fn inspect_expired_walk_in_execution(
+    client: &NexusClient,
+    params: ResolveExpiredWalkParams,
+    clock_ms: u64,
+    resolved: &ResolvedExecution,
+) -> anyhow::Result<ExpiredWalkResolutionPlan> {
     let context = &resolved.context;
     let execution = &resolved.object.data;
     let crawler = client.crawler();
@@ -1096,7 +1107,13 @@ pub async fn inspect_expired_walk_resolution_at(
             dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
-            kind: ExpiredWalkResolutionKind::Aborted,
+            kind: if payment.locked_vertices.is_empty() {
+                ExpiredWalkResolutionKind::Aborted
+            } else {
+                ExpiredWalkResolutionKind::Skipped {
+                    reason: EXPIRED_WALK_OTHER_PAYMENT_LOCKS_REASON.to_owned(),
+                }
+            },
         });
     };
 
@@ -1133,6 +1150,55 @@ fn unresolved_timeout_skip_reason(walk: &DAGWalk) -> &'static str {
             EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
         }
         _ => EXPIRED_WALK_ALREADY_TERMINAL_REASON,
+    }
+}
+
+/// Select one actionable expired walk, preserving results before refunding locks.
+/// The caller must inspect again after each confirmed mutation because resolving
+/// one walk can advance or finish other walks in the execution.
+pub async fn inspect_expired_execution_resolution_at(
+    client: &NexusClient,
+    execution_id: sui::types::Address,
+    clock_ms: u64,
+) -> anyhow::Result<Option<ExpiredWalkResolutionPlan>> {
+    let execution = fetch_execution(client, execution_id, &[]).await?;
+    let mut selected: Option<ExpiredWalkResolutionPlan> = None;
+    for (index, walk) in execution.object.data.walks.iter().enumerate() {
+        if walk.timeout_expired_vertex(clock_ms).is_none() {
+            continue;
+        }
+        let plan = inspect_expired_walk_in_execution(
+            client,
+            ResolveExpiredWalkParams {
+                dag_execution_id: execution_id,
+                walk_index: index as u64,
+                invocation_id: None,
+            },
+            clock_ms,
+            &execution,
+        )
+        .await?;
+        if resolution_priority(&plan.kind) == 0 {
+            return Ok(Some(plan));
+        }
+        if resolution_priority(&plan.kind)
+            < selected
+                .as_ref()
+                .map_or(u8::MAX, |plan| resolution_priority(&plan.kind))
+        {
+            selected = Some(plan);
+        }
+    }
+    Ok(selected)
+}
+
+fn resolution_priority(kind: &ExpiredWalkResolutionKind) -> u8 {
+    match kind {
+        ExpiredWalkResolutionKind::Settled { .. }
+        | ExpiredWalkResolutionKind::SettledOnchainResult { .. } => 0,
+        ExpiredWalkResolutionKind::AbortedWithInvocation { .. } => 1,
+        ExpiredWalkResolutionKind::Aborted => 2,
+        ExpiredWalkResolutionKind::Skipped { .. } => u8::MAX,
     }
 }
 
@@ -2257,6 +2323,55 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)
     }
 
+    /// Resolve currently eligible expired work using confirmed chain time.
+    ///
+    /// Every transaction is confirmed before selecting the next walk. This only
+    /// sequences recovery mutations of this shared execution object; independent
+    /// executions and ordinary tool calls remain concurrent. A repeated unchanged
+    /// plan ends the pass so stale reads cannot cause an unbounded submission loop.
+    pub async fn resolve_expired_execution(
+        &self,
+        execution_id: sui::types::Address,
+    ) -> Result<Vec<ExpiredWalkResolutionResult>, NexusError> {
+        let mut results = Vec::new();
+        let mut previous = None;
+        loop {
+            let clock = self
+                .client
+                .crawler()
+                .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
+                .await
+                .map_err(NexusError::Rpc)?;
+            let Some(plan) = inspect_expired_execution_resolution_at(
+                &self.client,
+                execution_id,
+                clock.data.timestamp_ms,
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            else {
+                break;
+            };
+            if previous.as_ref() == Some(&plan) {
+                break;
+            }
+            let result = self
+                .resolve_expired_walk(ResolveExpiredWalkParams {
+                    dag_execution_id: execution_id,
+                    walk_index: plan.walk_index,
+                    invocation_id: None,
+                })
+                .await?;
+            previous = Some(plan);
+            let progressed = result.tx_digest.is_some();
+            results.push(result);
+            if !progressed {
+                break;
+            }
+        }
+        Ok(results)
+    }
+
     /// Classify and submit the existing Move entry that matches one expired walk.
     pub async fn resolve_expired_walk(
         &self,
@@ -2541,6 +2656,11 @@ impl ExecutionCostResult {
             locked_budget_mist: payment.locked_budget_mist,
             consumed: payment.consumed,
             outstanding_locks: payment.locks(),
+            outstanding_invocation_ids: payment
+                .locked_vertices
+                .iter()
+                .map(|lock| lock.invocation_id.bytes)
+                .collect(),
             accomplished: payment.accomplished,
             refunded: payment.refunded,
         }

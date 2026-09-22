@@ -218,18 +218,20 @@ async fn abort_expired(
     invocation_id: Option<sui::types::Address>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Aborting expired occurrence");
+    command_title!("Resolving expired occurrence");
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let progress = loading!("Submitting runtime abort transaction...");
-    let receipt = client
-        .scheduler()
-        .task(task_id)
-        .occurrence(occurrence_id)
-        .abort_expired(invocation_id)
-        .await?;
+    let occurrence = client.scheduler().task(task_id).occurrence(occurrence_id);
+    let progress = loading!("Resolving eligible runtime work...");
+    if invocation_id.is_none() {
+        let receipt = occurrence.resolve_expired().await?;
+        progress.success();
+        human_output(&output::render_recovery_receipt(&receipt));
+        return json_output(&receipt);
+    }
+    let receipt = occurrence.abort_expired(invocation_id).await?;
     progress.success();
     notify_success!(
-        "Runtime execution aborted: {execution_id}",
+        "Expired invocation refunded in execution: {execution_id}",
         execution_id = receipt.execution_id().to_string().truecolor(100, 100, 100)
     );
     human_output(&output::render_abort_receipt(&receipt));

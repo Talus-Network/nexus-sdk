@@ -10,8 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Tool preparation can retry failed crawler observations until its protocol deadline while retaining completed parallel reads; recovery RPC admission is shared across endpoint connections and leaves ordinary requests unrestricted.
+- Added occurrence recovery that discovers expired invocations, preserves committed results, resolves payment locks, and settles finished occurrences. The CLI uses this path when no invocation ID is supplied and cost inspection exposes outstanding invocation IDs.
 - Recovery uses the Sui client's resumable transaction reader with a caller supplied policy and the server's default request size. Validated scan progress, checkpoint search bounds, and completed metadata reads survive interruptions.
 - Incomplete history and invalid responses keep recovery pending. Transport deadlines bound individual RPCs without restarting slow operations that make progress. Dropping recovery cancels active reads and retry waits.
+
+### `nexus-cli`
+
+#### Fixed
+
+- TAP command dispatch keeps its large command future on the heap so callers and tests fit the default thread stack.
 
 ## [`2.1.0`] - 2026-09-17
 

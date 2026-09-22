@@ -487,6 +487,11 @@ pub(crate) enum ExecutionCommand {
 }
 
 pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> {
+    // Keep the largest command future out of every caller's stack frame.
+    Box::pin(dispatch(command)).await
+}
+
+async fn dispatch(command: TapCommand) -> AnyResult<(), NexusCliError> {
     match command {
         TapCommand::Test {
             path,

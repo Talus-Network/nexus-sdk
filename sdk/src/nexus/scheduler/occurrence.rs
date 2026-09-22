@@ -249,15 +249,55 @@ impl OccurrenceHandle {
             locked_budget_mist: cost.locked_budget_mist,
             consumed_mist: cost.consumed,
             outstanding_locks: cost.outstanding_locks,
+            outstanding_invocation_ids: cost.outstanding_invocation_ids,
             accomplished: cost.accomplished,
             refunded: cost.refunded,
         })
     }
 
-    /// Aborts expired runtime work.
+    /// Resolves all currently eligible expired runtime work and settles a finished occurrence.
+    ///
+    /// Committed results take precedence over refunds. Work whose protocol window
+    /// remains open is left pending and reported in the returned snapshot. Calling
+    /// this again after settlement submits no transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns a scheduler error when state inspection or transaction submission fails.
+    pub async fn resolve_expired(
+        &self,
+    ) -> Result<crate::scheduler::RecoveryReceipt, SchedulerError> {
+        let mut occurrence = self.snapshot().await?;
+        let mut resolutions = Vec::new();
+        if occurrence.status() == OccurrenceStatus::Executing {
+            let execution_id = dispatched_execution_id(&occurrence)?;
+            resolutions = self
+                .client
+                .workflow()
+                .resolve_expired_execution(execution_id)
+                .await
+                .map_err(SchedulerError::from)?;
+            occurrence = self.snapshot().await?;
+        }
+        let settlement = if occurrence.status() == OccurrenceStatus::Finished {
+            let receipt = self.settle().await?;
+            occurrence = self.snapshot().await?;
+            Some(receipt)
+        } else {
+            None
+        };
+        Ok(crate::scheduler::RecoveryReceipt {
+            occurrence,
+            resolutions,
+            settlement,
+        })
+    }
+
+    /// Aborts one expired runtime invocation or an execution without payment locks.
     ///
     /// Supplying `invocation_id` refunds that exact Invocation before abort.
     /// Without one, the unlocked workflow abort path is used.
+    /// Use [`Self::resolve_expired`] to discover and resolve all eligible work.
     ///
     /// # Errors
     ///

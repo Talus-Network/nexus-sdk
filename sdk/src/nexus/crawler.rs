@@ -793,7 +793,7 @@ impl Crawler {
         ]);
         let mut metadata = Vec::new();
         let mut page_token = None;
-        let mut client = self.clone_state_catalog_client();
+        let client = self.clone_state_catalog_client();
 
         loop {
             observe_dynamic_field_list("state_metadata");
@@ -805,15 +805,15 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let response = client
-                .state_client()
-                .list_dynamic_fields(request)
-                .await
-                .map(|response| response.into_inner())
-                .map_err(anyhow::Error::new)
-                .with_context(|| {
-                    format!("Could not fetch dynamic fields for parent '{parent_id}'")
-                })?;
+            let response = sui::grpc::retry_read(|| {
+                let mut client = client.clone();
+                let request = request.clone();
+                async move { client.state_client().list_dynamic_fields(request).await }
+            })
+            .await
+            .map(|response| response.into_inner())
+            .map_err(anyhow::Error::new)
+            .with_context(|| format!("Could not fetch dynamic fields for parent '{parent_id}'"))?;
             page_token = response.next_page_token;
             metadata.extend(
                 response
@@ -1275,24 +1275,26 @@ impl Crawler {
             request = request.with_version(version);
         }
 
-        let mut client = self.clone_grpc_client();
-        let object = client
-            .ledger_client()
-            .get_object(request)
-            .await
-            .map(|response| response.into_inner().object)
-            .with_context(|| {
-                let version = version
-                    .map(|version| format!(" at version {version}"))
-                    .unwrap_or_default();
-                format!("Could not fetch object '{object_id}'{version}")
-            })?
-            .ok_or_else(|| {
-                let version = version
-                    .map(|version| format!(" at version {version}"))
-                    .unwrap_or_default();
-                anyhow!("Object '{object_id}'{version} not found")
-            })?;
+        let client = self.clone_grpc_client();
+        let object = sui::grpc::retry_read(|| {
+            let mut client = client.clone();
+            let request = request.clone();
+            async move { client.ledger_client().get_object(request).await }
+        })
+        .await
+        .map(|response| response.into_inner().object)
+        .with_context(|| {
+            let version = version
+                .map(|version| format!(" at version {version}"))
+                .unwrap_or_default();
+            format!("Could not fetch object '{object_id}'{version}")
+        })?
+        .ok_or_else(|| {
+            let version = version
+                .map(|version| format!(" at version {version}"))
+                .unwrap_or_default();
+            anyhow!("Object '{object_id}'{version} not found")
+        })?;
 
         let (owner, digest, observed_version, _) =
             self.parse_object_metadata(object_id, &object)?;
@@ -1343,14 +1345,16 @@ impl Crawler {
                 "effects.bcs",
                 "events.events",
             ]));
-        let mut client = self.clone_grpc_client();
-        let transaction = client
-            .ledger_client()
-            .get_transaction(request)
-            .await
-            .map(|response| response.into_inner().transaction)
-            .with_context(|| format!("Could not fetch transaction '{digest}'"))?
-            .ok_or_else(|| anyhow!("Transaction '{digest}' not found"))?;
+        let client = self.clone_grpc_client();
+        let transaction = sui::grpc::retry_read(|| {
+            let mut client = client.clone();
+            let request = request.clone();
+            async move { client.ledger_client().get_transaction(request).await }
+        })
+        .await
+        .map(|response| response.into_inner().transaction)
+        .with_context(|| format!("Could not fetch transaction '{digest}'"))?
+        .ok_or_else(|| anyhow!("Transaction '{digest}' not found"))?;
 
         let observed_digest = transaction
             .digest_opt()
@@ -1416,14 +1420,16 @@ impl Crawler {
                 "objects.objects.contents",
                 "objects.objects.previous_transaction",
             ]));
-        let mut client = self.clone_grpc_client();
-        let executed = client
-            .ledger_client()
-            .get_transaction(request)
-            .await
-            .map(|response| response.into_inner().transaction)
-            .with_context(|| format!("Could not fetch transaction '{transaction}'"))?
-            .ok_or_else(|| anyhow!("Transaction '{transaction}' not found"))?;
+        let client = self.clone_grpc_client();
+        let executed = sui::grpc::retry_read(|| {
+            let mut client = client.clone();
+            let request = request.clone();
+            async move { client.ledger_client().get_transaction(request).await }
+        })
+        .await
+        .map(|response| response.into_inner().transaction)
+        .with_context(|| format!("Could not fetch transaction '{transaction}'"))?
+        .ok_or_else(|| anyhow!("Transaction '{transaction}' not found"))?;
         validate_executed_transaction(&executed, transaction)?;
         Ok(executed)
     }
@@ -2339,15 +2345,17 @@ impl Crawler {
         }
 
         observe_dynamic_field_list("typed_page");
-        let mut client = self.clone_state_catalog_client();
-        let response = client
-            .state_client()
-            .list_dynamic_fields(request)
-            .await
-            .map(|response| response.into_inner())
-            .map_err(|error| {
-                anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {error}")
-            })?;
+        let client = self.clone_state_catalog_client();
+        let response = sui::grpc::retry_read(|| {
+            let mut client = client.clone();
+            let request = request.clone();
+            async move { client.state_client().list_dynamic_fields(request).await }
+        })
+        .await
+        .map(|response| response.into_inner())
+        .map_err(|error| {
+            anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {error}")
+        })?;
 
         let next_cursor = response.next_page_token.map(|cursor| cursor.to_vec());
         let mut field_ids = Vec::new();
@@ -2423,7 +2431,7 @@ impl Crawler {
         let mut page_token = None;
         let field_mask =
             sui::grpc::FieldMask::from_paths(["field_id", "kind", "value", "value_type"]);
-        let mut client = self.clone_state_catalog_client();
+        let client = self.clone_state_catalog_client();
 
         loop {
             observe_dynamic_field_list("values");
@@ -2436,14 +2444,14 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let response = client
-                .state_client()
-                .list_dynamic_fields(request)
-                .await
-                .map(|r| r.into_inner())
-                .map_err(|e| {
-                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
-                })?;
+            let response = sui::grpc::retry_read(|| {
+                let mut client = client.clone();
+                let request = request.clone();
+                async move { client.state_client().list_dynamic_fields(request).await }
+            })
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}"))?;
 
             page_token = response.next_page_token;
 
@@ -2569,7 +2577,7 @@ impl Crawler {
         let mut child_ids = Vec::new();
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["child_id"]);
-        let mut client = self.clone_state_catalog_client();
+        let client = self.clone_state_catalog_client();
 
         loop {
             observe_dynamic_field_list("object_children");
@@ -2582,14 +2590,14 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let response = client
-                .state_client()
-                .list_dynamic_fields(request)
-                .await
-                .map(|r| r.into_inner())
-                .map_err(|e| {
-                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
-                })?;
+            let response = sui::grpc::retry_read(|| {
+                let mut client = client.clone();
+                let request = request.clone();
+                async move { client.state_client().list_dynamic_fields(request).await }
+            })
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}"))?;
 
             page_token = response.next_page_token;
 
@@ -2656,13 +2664,19 @@ impl Crawler {
         object_id: sui::types::Address,
         field_mask: sui::grpc::FieldMask,
     ) -> anyhow::Result<Option<sui::grpc::Object>> {
-        let mut client = self.clone_grpc_client();
+        let client = self.clone_grpc_client();
 
         let request = sui::grpc::GetObjectRequest::default()
             .with_object_id(object_id)
             .with_read_mask(field_mask);
 
-        match client.ledger_client().get_object(request).await {
+        match sui::grpc::retry_read(|| {
+            let mut client = client.clone();
+            let request = request.clone();
+            async move { client.ledger_client().get_object(request).await }
+        })
+        .await
+        {
             Ok(response) => Ok(response.into_inner().object),
             Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
             Err(status) => Err(anyhow::Error::new(status))
@@ -2714,14 +2728,16 @@ impl Crawler {
             req
         };
 
-        let mut client = self.clone_grpc_client();
+        let client = self.clone_grpc_client();
 
-        let response = client
-            .ledger_client()
-            .batch_get_objects(request)
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| anyhow!("Could not fetch objects: {e}"))?;
+        let response = sui::grpc::retry_read(|| {
+            let mut client = client.clone();
+            let request = request.clone();
+            async move { client.ledger_client().batch_get_objects(request).await }
+        })
+        .await
+        .map(|r| r.into_inner())
+        .map_err(|e| anyhow!("Could not fetch objects: {e}"))?;
 
         Ok(response.objects)
     }
@@ -2740,7 +2756,7 @@ impl Crawler {
         let mut results = Vec::with_capacity(expected_size);
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["name", "child_id", "field_id"]);
-        let mut client = self.clone_state_catalog_client();
+        let client = self.clone_state_catalog_client();
 
         loop {
             observe_dynamic_field_list("typed_values");
@@ -2753,14 +2769,14 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let response = client
-                .state_client()
-                .list_dynamic_fields(request)
-                .await
-                .map(|r| r.into_inner())
-                .map_err(|e| {
-                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
-                })?;
+            let response = sui::grpc::retry_read(|| {
+                let mut client = client.clone();
+                let request = request.clone();
+                async move { client.state_client().list_dynamic_fields(request).await }
+            })
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}"))?;
 
             page_token = response.next_page_token;
 
@@ -2808,7 +2824,7 @@ impl Crawler {
         let mut results = Vec::new();
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["field_id"]);
-        let mut client = self.clone_state_catalog_client();
+        let client = self.clone_state_catalog_client();
 
         loop {
             observe_dynamic_field_list("field_ids");
@@ -2821,14 +2837,14 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let response = client
-                .state_client()
-                .list_dynamic_fields(request)
-                .await
-                .map(|r| r.into_inner())
-                .map_err(|e| {
-                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
-                })?;
+            let response = sui::grpc::retry_read(|| {
+                let mut client = client.clone();
+                let request = request.clone();
+                async move { client.state_client().list_dynamic_fields(request).await }
+            })
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}"))?;
 
             page_token = response.next_page_token;
 
@@ -3462,6 +3478,70 @@ mod tests {
             coins.expect("coin request should succeed"),
             vec![(coin_ref, 50)]
         );
+    }
+
+    #[tokio::test]
+    async fn preparation_retries_only_the_failed_object_read() {
+        let good_id = sui::types::Address::from_static("0x91");
+        let flaky_id = sui::types::Address::from_static("0x92");
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        ledger
+            .expect_get_object()
+            .withf(move |request| request.get_ref().object_id() == good_id.to_string())
+            .times(1)
+            .returning(move |_| {
+                let object = object_with_bcs(
+                    sui_mocks::object_ref_for_id(good_id),
+                    sui::types::Owner::Immutable,
+                    &TestValue { value: 1 },
+                );
+                Ok(tonic::Response::new(
+                    sui::grpc::GetObjectResponse::default().with_object(object),
+                ))
+            });
+        let mut attempts = 0;
+        ledger
+            .expect_get_object()
+            .withf(move |request| request.get_ref().object_id() == flaky_id.to_string())
+            .times(3)
+            .returning(move |_| {
+                attempts += 1;
+                if attempts < 3 {
+                    return Err(tonic::Status::unavailable("offline"));
+                }
+                let object = object_with_bcs(
+                    sui_mocks::object_ref_for_id(flaky_id),
+                    sui::types::Owner::Immutable,
+                    &TestValue { value: 2 },
+                );
+                Ok(tonic::Response::new(
+                    sui::grpc::GetObjectResponse::default().with_object(object),
+                ))
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            ..Default::default()
+        });
+        sui::grpc::set_retry_request_budget(
+            &rpc_url,
+            std::num::NonZeroU32::new(20).unwrap(),
+            std::num::NonZeroU32::new(1).unwrap(),
+        )
+        .unwrap();
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).unwrap()));
+        let (good, flaky) = sui::grpc::with_read_retry_until(
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            async {
+                tokio::try_join!(
+                    crawler.get_object::<TestValue>(good_id),
+                    crawler.get_object::<TestValue>(flaky_id)
+                )
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(good.data.value, 1);
+        assert_eq!(flaky.data.value, 2);
     }
 
     #[tokio::test]
