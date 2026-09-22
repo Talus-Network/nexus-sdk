@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Recovery uses the Sui client's resumable transaction reader with a caller supplied policy and the server's default request size. Validated scan progress, checkpoint search bounds, and completed metadata reads survive interruptions.
 - Incomplete history and invalid responses keep recovery pending. Transport deadlines bound individual RPCs without restarting slow operations that make progress. Dropping recovery cancels active reads and retry waits.
 
+### `nexus-cli`
+
+#### Fixed
+
+- TAP command dispatch keeps its large command future on the heap so callers and tests fit the default thread stack.
+
 ## [`2.1.0`] - 2026-09-17
 
 ### `nexus-sdk`
