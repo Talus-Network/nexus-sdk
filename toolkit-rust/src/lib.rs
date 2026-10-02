@@ -14,13 +14,9 @@ pub(crate) mod test_utils {
     /// Serialize tests that use ENV_TOOLKIT_CONFIG_PATH to avoid race conditions
     pub static ENV_VAR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 }
-#[cfg(feature = "network")]
-pub mod network;
 mod nexus_tool;
 #[doc(hidden)]
 pub mod runtime;
-#[cfg(feature = "schema")]
-pub mod schema;
 mod serde_tracked;
 mod signed_http_warp;
 
