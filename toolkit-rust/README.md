@@ -47,3 +47,26 @@ For more detailed instructions and examples, visit the [Nexus Toolkit docs][nexu
 
 [nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
 [nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust
+
+## Invocation failure isolation
+
+The toolkit requires `panic = "unwind"`, including in the final application release
+profile. Builds that abort on panic are rejected because the runtime cannot contain
+their failures. Each invocation catches panics in input decoding, tool construction,
+authorization, execution, and output serialization. The caller receives a generic
+HTTP 500 response without the panic payload. Failed invocations are not signed as
+tool results. Other requests can continue.
+
+The runtime also applies `NexusTool::timeout()` to asynchronous invocation work.
+A deadline returns HTTP 504. This cancellation cannot undo external side effects,
+and it cannot preempt synchronous computation or recover from memory exhaustion.
+Tools must bound their own synchronous work and intermediate allocations.
+
+Use `schema::compile` for caller supplied JSON schemas. It permits references within
+the supplied document and refuses retrieval from files or remote endpoints, even
+when another dependency enables the schema library's retrieval features.
+
+For caller supplied HTTP destinations, validate the initial URL with
+`network::validate_public_url` and use `network::public_client_builder`. The transport
+checks redirect destinations and the actual DNS answers used by the connection,
+and disables environment proxies that would bypass local destination checks.

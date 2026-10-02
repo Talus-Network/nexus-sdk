@@ -6,6 +6,9 @@
 //!
 //! See more documentation at <https://github.com/Talus-Network/gitbook-docs/blob/production/nexus-sdk/toolkit-rust.md>
 
+#[cfg(panic = "abort")]
+compile_error!("nexus-toolkit requires panic = \"unwind\" to isolate invocation failures");
+
 mod config;
 
 /// Shared test utilities
@@ -14,9 +17,11 @@ pub(crate) mod test_utils {
     /// Serialize tests that use ENV_TOOLKIT_CONFIG_PATH to avoid race conditions
     pub static ENV_VAR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 }
+pub mod network;
 mod nexus_tool;
 #[doc(hidden)]
 pub mod runtime;
+pub mod schema;
 mod serde_tracked;
 mod signed_http_warp;
 

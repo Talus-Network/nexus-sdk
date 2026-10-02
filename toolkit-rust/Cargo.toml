@@ -32,6 +32,8 @@ hyper-util = { version = "0.1", features = ["server-auto", "http1", "http2", "se
 warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
+futures.workspace = true
+jsonschema = { version = "0.46.10", default-features = false }
 notify = "8.2.0"
 tls-listener.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
@@ -42,6 +44,7 @@ tracing = "0.1"
 nexus-sdk = { workspace = true, features = ["signed_http", "types"] }
 
 [dev-dependencies]
+mockito.workspace = true
 http-body-util = "0.1"
 rcgen = "0.13"
 reqwest = { version = "0.12.14", default-features = false, features = ["json", "rustls-tls"] }

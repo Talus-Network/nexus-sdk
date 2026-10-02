@@ -109,5 +109,5 @@ debug = 1
 split-debuginfo = "packed"
 # Decrease final binary size
 strip = "debuginfo"
-# Exit process with SIGABRT when any thread panics
-panic = "abort"
+# Allow the toolkit to contain an invocation panic within that request.
+panic = "unwind"
