@@ -1375,6 +1375,99 @@ fn onchain_tool_result_has_required_stamps(
         && stamps.contents.iter().any(|entry| entry.key == result_id)
 }
 
+/// Decodes the finalized onchain result created for one execution walk.
+///
+/// The walk pointer, result object, and stored output must all have been
+/// written by `transaction`. This reads only the finalized receipt, so a
+/// consumer does not depend on current object reads observing the write yet.
+///
+/// # Errors
+///
+/// Returns an error if the receipt is incomplete, ambiguous, or does not
+/// contain a finalized result bound to the requested execution and walk.
+pub fn onchain_tool_result_from_finalized_output(
+    crawler: &Crawler,
+    context: &NexusContext,
+    executed: &sui::grpc::ExecutedTransaction,
+    transaction: sui::types::Digest,
+    execution_id: sui::types::Address,
+    walk_index: u64,
+) -> anyhow::Result<OnchainToolResultState> {
+    use crate::move_bindings::primitives::object_state::Inner;
+
+    let pointers = crawler
+        .transaction_dynamic_field_outputs::<execution_move::OnchainToolResultKey, ID>(
+            executed,
+            transaction,
+            &execution_move::OnchainToolResultKey { walk_index },
+            &crate::move_bindings::type_tag::<execution_move::OnchainToolResultKey>(context),
+            &crate::move_bindings::type_tag::<ID>(context),
+        )?;
+    let mut pointers = pointers
+        .into_iter()
+        .filter(|output| output.object_id == execution_id);
+    let pointer = pointers.next().ok_or_else(|| anyhow!(
+        "Transaction '{transaction}' has no onchain result for execution '{execution_id}' walk {walk_index}"
+    ))?;
+    anyhow::ensure!(
+        pointers.next().is_none(),
+        "Transaction '{transaction}' has repeated onchain result pointers"
+    );
+    let result_id = pointer.data.bytes;
+    let anchor =
+        crawler.transaction_output_object::<OnchainToolResult>(executed, transaction, result_id)?;
+    let initial_version = crawler.transaction_shared_initial_version(
+        executed,
+        transaction,
+        result_id,
+        &crate::move_bindings::struct_tag::<OnchainToolResult>(context),
+    )?;
+    anyhow::ensure!(
+        anchor.data.id.address() == result_id,
+        "Onchain result anchor identity does not match its walk pointer"
+    );
+
+    let outputs = crawler.transaction_dynamic_field_outputs::<Inner, OnchainToolResultInnerV1>(
+        executed,
+        transaction,
+        &Inner::new(false),
+        &crate::move_bindings::type_tag::<Inner>(context),
+        &crate::move_bindings::type_tag::<OnchainToolResultInnerV1>(context),
+    )?;
+    let mut outputs = outputs
+        .into_iter()
+        .filter(|output| output.object_id == result_id);
+    let result = outputs
+        .next()
+        .ok_or_else(|| {
+            anyhow!(
+                "Transaction '{transaction}' has no stored output for onchain result '{result_id}'"
+            )
+        })?
+        .data;
+    anyhow::ensure!(
+        outputs.next().is_none(),
+        "Transaction '{transaction}' has repeated onchain result outputs"
+    );
+    anyhow::ensure!(
+        result.execution_id.bytes == execution_id,
+        "Onchain result belongs to another execution"
+    );
+    anyhow::ensure!(
+        onchain_tool_result_is_finalized(&result),
+        "Onchain result is not finalized"
+    );
+    anyhow::ensure!(
+        result.finalize_tx_digest.as_option().map(Vec::as_slice) == Some(transaction.as_ref()),
+        "Onchain result was finalized by another transaction"
+    );
+
+    Ok(OnchainToolResultState::Finalized {
+        result,
+        object_ref: sui::types::ObjectReference::new(result_id, initial_version, anchor.digest),
+    })
+}
+
 /// Fetch the stored onchain result state for one execution walk.
 ///
 /// Each lookup derives an exact dynamic field identifier from its typed key
@@ -3718,6 +3811,164 @@ mod tests {
                 .expect("fetch should succeed");
 
         assert!(result.is_none());
+    }
+
+    fn finalized_onchain_result(
+        execution_id: sui::types::Address,
+        transaction: sui::types::Digest,
+    ) -> OnchainToolResultInnerV1 {
+        OnchainToolResultInnerV1 {
+            execution_id: ID::new(execution_id),
+            finalized: true,
+            stamps: Some(VecMap { contents: vec![] }).into(),
+            tag: Some(b"ok".to_vec()).into(),
+            named_payload: Some(VecMap { contents: vec![] }).into(),
+            finalize_tx_digest: Some(transaction.into_inner().to_vec()).into(),
+            finalize_recipient: Some(sui::types::Address::from_static("0xa1")).into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn onchain_result_receipt_resolves_consumption_without_current_state_reads() {
+        let context = sui_mocks::mock_nexus_context();
+        let transaction = sui::types::Digest::new([1; 32]);
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let result_id = sui::types::Address::from_static("0xe2");
+        let receipt = nexus_mocks::mock_finalized_onchain_result(
+            &context,
+            transaction,
+            execution_id,
+            7,
+            result_id,
+            finalized_onchain_result(execution_id, transaction),
+        );
+        // No RPC is permitted, including a latest read for the result.
+        let crawler = crawler_from_mocks(Default::default(), Default::default()).await;
+        let state = onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &receipt,
+            transaction,
+            execution_id,
+            7,
+        )
+        .unwrap();
+        let (_, result_ref) = state.consume_ready_result().unwrap();
+        assert_eq!(*result_ref.object_id(), result_id);
+        assert_eq!(
+            result_ref.version(),
+            11,
+            "consumption uses the initial shared version"
+        );
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &receipt,
+            transaction,
+            execution_id,
+            8
+        )
+        .is_err());
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &receipt,
+            transaction,
+            result_id,
+            7
+        )
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn onchain_result_receipt_rejects_unproven_results() {
+        let context = sui_mocks::mock_nexus_context();
+        let transaction = sui::types::Digest::new([1; 32]);
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let result_id = sui::types::Address::from_static("0xe2");
+        let crawler = crawler_from_mocks(Default::default(), Default::default()).await;
+        let valid = finalized_onchain_result(execution_id, transaction);
+        let mut wrong_execution = valid.clone();
+        wrong_execution.execution_id = ID::new(result_id);
+        let mut unfinished = valid.clone();
+        unfinished.finalized = false;
+        let mut wrong_transaction = valid.clone();
+        wrong_transaction.finalize_tx_digest = Some(vec![2; 32]).into();
+        let mut missing_payload = valid.clone();
+        missing_payload.named_payload = None.into();
+        for result in [
+            wrong_execution,
+            unfinished,
+            wrong_transaction,
+            missing_payload,
+        ] {
+            let receipt = nexus_mocks::mock_finalized_onchain_result(
+                &context,
+                transaction,
+                execution_id,
+                7,
+                result_id,
+                result,
+            );
+            assert!(onchain_tool_result_from_finalized_output(
+                &crawler,
+                &context,
+                &receipt,
+                transaction,
+                execution_id,
+                7
+            )
+            .is_err());
+        }
+        let receipt = nexus_mocks::mock_finalized_onchain_result(
+            &context,
+            transaction,
+            execution_id,
+            7,
+            result_id,
+            valid,
+        );
+        for omitted in 0..3 {
+            let mut incomplete = receipt.clone();
+            incomplete.objects.as_mut().unwrap().objects.remove(omitted);
+            assert!(onchain_tool_result_from_finalized_output(
+                &crawler,
+                &context,
+                &incomplete,
+                transaction,
+                execution_id,
+                7
+            )
+            .is_err());
+        }
+        let mut repeated = receipt.clone();
+        repeated
+            .objects
+            .as_mut()
+            .unwrap()
+            .objects
+            .push(receipt.objects().objects[0].clone());
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &repeated,
+            transaction,
+            execution_id,
+            7
+        )
+        .is_err());
+        let mut inherited = receipt.clone();
+        inherited.objects.as_mut().unwrap().objects[2]
+            .set_previous_transaction(sui::types::Digest::new([2; 32]));
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &inherited,
+            transaction,
+            execution_id,
+            7
+        )
+        .is_err());
     }
 
     #[tokio::test]
