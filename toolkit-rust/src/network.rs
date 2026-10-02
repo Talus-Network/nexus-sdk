@@ -1,27 +1,217 @@
-//! HTTP transport policy for caller supplied public destinations.
+//! Optional HTTP utilities for tools that accept destinations from callers.
+//! Available with the `network` feature; no destination policy is imposed on
+//! tools that do not use these utilities.
+//!
+//! Select a destination policy when constructing a client. Request construction,
+//! execution, and redirects all apply that policy. The public policy also checks
+//! the DNS answers used by the connection. Neither policy uses environment proxies.
+//!
+//! ```no_run
+//! use nexus_toolkit::network::{Client, DestinationPolicy};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = Client::builder(DestinationPolicy::Public).build()?;
+//! let response = client.get("https://example.com/data")?.send().await?;
+//! # Ok(())
+//! # }
+//! ```
+
 use {
     reqwest::{
         dns::{Addrs, Name, Resolve, Resolving},
         redirect::Policy,
-        ClientBuilder,
+        IntoUrl,
+        Method,
+        Request,
+        RequestBuilder,
+        Response,
         Url,
     },
     std::{
+        error::Error as StdError,
+        fmt,
         net::{IpAddr, Ipv4Addr, Ipv6Addr},
         sync::Arc,
         time::Duration,
     },
 };
 
-/// Reject private addresses and names before opening a connection.
-pub fn validate_public_url(url: &Url) -> Result<(), &'static str> {
+/// An invalid destination or a transport failure.
+#[derive(Debug)]
+pub enum Error {
+    /// A request violates the selected destination policy.
+    Destination(&'static str),
+    /// The underlying HTTP client could not build or execute a request.
+    Http(reqwest::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Destination(message) => f.write_str(message),
+            Self::Http(error) => error.fmt(f),
+        }
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Http(error) => Some(error),
+            Self::Destination(_) => None,
+        }
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(error: reqwest::Error) -> Self {
+        Self::Http(error)
+    }
+}
+
+/// Destinations a tool permits. This policy is chosen by the tool author or its
+/// operator; it must not be selected from an untrusted invocation payload.
+#[derive(Clone, Debug)]
+pub enum DestinationPolicy {
+    /// HTTP or HTTPS destinations that resolve exclusively to public addresses.
+    Public,
+    /// One trusted service, including an internal service if configured.
+    /// Scheme, host, and effective port must match; all paths are permitted.
+    /// Redirects cannot leave this origin.
+    Origin(Url),
+}
+
+impl DestinationPolicy {
+    /// Check a URL without performing I/O. Clients also apply this automatically.
+    pub fn validate(&self, url: &Url) -> Result<(), Error> {
+        validate_http_url(url).map_err(Error::Destination)?;
+        match self {
+            Self::Public => validate_host(
+                url.host_str()
+                    .ok_or(Error::Destination("URL must have a host"))?,
+            )
+            .map_err(Error::Destination),
+            Self::Origin(origin) => {
+                validate_http_url(origin).map_err(Error::Destination)?;
+                if url.origin() != origin.origin() {
+                    return Err(Error::Destination(
+                        "Destination must match the configured service origin",
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// An HTTP client whose requests and redirects obey a selected destination policy.
+#[derive(Clone, Debug)]
+pub struct Client {
+    inner: reqwest::Client,
+    policy: DestinationPolicy,
+}
+
+impl Client {
+    /// Configure a client. Defaults to a 30 second timeout and no redirects.
+    pub fn builder(policy: DestinationPolicy) -> ClientBuilder {
+        ClientBuilder {
+            policy,
+            timeout: Duration::from_secs(30),
+            redirect_limit: 0,
+        }
+    }
+
+    /// Construct a request after checking its destination. The returned builder
+    /// supports the usual reqwest headers, authentication, bodies, and `send`.
+    pub fn request(&self, method: Method, url: impl IntoUrl) -> Result<RequestBuilder, Error> {
+        let url = url.into_url()?;
+        self.policy.validate(&url)?;
+        Ok(self.inner.request(method, url))
+    }
+
+    /// Construct a GET request with the same checks as [`Self::request`].
+    pub fn get(&self, url: impl IntoUrl) -> Result<RequestBuilder, Error> {
+        self.request(Method::GET, url)
+    }
+
+    /// Execute a built request, checking its final URL even if it was modified
+    /// after construction or built by a different client.
+    pub async fn execute(&self, request: Request) -> Result<Response, Error> {
+        self.policy.validate(request.url())?;
+        Ok(self.inner.execute(request).await?)
+    }
+}
+
+/// Configuration that preserves the chosen policy when building the transport.
+#[must_use]
+pub struct ClientBuilder {
+    policy: DestinationPolicy,
+    timeout: Duration,
+    redirect_limit: usize,
+}
+
+impl ClientBuilder {
+    /// Limit the entire request, including its response body.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Permit up to this many redirects. Every destination must satisfy the policy.
+    /// The default, zero, returns redirect responses without following them.
+    pub fn redirect_limit(mut self, limit: usize) -> Self {
+        self.redirect_limit = limit;
+        self
+    }
+
+    /// Build the transport with the configured policy and limits.
+    pub fn build(self) -> Result<Client, Error> {
+        if let DestinationPolicy::Origin(origin) = &self.policy {
+            self.policy.validate(origin)?;
+        }
+        let mut builder = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(self.timeout)
+            .redirect(redirect_policy(self.policy.clone(), self.redirect_limit));
+        if matches!(self.policy, DestinationPolicy::Public) {
+            builder = builder.dns_resolver(Arc::new(PublicResolver));
+        }
+        Ok(Client {
+            inner: builder.build()?,
+            policy: self.policy,
+        })
+    }
+}
+
+fn redirect_policy(policy: DestinationPolicy, limit: usize) -> Policy {
+    Policy::custom(move |attempt| {
+        if limit == 0 {
+            return attempt.stop();
+        }
+        if attempt.previous().len() > limit {
+            return attempt.error("Too many redirects");
+        }
+        if let Err(error) = policy.validate(attempt.url()) {
+            return attempt.error(error);
+        }
+        attempt.follow()
+    })
+}
+
+/// Check the public destination policy without performing DNS resolution.
+/// Use [`Client`] for requests so that DNS answers and redirects are checked too.
+pub fn validate_public_url(url: &Url) -> Result<(), Error> {
+    DestinationPolicy::Public.validate(url)
+}
+
+fn validate_http_url(url: &Url) -> Result<(), &'static str> {
     if !matches!(url.scheme(), "http" | "https")
         || !url.username().is_empty()
         || url.password().is_some()
     {
         return Err("URL must use HTTP or HTTPS without embedded credentials");
     }
-    validate_host(url.host_str().ok_or("URL must have a host")?)
+    Ok(())
 }
 
 fn validate_host(host: &str) -> Result<(), &'static str> {
@@ -33,6 +223,7 @@ fn validate_host(host: &str) -> Result<(), &'static str> {
         };
     }
     let host = host.trim_end_matches('.').to_ascii_lowercase();
+    // Names without a dot use DNS search domains and can reach metadata services.
     if !host.contains('.')
         || [".internal", ".local", ".localhost", ".arpa"]
             .iter()
@@ -57,34 +248,19 @@ impl Resolve for PublicResolver {
             )
             .await??
             .collect();
-            if addresses.is_empty() || addresses.iter().any(|address| !is_public_ip(address.ip())) {
-                return Err("Destination does not resolve exclusively to public addresses".into());
-            }
-            // These exact addresses are passed to the connector. There is no second lookup.
-            Ok(Box::new(addresses.into_iter()) as Addrs)
+            checked_addresses(addresses)
         })
     }
 }
 
-/// Build a transport with public DNS resolution and checked redirects.
-/// Call `validate_public_url` on the initial URL before creating a request.
-pub fn public_client_builder(follow_redirects: bool) -> ClientBuilder {
-    let policy = Policy::custom(move |attempt| {
-        if !follow_redirects {
-            return attempt.stop();
-        }
-        if attempt.previous().len() >= 3 {
-            return attempt.error("Too many redirects");
-        }
-        if let Err(error) = validate_public_url(attempt.url()) {
-            return attempt.error(error);
-        }
-        attempt.follow()
-    });
-    reqwest::Client::builder()
-        .no_proxy()
-        .dns_resolver(Arc::new(PublicResolver))
-        .redirect(policy)
+fn checked_addresses(
+    addresses: Vec<std::net::SocketAddr>,
+) -> Result<Addrs, Box<dyn StdError + Send + Sync>> {
+    if addresses.is_empty() || addresses.iter().any(|address| !is_public_ip(address.ip())) {
+        return Err("Destination does not resolve exclusively to public addresses".into());
+    }
+    // Pass these exact addresses to the connector, without a second lookup.
+    Ok(Box::new(addresses.into_iter()))
 }
 
 fn host_as_ip(host: &str) -> Option<IpAddr> {
@@ -181,6 +357,138 @@ fn embedded_ipv4(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn public_client_checks_construction_and_execution() {
+        let client = Client::builder(DestinationPolicy::Public).build().unwrap();
+        assert!(matches!(
+            client.get("http://169.254.169.254/"),
+            Err(Error::Destination(_))
+        ));
+        let mut request = client.get("https://example.com/").unwrap().build().unwrap();
+        *request.url_mut() = Url::parse("http://127.0.0.1/").unwrap();
+        assert!(matches!(
+            client.execute(request).await,
+            Err(Error::Destination(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_explicit_service_origin_allows_local_requests_and_confines_redirects() {
+        let mut server = mockito::Server::new_async().await;
+        let mut other = mockito::Server::new_async().await;
+        let client = Client::builder(DestinationPolicy::Origin(
+            Url::parse(&server.url()).unwrap(),
+        ))
+        .redirect_limit(1)
+        .build()
+        .unwrap();
+        let start = server
+            .mock("GET", "/start")
+            .with_status(302)
+            .with_header("location", "/result")
+            .create_async()
+            .await;
+        let result = server
+            .mock("GET", "/result")
+            .with_body("ok")
+            .create_async()
+            .await;
+        assert_eq!(
+            client
+                .get(format!("{}/start", server.url()))
+                .unwrap()
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap(),
+            "ok"
+        );
+        start.assert_async().await;
+        result.assert_async().await;
+
+        let escape = server
+            .mock("GET", "/escape")
+            .with_status(302)
+            .with_header("location", &other.url())
+            .create_async()
+            .await;
+        let blocked = other.mock("GET", "/").expect(0).create_async().await;
+        assert!(client.get(other.url()).is_err());
+        assert!(client
+            .get(format!("{}/escape", server.url()))
+            .unwrap()
+            .send()
+            .await
+            .unwrap_err()
+            .is_redirect());
+        escape.assert_async().await;
+        blocked.assert_async().await;
+    }
+
+    #[test]
+    fn origin_policy_checks_scheme_host_and_port_and_rejects_credentials() {
+        let policy =
+            DestinationPolicy::Origin(Url::parse("https://service.internal/base").unwrap());
+        assert!(policy
+            .validate(&Url::parse("https://service.internal:443/other").unwrap())
+            .is_ok());
+        for url in [
+            "http://service.internal/",
+            "https://service.internal:444/",
+            "https://other.internal/",
+            "https://user:secret@service.internal/",
+        ] {
+            assert!(policy.validate(&Url::parse(url).unwrap()).is_err(), "{url}");
+        }
+        assert!(Client::builder(DestinationPolicy::Origin(
+            Url::parse("file:///tmp/data").unwrap()
+        ))
+        .build()
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn redirects_are_disabled_by_default_and_limited_when_enabled() {
+        let mut server = mockito::Server::new_async().await;
+        let redirect = server
+            .mock("GET", "/cycle")
+            .with_status(302)
+            .with_header("location", "/cycle")
+            .expect(3)
+            .create_async()
+            .await;
+        let policy = DestinationPolicy::Origin(Url::parse(&server.url()).unwrap());
+        let url = format!("{}/cycle", server.url());
+        let client = Client::builder(policy.clone()).build().unwrap();
+        assert_eq!(
+            client.get(&url).unwrap().send().await.unwrap().status(),
+            302
+        );
+        let client = Client::builder(policy).redirect_limit(1).build().unwrap();
+        assert!(client
+            .get(&url)
+            .unwrap()
+            .send()
+            .await
+            .unwrap_err()
+            .is_redirect());
+        redirect.assert_async().await;
+    }
+
+    #[test]
+    fn dns_answers_must_all_be_public_and_are_used_without_another_lookup() {
+        let public = "8.8.8.8:443".parse().unwrap();
+        let private = "169.254.169.254:443".parse().unwrap();
+        assert!(checked_addresses(vec![]).is_err());
+        assert!(checked_addresses(vec![public, private]).is_err());
+        assert_eq!(
+            checked_addresses(vec![public]).unwrap().collect::<Vec<_>>(),
+            vec![public]
+        );
+    }
+
     #[test]
     fn private_urls_are_rejected_in_all_common_forms() {
         for url in [
@@ -243,7 +551,9 @@ mod tests {
             .create_async()
             .await;
         // Only the initial loopback URL bypasses validation to reach the test server.
-        let response = public_client_builder(true)
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(redirect_policy(DestinationPolicy::Public, 3))
             .build()
             .unwrap()
             .get(format!("{}/start", server.url()))

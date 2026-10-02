@@ -17,6 +17,12 @@ categories.workspace = true
 [package.metadata.docs.rs]
 all-features = true
 
+[features]
+default = []
+# Utilities for tools that accept caller supplied schemas or destinations.
+schema = ["dep:jsonschema"]
+network = []
+
 [dependencies]
 anyhow.workspace = true
 bcs.workspace = true
@@ -33,7 +39,7 @@ warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
 futures.workspace = true
-jsonschema = { version = "0.46.10", default-features = false }
+jsonschema = { version = "0.46.10", default-features = false, optional = true }
 notify = "8.2.0"
 tls-listener.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }

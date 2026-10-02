@@ -50,23 +50,62 @@ For more detailed instructions and examples, visit the [Nexus Toolkit docs][nexu
 
 ## Invocation failure isolation
 
-The toolkit requires `panic = "unwind"`, including in the final application release
-profile. Builds that abort on panic are rejected because the runtime cannot contain
-their failures. Each invocation catches panics in input decoding, tool construction,
-authorization, execution, and output serialization. The caller receives a generic
-HTTP 500 response without the panic payload. Failed invocations are not signed as
-tool results. Other requests can continue.
+With `panic = "unwind"`, the runtime catches panics in input decoding, tool
+construction, authorization, execution, and output serialization. The caller
+receives a generic HTTP 500 response without the panic payload. Failed invocations
+are not signed as tool results. Other requests can continue.
+
+Panic recovery is a property of this Rust runtime, not a Nexus protocol requirement.
+Tools may use `panic = "abort"`, but a panic then terminates their process. To enable
+recovery, set `panic = "unwind"` in the final application's `[profile.release]`.
+Cargo ignores profiles declared by dependencies.
 
 The runtime also applies `NexusTool::timeout()` to asynchronous invocation work.
 A deadline returns HTTP 504. This cancellation cannot undo external side effects,
 and it cannot preempt synchronous computation or recover from memory exhaustion.
 Tools must bound their own synchronous work and intermediate allocations.
 
-Use `schema::compile` for caller supplied JSON schemas. It permits references within
-the supplied document and refuses retrieval from files or remote endpoints, even
-when another dependency enables the schema library's retrieval features.
+## Optional input utilities
 
-For caller supplied HTTP destinations, validate the initial URL with
-`network::validate_public_url` and use `network::public_client_builder`. The transport
-checks redirect destinations and the actual DNS answers used by the connection,
-and disables environment proxies that would bypass local destination checks.
+The default toolkit provides the `NexusTool` contract and runtime without enabling
+these utilities. Any tool author can enable either feature independently:
+
+```toml
+nexus-toolkit = { version = "2.1.0", features = ["schema", "network"] }
+```
+
+The `schema` feature adds `schema::compile` for JSON schemas accepted as tool input.
+It permits references within the supplied document and refuses retrieval from files
+or remote endpoints, even when another dependency enables the schema library's
+retrieval features. Compilation errors do not expose referenced values. Tools that
+do not enable this feature do not acquire its schema compiler dependency. This is
+separate from the input and output schemas that every tool declares.
+
+The `network` feature adds an HTTP client with an explicit destination policy:
+
+```rust
+use nexus_toolkit::network::{Client, DestinationPolicy};
+
+let client = Client::builder(DestinationPolicy::Public)
+    .redirect_limit(3)
+    .build()?;
+let response = client.get("https://example.com/data")?.send().await?;
+
+// A trusted internal service is a separate, explicit policy.
+let internal = Client::builder(DestinationPolicy::Origin(
+    "http://inventory.internal:8080".parse()?,
+))
+.build()?;
+```
+
+Clients check initial requests and redirects automatically. `Client::execute` also
+checks the final URL of a built or modified request. The public policy validates the
+exact DNS answers used by the connection. The origin policy permits one configured
+scheme, host, and effective port, including private addresses; it permits all paths
+at that origin. The operator must choose this origin, not an invocation's author.
+Both policies disable environment proxies and default to no redirects and a 30
+second request timeout.
+
+These utilities do not add trait methods, restrict other HTTP clients, or sandbox
+native tool code. File access, credential selection, and additional service rules
+remain responsibilities of the tool and its deployment.

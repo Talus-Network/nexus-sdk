@@ -1,7 +1,12 @@
 //! Compile caller supplied schemas without filesystem or network access.
+//!
+//! Available with the optional `schema` feature. This helper is for schemas
+//! accepted as tool input; it does not change the tool's declared input or output
+//! schema, or add requirements to [`crate::NexusTool`].
 
+pub use jsonschema::{ValidationError, Validator};
 use {
-    jsonschema::{Retrieve, Uri, Validator},
+    jsonschema::{Retrieve, Uri},
     serde_json::Value,
     std::{error::Error, fmt},
 };
