@@ -47,20 +47,3 @@ For more detailed instructions and examples, visit the [Nexus Toolkit docs][nexu
 
 [nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
 [nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust
-
-## Invocation failure isolation
-
-With `panic = "unwind"`, the runtime catches panics in input decoding, tool
-construction, authorization, execution, and output serialization. The caller
-receives a generic HTTP 500 response without the panic payload. Failed invocations
-are not signed as tool results. Other requests can continue.
-
-Panic recovery is a property of this Rust runtime, not a Nexus protocol requirement.
-Tools may use `panic = "abort"`, but a panic then terminates their process. To enable
-recovery, set `panic = "unwind"` in the final application's `[profile.release]`.
-Cargo ignores profiles declared by dependencies.
-
-The runtime also applies `NexusTool::timeout()` to asynchronous invocation work.
-A deadline returns HTTP 504. This cancellation cannot undo external side effects,
-and it cannot preempt synchronous computation or recover from memory exhaustion.
-Tools must bound their own synchronous work and intermediate allocations.

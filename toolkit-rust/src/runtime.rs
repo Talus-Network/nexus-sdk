@@ -124,6 +124,17 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// `/invoke` enforces a `Content-Length` limit via `warp::body::content_length_limit`.
 /// Requests without a `Content-Length` header are rejected.
 ///
+/// # Invocation errors and timeouts
+///
+/// The runtime catches unwinding panics during input decoding, tool construction,
+/// authorization, invocation, and output serialization. It returns a generic
+/// HTTP 500 response without the panic payload or a tool result signature.
+///
+/// Recovery requires `panic = "unwind"` (Cargo's default). The final application's
+/// workspace controls this setting; with `panic = "abort"`, a panic terminates the process.
+///
+/// Invocation deadlines follow [`NexusTool::timeout()`].
+///
 /// # Examples
 ///
 /// ### One tool running on `127.0.0.1:8080`
