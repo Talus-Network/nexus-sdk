@@ -215,4 +215,79 @@ mod tests {
         saved.many = true;
         assert!(saved.nexus_data().is_ok());
     }
+
+    #[tokio::test]
+    async fn downloading_many_preserves_order_and_checks_saved_sizes() {
+        let mut server = mockito::Server::new_async().await;
+        let mut saved = reference();
+        saved.many = true;
+        saved.blobs.push(StoredBlob {
+            blob_id: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
+            sha256: hex::encode(Sha256::digest(b"second")),
+            size: 6,
+            ..saved.blobs[0].clone()
+        });
+        let first = server
+            .mock(
+                "GET",
+                format!("/v1/blobs/{}", saved.blobs[0].blob_id).as_str(),
+            )
+            .with_body("contents")
+            .expect(2)
+            .create_async()
+            .await;
+        let second = server
+            .mock(
+                "GET",
+                format!("/v1/blobs/{}", saved.blobs[1].blob_id).as_str(),
+            )
+            .with_body("second")
+            .expect(2)
+            .create_async()
+            .await;
+        let reader = super::super::WalrusReader::new(&server.url(), 100).unwrap();
+        assert_eq!(
+            saved.download(&reader).await.unwrap(),
+            vec![b"contents".to_vec(), b"second".to_vec()]
+        );
+        saved.blobs[1].size += 1;
+        assert!(saved
+            .download(&reader)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("contents do not match"));
+        first.assert_async().await;
+        second.assert_async().await;
+    }
+
+    #[test]
+    fn references_reject_missing_identity_invalid_digests_and_excessive_total_size() {
+        let mut saved = reference();
+        assert_eq!(
+            saved.blobs[0].nexus_data().unwrap(),
+            saved.nexus_data().unwrap()
+        );
+        saved.chain_id.clear();
+        assert!(saved
+            .nexus_data()
+            .unwrap_err()
+            .to_string()
+            .contains("chain identity"));
+        saved.chain_id = "testnet chain".into();
+        saved.blobs[0].sha256 = "not hex".into();
+        assert!(saved.nexus_data().is_err());
+        assert!(saved.blobs[0].verify_bytes(b"contents").is_err());
+        saved = reference();
+        saved.blobs[0].size = MAX_RESOLVED_INPUT_BYTES;
+        saved.many = true;
+        saved.blobs.push(reference().blobs.remove(0));
+        assert!(saved
+            .nexus_data()
+            .unwrap_err()
+            .to_string()
+            .contains("execution byte limit"));
+        saved.blobs[0].size += 1;
+        assert!(saved.blobs[0].nexus_value().is_err());
+    }
 }

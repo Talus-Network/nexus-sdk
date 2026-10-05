@@ -165,4 +165,64 @@ mod tests {
         };
         assert_eq!(change.objects, vec![Argument::NestedResult(0, 0)]);
     }
+
+    #[test]
+    fn coin_preparation_keeps_its_dependencies_when_the_budget_is_inserted() {
+        use crate::sui::types::MergeCoins;
+        let mut ptb = ProgrammableTransaction {
+            inputs: vec![Input::Pure(vec![])],
+            commands: vec![
+                Command::SplitCoins(SplitCoins {
+                    coin: Argument::Input(0),
+                    amounts: vec![Argument::Input(0)],
+                }),
+                Command::MergeCoins(MergeCoins {
+                    coin: Argument::Input(0),
+                    coins_to_merge: vec![Argument::NestedResult(0, 0)],
+                }),
+                Command::MoveCall(MoveCall {
+                    package: Address::TWO,
+                    module: "system".parse().unwrap(),
+                    function: "extend_blob".parse().unwrap(),
+                    type_arguments: vec![],
+                    arguments: vec![Argument::Input(0)],
+                }),
+            ],
+        };
+        let preparation = ptb.commands[..2].to_vec();
+        cap_payment(&mut ptb, Address::TWO, 123).unwrap();
+        assert_eq!(ptb.commands[..2], preparation);
+        let Command::MoveCall(extend) = &ptb.commands[3] else {
+            panic!("expected extension")
+        };
+        assert_eq!(extend.arguments.last(), Some(&Argument::NestedResult(2, 0)));
+    }
+
+    #[test]
+    fn unexpected_payment_sources_are_rejected() {
+        let payment = |arguments| {
+            Command::MoveCall(MoveCall {
+                package: Address::TWO,
+                module: "system".parse().unwrap(),
+                function: "reserve_space".parse().unwrap(),
+                type_arguments: vec![],
+                arguments,
+            })
+        };
+        for commands in [
+            vec![],
+            vec![payment(vec![])],
+            vec![payment(vec![Argument::Gas])],
+            vec![
+                payment(vec![Argument::Input(0)]),
+                payment(vec![Argument::Input(1)]),
+            ],
+        ] {
+            let mut ptb = ProgrammableTransaction {
+                inputs: vec![],
+                commands,
+            };
+            assert!(cap_payment(&mut ptb, Address::TWO, 123).is_err());
+        }
+    }
 }

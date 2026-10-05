@@ -162,4 +162,48 @@ mod tests {
             .is_err());
         mock.assert_async().await;
     }
+
+    #[test]
+    fn readers_reject_credentials_unsupported_schemes_and_invalid_budgets() {
+        for url in [
+            "not a url",
+            "file:///tmp/blob",
+            "https://user:secret@storage.example",
+        ] {
+            assert!(WalrusReader::new(url, 100).is_err());
+        }
+        for budget in [0, MAX_RESOLVED_INPUT_BYTES + 1] {
+            assert!(WalrusReader::new("https://storage.example", budget).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn inline_data_and_objects_share_the_budget_without_storage_requests() {
+        let ports = HashMap::from([
+            (
+                "a".into(),
+                NexusData::inline_data(b"value".to_vec()).unwrap(),
+            ),
+            (
+                "b".into(),
+                NexusData::object(crate::sui::types::Address::TWO),
+            ),
+        ]);
+        let reader = WalrusReader::new("http://127.0.0.1:1", 37).unwrap();
+        let resolved = reader.resolve_ports(ports.clone()).await.unwrap();
+        assert_eq!(
+            resolved["a"],
+            vec![NexusValue::InlineData {
+                bytes: b"value".to_vec()
+            }]
+        );
+        assert_eq!(resolved["b"], ports["b"].values().unwrap());
+        let reader = WalrusReader::new("http://127.0.0.1:1", 36).unwrap();
+        assert!(reader
+            .resolve_ports(ports)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("read budget"));
+    }
 }

@@ -449,4 +449,43 @@ mod tests {
         assert_eq!(error.response(), Some(&response));
         assert!(error.to_string().contains("digest does not match"));
     }
+
+    #[test]
+    fn incomplete_confirmation_retains_the_response_for_recovery() {
+        let digest = sui::types::Digest::new([9; 32]);
+        for response in [
+            sui::grpc::ExecuteTransactionResponse::default(),
+            sui::grpc::ExecuteTransactionResponse::default()
+                .with_transaction(sui::grpc::ExecutedTransaction::default().with_digest(digest)),
+        ] {
+            let NexusError::Transaction(error) =
+                validated_execution_response(digest, response.clone()).unwrap_err()
+            else {
+                panic!("expected a transaction error");
+            };
+            assert_eq!(error.state(), TransactionErrorState::ConfirmationUnknown);
+            assert_eq!(error.digest(), &digest);
+            assert_eq!(error.response(), Some(&response));
+        }
+    }
+
+    #[test]
+    fn interrupted_checkpoint_stream_preserves_execution_for_recovery() {
+        let digest = sui::types::Digest::new([9; 32]);
+        let response = sui::grpc::ExecuteTransactionResponse::default()
+            .with_transaction(sui::grpc::ExecutedTransaction::default().with_digest(digest));
+        let NexusError::Transaction(error) = map_execute_and_wait_error(
+            digest,
+            Duration::from_secs(30),
+            ExecuteAndWaitError::CheckpointStreamError {
+                response: tonic::Response::new(response.clone()),
+                error: tonic::Status::unavailable("checkpoint stream interrupted"),
+            },
+        ) else {
+            panic!("expected a transaction error");
+        };
+        assert_eq!(error.state(), TransactionErrorState::ConfirmationUnknown);
+        assert_eq!(error.digest(), &digest);
+        assert_eq!(error.response(), Some(&response));
+    }
 }

@@ -225,4 +225,79 @@ mod tests {
         )
         .is_err());
     }
+
+    #[tokio::test]
+    async fn verifies_existing_references_before_materializing_new_uploads() {
+        use sha2::{Digest as _, Sha256};
+        let mut server = mockito::Server::new_async().await;
+        let bytes = b"\"existing data\"";
+        let reference = NexusData::walrus_data(
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            Sha256::digest(bytes).to_vec(),
+        )
+        .unwrap();
+        let get = server
+            .mock(
+                "GET",
+                "/v1/blobs/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            )
+            .with_body(bytes)
+            .expect(1)
+            .create_async()
+            .await;
+        let plan = TaskInputPlan::new(
+            &json!({"v": {
+                "existing": reference.to_json_value().unwrap(),
+                "new": "new data",
+                "object": NexusData::object(crate::sui::types::Address::TWO).to_json_value().unwrap(),
+            }}),
+            &["v.new".into()],
+        )
+        .unwrap();
+        assert!(plan.has_uploads());
+        assert!(plan.has_references());
+        plan.verify_references(&crate::walrus::WalrusReader::new(&server.url(), 100).unwrap())
+            .await
+            .unwrap();
+        get.assert_async().await;
+        let error = plan
+            .materialize_with(|handle, _| async move {
+                assert_eq!(handle, "v.new");
+                NexusData::walrus_data(b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", [0; 32])
+            })
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("different content"));
+    }
+
+    #[tokio::test]
+    async fn existing_bytes_and_pending_uploads_must_fit_one_execution() {
+        use sha2::{Digest as _, Sha256};
+        let mut server = mockito::Server::new_async().await;
+        let bytes = vec![b'a'; MAX_RESOLVED_INPUT_BYTES - 10];
+        let reference = NexusData::walrus_data(
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            Sha256::digest(&bytes).to_vec(),
+        )
+        .unwrap();
+        let get = server
+            .mock(
+                "GET",
+                "/v1/blobs/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            )
+            .with_body(bytes)
+            .expect(1)
+            .create_async()
+            .await;
+        let plan = TaskInputPlan::new(
+            &json!({"v": {"existing": reference.to_json_value().unwrap(), "new": "data exceeds the remainder"}}),
+            &["v.new".into()],
+        )
+        .unwrap();
+        let reader =
+            crate::walrus::WalrusReader::new(&server.url(), MAX_RESOLVED_INPUT_BYTES).unwrap();
+        let error = plan.verify_references(&reader).await.unwrap_err();
+        assert!(error.to_string().contains("pending uploads exceed"));
+        get.assert_async().await;
+    }
 }
