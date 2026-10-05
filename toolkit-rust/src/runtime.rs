@@ -10,13 +10,14 @@ use {
         NexusTool,
         ToolkitRuntimeConfig,
     },
+    futures::FutureExt,
     nexus_sdk::{
         move_bindings::interface::meta_schema::MetaSchema,
         types::{NexusData, OffchainToolOutput, OffchainToolOutputPort},
     },
     reqwest::Url,
     serde_json::json,
-    std::sync::Arc,
+    std::{panic::AssertUnwindSafe, sync::Arc},
     warp::{
         filters::{host::Authority, path::FullPath},
         http::{HeaderMap, StatusCode},
@@ -122,6 +123,17 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// ## Request body limits
 /// `/invoke` enforces a `Content-Length` limit via `warp::body::content_length_limit`.
 /// Requests without a `Content-Length` header are rejected.
+///
+/// # Invocation errors and timeouts
+///
+/// The runtime catches unwinding panics during input decoding, tool construction,
+/// authorization, invocation, and output serialization. It returns a generic
+/// HTTP 500 response without the panic payload or a tool result signature.
+///
+/// Recovery requires `panic = "unwind"` (Cargo's default). The final application's
+/// workspace controls this setting; with `panic = "abort"`, a panic terminates the process.
+///
+/// Invocation deadlines follow [`NexusTool::timeout()`].
 ///
 /// # Examples
 ///
@@ -451,6 +463,28 @@ struct InvokePipeline;
 
 impl InvokePipeline {
     async fn run<T: NexusTool>(
+        body_bytes: &[u8],
+        auth_ctx: Option<crate::AuthContext>,
+    ) -> InvokePipelineResponse {
+        let invocation =
+            AssertUnwindSafe(Self::run_inner::<T>(body_bytes, auth_ctx)).catch_unwind();
+        match tokio::time::timeout(T::timeout(), invocation).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(_)) => {
+                log::error!("Tool invocation panicked");
+                InvokePipelineResponse::json(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"error": "tool_invocation_failed"}),
+                )
+            }
+            Err(_) => InvokePipelineResponse::json(
+                StatusCode::GATEWAY_TIMEOUT,
+                json!({"error": "tool_invocation_timeout"}),
+            ),
+        }
+    }
+
+    async fn run_inner<T: NexusTool>(
         body_bytes: &[u8],
         auth_ctx: Option<crate::AuthContext>,
     ) -> InvokePipelineResponse {
@@ -813,6 +847,123 @@ mod tests {
         assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(!response.is_result);
         assert!(serde_json::from_slice::<serde_json::Value>(&response.body).is_ok());
+    }
+
+    #[derive(JsonSchema)]
+    enum PanickingOutput {
+        Ok { message: String },
+    }
+
+    impl Serialize for PanickingOutput {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            match self {
+                Self::Ok { message } => panic!("PRIVATE_SERIALIZATION_MARKER {message}"),
+            }
+        }
+    }
+
+    struct FailingTool<const PHASE: u8>;
+
+    impl<const PHASE: u8> NexusTool for FailingTool<PHASE> {
+        type Input = Input;
+        type Output = PanickingOutput;
+
+        fn fqn() -> ToolFqn {
+            fqn!("xyz.taluslabs.failure.test@1")
+        }
+
+        fn description() -> &'static str {
+            "Exercise invocation failure isolation."
+        }
+
+        fn timeout() -> std::time::Duration {
+            std::time::Duration::from_millis(10)
+        }
+
+        async fn new() -> Self {
+            assert!(PHASE != 0, "PRIVATE_CONSTRUCTOR_MARKER");
+            Self
+        }
+
+        async fn authorize(&self, _: crate::AuthContext) -> anyhow::Result<()> {
+            assert!(PHASE != 1, "PRIVATE_AUTHORIZATION_MARKER");
+            Ok(())
+        }
+
+        async fn invoke(&self, _: Input) -> PanickingOutput {
+            if PHASE == 4 {
+                std::future::pending::<()>().await;
+            }
+            assert!(PHASE != 2, "PRIVATE_INVOCATION_MARKER");
+            PanickingOutput::Ok {
+                message: "hello".into(),
+            }
+        }
+
+        async fn health(&self) -> anyhow::Result<StatusCode> {
+            Ok(StatusCode::OK)
+        }
+    }
+
+    #[tokio::test]
+    async fn panics_are_local_errors_and_later_requests_succeed() {
+        let body = br#"{"message":"hello"}"#;
+        let responses = [
+            InvokePipeline::run::<FailingTool<0>>(body, None).await,
+            InvokePipeline::run::<FailingTool<2>>(body, None).await,
+            InvokePipeline::run::<FailingTool<3>>(body, None).await,
+        ];
+        for response in responses {
+            assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert!(!response.is_result);
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
+                json!({"error": "tool_invocation_failed"})
+            );
+        }
+        assert_eq!(
+            InvokePipeline::run::<TestTool>(body, None).await.status,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_panics_do_not_escape_or_become_tool_results() {
+        let transport = resolved_input("message", json!("hello"));
+        let schema = MetaSchema::from_offchain_json_schemas(
+            &serde_json::to_vec(&schemars::schema_for!(Input)).unwrap(),
+            &serde_json::to_vec(&schemars::schema_for!(PanickingOutput)).unwrap(),
+        )
+        .unwrap();
+        let resolved = schema.resolved_inputs_from_json(&transport).unwrap();
+        let auth = AuthenticatedRequest {
+            leader_id: "leader".into(),
+            leader_key_id: 0,
+            input_hash: schema.resolved_inputs_sha256(&resolved).unwrap(),
+            leader_signature: [2; 64],
+            nonce: [3; 32],
+        };
+        let response = InvokePipeline::run::<FailingTool<1>>(
+            &serde_json::to_vec(&transport).unwrap(),
+            Some(auth),
+        )
+        .await;
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!response.is_result);
+        assert!(!String::from_utf8(response.body)
+            .unwrap()
+            .contains("PRIVATE"));
+    }
+
+    #[tokio::test]
+    async fn asynchronous_work_obeys_the_tool_deadline() {
+        let response = InvokePipeline::run::<FailingTool<4>>(br#"{"message":"hello"}"#, None).await;
+        assert_eq!(response.status, StatusCode::GATEWAY_TIMEOUT);
+        assert!(!response.is_result);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
+            json!({"error": "tool_invocation_timeout"})
+        );
     }
 
     #[tokio::test]

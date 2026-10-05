@@ -62,6 +62,12 @@ pub trait NexusTool: Send + Sync + 'static {
     /// Returns the FQN of the Tool.
     fn fqn() -> ToolFqn;
     /// Returns the Tool timeout duration. Defaults to 10 seconds.
+    ///
+    /// The runtime applies this deadline to input decoding, construction,
+    /// authorization, invocation, and output serialization. Expiry returns an
+    /// unsigned HTTP 504 response.
+    ///
+    /// Cancellation cannot preempt synchronous work or undo external side effects.
     fn timeout() -> Duration {
         Duration::from_secs(10)
     }

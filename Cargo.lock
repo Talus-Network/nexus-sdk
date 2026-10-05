@@ -5730,6 +5730,7 @@ dependencies = [
  "bytes",
  "ed25519-dalek",
  "env_logger",
+ "futures",
  "hex",
  "http-body-util",
  "hyper-util",

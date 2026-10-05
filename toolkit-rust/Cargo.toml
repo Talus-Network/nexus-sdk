@@ -32,6 +32,7 @@ hyper-util = { version = "0.1", features = ["server-auto", "http1", "http2", "se
 warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
+futures.workspace = true
 notify = "8.2.0"
 tls-listener.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
