@@ -18,9 +18,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-cli`
 
+#### Added
+
+- `nexus tool new --template move` accepts `--mode standard|workflow-authorization` to choose the generated `execute` signature.
+
+#### Changed
+
+- Move Tool scaffolds default to the Standard `execute` signature, which `task schedule` runs without authorization bindings. Pass `--mode workflow-authorization` for the previous signature that begins with an Agent vertex authorization proof.
+
 #### Fixed
 
 - TAP command dispatch keeps its large command future on the heap so callers and tests fit the default thread stack.
+- Move Tool scaffolds now use MVR dependencies, a versioned 2024 edition manifest, and no `[addresses]` table, so a fresh scaffold builds.
+- `nexus tool new` keeps digits attached to Tool names, so `sha256_hash` no longer becomes `sha_256_hash`.
+- Scaffolded files end with exactly one trailing newline.
 
 ## [`2.1.0`] - 2026-09-17
 
