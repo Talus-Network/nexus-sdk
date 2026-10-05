@@ -423,12 +423,8 @@ impl WalrusClient {
         Ok(bytes.to_vec())
     }
 
-    /// Reads one blob under a caller-provided byte ceiling and repository deadlines.
-    pub(crate) async fn read_file_bounded(
-        &self,
-        blob_id: &str,
-        max_bytes: usize,
-    ) -> Result<Vec<u8>> {
+    /// Reads one blob within the byte ceiling and both read and total deadlines.
+    pub async fn read_file_bounded(&self, blob_id: &str, max_bytes: usize) -> Result<Vec<u8>> {
         let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
         self.read_url_bounded(
             &url,

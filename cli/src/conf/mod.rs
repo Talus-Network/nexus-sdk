@@ -54,16 +54,10 @@ pub(crate) enum ConfCommand {
         )]
         data_storage_walrus_aggregator_url: Option<reqwest::Url>,
         #[arg(
-            long = "data-storage.walrus-publisher-url",
-            help = "Set the Walrus publisher URL for data storage",
-            value_name = "URL"
-        )]
-        data_storage_walrus_publisher_url: Option<reqwest::Url>,
-        #[arg(
             long = "data-storage.walrus-save-for-epochs",
             help = "Set how many epochs to save data for in Walrus",
             value_name = "EPOCHS",
-            value_parser = clap::value_parser!(u8).range(0..=WALRUS_MAX_EPOCHS as i64)
+            value_parser = clap::value_parser!(u8).range(1..=WALRUS_MAX_EPOCHS as i64)
         )]
         data_storage_walrus_save_for_epochs: Option<u8>,
         #[arg(
@@ -116,7 +110,6 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             sui_rpc_url,
             nexus_objects_path,
             data_storage_walrus_aggregator_url,
-            data_storage_walrus_publisher_url,
             data_storage_walrus_save_for_epochs,
             data_storage_preferred_remote_storage,
             data_storage_testnet,
@@ -127,7 +120,6 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
                 sui_rpc_url,
                 nexus_objects_path,
                 data_storage_walrus_aggregator_url,
-                data_storage_walrus_publisher_url,
                 data_storage_walrus_save_for_epochs,
                 data_storage_preferred_remote_storage,
                 data_storage_testnet,

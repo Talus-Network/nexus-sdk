@@ -85,6 +85,32 @@ impl StorageConf {
     }
 }
 
+impl WalrusClient {
+    /// Uploads arbitrary execution bytes through an operator configured publisher,
+    /// verifies the readback and returns the exact digest commitment for a tool port.
+    /// Wallet owners can instead use `WalrusStorage::upload` with `walrus_native`.
+    pub async fn upload_value(&self, bytes: Vec<u8>, epochs: u8) -> anyhow::Result<NexusValue> {
+        anyhow::ensure!(
+            bytes.len() <= crate::execution_limits::MAX_RESOLVED_INPUT_BYTES,
+            "blob exceeds execution byte limit"
+        );
+        anyhow::ensure!(
+            (1..=WALRUS_MAX_EPOCHS).contains(&epochs),
+            "invalid storage duration"
+        );
+        let digest = Sha256::digest(&bytes).to_vec();
+        let response = self.upload_bytes(bytes.clone(), epochs, None).await?;
+        let blob_id = blob_id_from_storage_info(response)?;
+        let reference = NexusValue::walrus_data(blob_id.as_bytes(), digest)?;
+        let readback = self.read_file_bounded(&blob_id, bytes.len()).await?;
+        anyhow::ensure!(
+            readback == bytes,
+            "Walrus upload readback differs from the original bytes"
+        );
+        Ok(reference)
+    }
+}
+
 impl NexusData {
     /// Resolves Walrus Data to transient Tool data after verifying its committed digest.
     pub async fn fetch(self, conf: &StorageConf) -> anyhow::Result<NexusData> {
@@ -172,19 +198,7 @@ impl NexusData {
         for value in self.into_values()? {
             match value {
                 NexusValue::InlineData { bytes } => {
-                    let digest = Sha256::digest(&bytes).to_vec();
-                    let response = client
-                        .upload_bytes(bytes.clone(), store_for_epochs, None)
-                        .await?;
-                    let blob_id_bytes = blob_id_from_storage_info(response)?.into_bytes();
-                    let blob_id = blob_id_from_bytes(&blob_id_bytes)?;
-                    let read_back = client.read_file_bounded(&blob_id, bytes.len()).await?;
-                    let read_back_digest: [u8; 32] = Sha256::digest(&read_back).into();
-                    anyhow::ensure!(
-                        read_back == bytes && read_back_digest.as_slice() == digest,
-                        "Walrus upload read-back mismatch for blob ID '{blob_id}'"
-                    );
-                    uploaded.push(NexusValue::walrus_data(blob_id_bytes, digest)?);
+                    uploaded.push(client.upload_value(bytes, store_for_epochs).await?);
                 }
                 NexusValue::WalrusData { .. } => {
                     anyhow::bail!("Data upload received an already remote value");

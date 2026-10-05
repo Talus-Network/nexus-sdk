@@ -20,6 +20,63 @@ Move package transaction construction requires the `move_publish` feature. It ac
 If you are upgrading direct SDK usage after the move to generated Move bindings,
 see the [SDK migration guide](./MIGRATION.md).
 
+## Walrus storage
+
+Enable `walrus_native` for wallet funded uploads and management. `full` includes
+reading and protocol references without the native upload dependencies. The
+native dependency is pinned to the Walrus revision that uses the workspace's
+Sui version.
+
+`nexus::wallet::WalletClient` owns one signing key and RPC connection. Nexus and
+Walrus share it; no executable, temporary wallet file, or second key store is
+needed. An existing `NexusClient` exposes `wallet()`. A standalone application
+can call `WalletClient::connect(rpc_url, key)` and pass its clone to
+`NexusClient::builder().with_wallet(wallet)`.
+
+```rust,ignore
+use nexus_sdk::walrus::{UploadOptions, WalrusStorage};
+
+let storage = WalrusStorage::new(client.wallet()?.clone(), None).await?;
+let stored = storage.upload(
+    serde_json::to_vec(&result)?,
+    UploadOptions { epochs: 5, ..Default::default() },
+).await?;
+let output_port = stored.nexus_data()?;
+```
+
+The connected Sui chain selects the testnet or mainnet deployment. The wallet
+pays WAL for storage and SUI for gas and owns the Blob object. The SDK encodes
+the data, registers storage, uploads to storage nodes, certifies it on Sui,
+and verifies the aggregator readback. Each transaction receives a gas budget.
+A separate WAL coin caps storage spending at the quote, subject to the caller's
+maximum cost. Uploads are permanent until expiry unless explicitly deletable.
+Only the Blob owner can extend storage or delete a deletable blob.
+
+For durable operations, use `prepare`, `registration`, `register`, and `finish`.
+Persist the signed registration before calling `register`, then persist the
+returned `PendingUpload` before `finish`. After an uncertain submission, retry
+that saved signed transaction. Do not create another registration. Saved
+transactions are signature checked before submission. The convenience `upload`
+method returns recovery information in `UploadError`; applications that may be
+cancelled or restarted should persist each phase themselves.
+
+`WalrusReader` needs only an aggregator. It bounds downloads, verifies SHA256,
+and resolves canonical references into transient execution values. A combined
+8 MiB execution budget applies to all ports in one HTTP tool call. The chain's
+inline and encoded port limits remain unchanged. Sui tools still require
+resolved data to fit their transaction limits. Reads preserve exact bytes,
+including JSON formatting, so the digest authenticated by a tool remains valid.
+
+`WalrusReference` carries local network, ownership, expiry and content metadata.
+Only `NexusData::WalrusData` blob IDs and digests become protocol inputs or
+outputs. `scheduler::TaskInputPlan` validates selectors and port shapes before
+payment and checks that upload results commit to the intended bytes. Call the
+scheduler's authoritative `preflight_task_inputs` before materializing a plan.
+
+Storage expiry is independent of task lifetime. The owner must retain data for
+all future task occurrences and extend it before expiry. Walrus data is public;
+a blob reference does not grant confidentiality.
+
 ## Runtime observations
 
 Applications can install a `sui::observation::Observer` once before starting SDK

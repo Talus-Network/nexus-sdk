@@ -1,8 +1,6 @@
-use {
-    nexus_sdk::types::NexusData,
-    serde_json::Value,
-    std::collections::{HashMap, HashSet},
-};
+//! JSON parsing and transaction space estimates for task input plans.
+
+use {crate::types::NexusData, serde_json::Value, std::collections::HashSet};
 
 const NEXUS_BASE_TRANSACTION_SIZE: usize = 8 * 1024;
 const MAX_TRANSACTION_SIZE: usize = 128 * 1024;
@@ -26,7 +24,7 @@ pub(crate) fn nexus_data_from_json_value(data: Value) -> anyhow::Result<NexusDat
     }
 }
 
-fn is_canonical_nexus_data(value: &Value) -> bool {
+pub(crate) fn is_canonical_nexus_data(value: &Value) -> bool {
     let Some(object) = value.as_object().filter(|object| object.len() == 1) else {
         return false;
     };
@@ -42,7 +40,7 @@ fn is_canonical_nexus_data(value: &Value) -> bool {
 
 #[cfg(test)]
 pub(crate) fn nexus_data_to_json_value(data: &NexusData) -> Value {
-    use nexus_sdk::move_bindings::primitives::data::NexusValue;
+    use crate::move_bindings::primitives::data::NexusValue;
 
     let decode = |value: &NexusValue| match value {
         NexusValue::InlineData { bytes } => decode_nexus_data_json(bytes),
@@ -54,20 +52,6 @@ pub(crate) fn nexus_data_to_json_value(data: &NexusData) -> Value {
     } else {
         Value::Array(values.iter().map(decode).collect())
     }
-}
-
-pub(crate) fn json_to_nexus_data_map(json: &Value) -> anyhow::Result<HashMap<String, NexusData>> {
-    let Some(obj) = json.as_object() else {
-        anyhow::bail!("Expected JSON object");
-    };
-
-    let mut map = HashMap::new();
-
-    for (key, value) in obj {
-        map.insert(key.clone(), nexus_data_from_json_value(value.clone())?);
-    }
-
-    Ok(map)
 }
 
 pub(crate) fn hint_remote_fields(

@@ -32,7 +32,7 @@
 //! # Example config
 //! ```json
 //! {
-//!   "invoke_max_body_bytes": 10485760,
+//!   "invoke_max_body_bytes": 12582912,
 //!   "signed_http": {
 //!     "mode": "required",
 //!     "allowed_leaders_path": "./allowed_leaders.json",
@@ -115,7 +115,7 @@ use {
 /// Env var read by the toolkit runtime to locate its JSON config file.
 pub const ENV_TOOLKIT_CONFIG_PATH: &str = "NEXUS_TOOLKIT_CONFIG_PATH";
 
-const DEFAULT_INVOKE_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
+const DEFAULT_INVOKE_MAX_BODY_BYTES: u64 = 12 * 1024 * 1024; // 12 MiB
 
 /// Signed HTTP mode for the toolkit runtime.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -811,7 +811,7 @@ mod tests {
 
         // Default config has no signed HTTP
         assert!(!config.signed_http_is_required());
-        assert_eq!(config.invoke_max_body_bytes(), 10 * 1024 * 1024);
+        assert_eq!(config.invoke_max_body_bytes(), 12 * 1024 * 1024);
     }
 
     #[allow(clippy::await_holding_lock)]

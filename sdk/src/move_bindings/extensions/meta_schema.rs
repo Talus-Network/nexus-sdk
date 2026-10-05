@@ -345,6 +345,19 @@ impl MetaSchema {
         input_ports: &'a HashMap<String, Vec<NexusValue>>,
     ) -> anyhow::Result<Vec<&'a [NexusValue]>> {
         self.validate_for_tool(true)?;
+        let mut remaining = crate::execution_limits::MAX_RESOLVED_INPUT_BYTES;
+        for value in input_ports.values().flatten() {
+            let size = match value {
+                NexusValue::InlineData { bytes } => bytes.len(),
+                NexusValue::Object { .. } => 32,
+                NexusValue::WalrusData { .. } => {
+                    bail!("resolved inputs contain a Walrus reference")
+                }
+            };
+            remaining = remaining
+                .checked_sub(size)
+                .context("resolved inputs exceed execution byte limit")?;
+        }
         if input_ports.len() != self.input_ports.len() {
             bail!(
                 "Tool input contains {} ports but schema requires {}",
@@ -834,6 +847,7 @@ mod tests {
 
         let encoded = schema.resolved_inputs_to_json(&inputs).unwrap();
         assert!(encoded["ports"][0]["value"].get("many").is_some());
+        assert_eq!(encoded["ports"][0]["value"]["many"][0]["data"], "one");
         assert_eq!(schema.resolved_inputs_from_json(&encoded).unwrap(), inputs);
         assert!(schema
             .resolved_inputs_from_json(&json!({
@@ -858,6 +872,64 @@ mod tests {
                 .unwrap()
             ],
         ));
+    }
+
+    #[test]
+    fn resolved_transport_preserves_exact_bytes_and_reference_commitments() {
+        let schema = MetaSchema::new(
+            vec![PortSchema::new(
+                b"document".to_vec(),
+                false,
+                ValueKind::Data,
+            )],
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        );
+        let bytes = format!(
+            "  {{\n  \"data\": {}\n}}\n",
+            serde_json::to_string(&"🦭".repeat(30_000)).unwrap()
+        )
+        .into_bytes();
+        assert!(NexusData::inline_data(bytes.clone()).is_err());
+        let reference = NexusData::walrus_data(
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            Sha256::digest(&bytes).to_vec(),
+        )
+        .unwrap();
+        let original_hash = schema
+            .canonical_inputs_sha256(&HashMap::from([("document".into(), reference)]))
+            .unwrap();
+        let resolved = HashMap::from([("document".into(), vec![NexusValue::InlineData { bytes }])]);
+        let json = schema.resolved_inputs_to_json(&resolved).unwrap();
+        let decoded = schema.resolved_inputs_from_json(&json).unwrap();
+        assert_eq!(decoded, resolved);
+        assert_eq!(
+            schema.resolved_inputs_sha256(&decoded).unwrap(),
+            original_hash
+        );
+        assert_eq!(
+            schema.resolved_inputs_to_semantic_json(&decoded).unwrap()["document"]["data"],
+            "🦭".repeat(30_000)
+        );
+        let mut malformed = json;
+        malformed["ports"][0]["value"]["one"]["bytes"] = json!("not base64 !");
+        assert!(schema.resolved_inputs_from_json(&malformed).is_err());
+    }
+
+    #[test]
+    fn resolved_execution_budget_is_shared_by_all_ports() {
+        let schema = MetaSchema::new(
+            vec![
+                PortSchema::new(b"a".to_vec(), false, ValueKind::Data),
+                PortSchema::new(b"b".to_vec(), false, ValueKind::Data),
+            ],
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        );
+        let value = NexusValue::InlineData {
+            bytes: vec![0; crate::execution_limits::MAX_RESOLVED_INPUT_BYTES / 2 + 1],
+        };
+        let inputs = HashMap::from([("a".into(), vec![value.clone()]), ("b".into(), vec![value])]);
+        assert!(schema.resolved_inputs_to_json(&inputs).is_err());
+        assert!(schema.resolved_inputs_sha256(&inputs).is_err());
     }
 
     #[test]

@@ -29,20 +29,53 @@ const WALRUS_BLOB_ID_BYTES: usize = 32;
 const WALRUS_BLOB_ID_ENCODED_BYTES: usize = 43;
 
 pub(super) fn validate_resolved_values(values: &[NexusValue], many: bool) -> anyhow::Result<()> {
-    if values
-        .iter()
-        .any(|value| matches!(value, NexusValue::WalrusData { .. }))
+    if values.is_empty() || (!many && values.len() != 1) || values.len() > MAX_MANY_VALUES as usize
     {
-        bail!("resolved Nexus values cannot contain Walrus references");
+        bail!("resolved Nexus values have invalid cardinality");
     }
-    NexusData::from_values(values.to_vec(), many)
-        .context("resolved Nexus values exceed canonical NexusData bounds")?;
+    let object_kind = values[0].is_object();
+    let mut remaining = crate::execution_limits::MAX_RESOLVED_INPUT_BYTES;
+    for value in values {
+        if value.is_object() != object_kind {
+            bail!("resolved Nexus values must have one homogeneous value kind");
+        }
+        let size = match value {
+            NexusValue::InlineData { bytes } => bytes.len(),
+            NexusValue::Object { .. } => 32,
+            NexusValue::WalrusData { .. } => {
+                bail!("resolved Nexus values cannot contain Walrus references")
+            }
+        };
+        remaining = remaining
+            .checked_sub(size)
+            .context("resolved Nexus values exceed execution byte limit")?;
+    }
     Ok(())
 }
 
 pub(super) fn resolved_values_to_json(values: &[NexusValue], many: bool) -> anyhow::Result<Value> {
     validate_resolved_values(values, many)?;
-    let values = values.iter().map(value_to_json).collect::<Vec<_>>();
+    let values = values
+        .iter()
+        .map(|value| match value {
+            NexusValue::InlineData { bytes } => {
+                // Preserve the existing transport when its JSON encoding is
+                // lossless and within the old inline bound. Other data needs
+                // explicit bytes to keep its authenticated digest unchanged.
+                let data = (bytes.len() <= MAX_INLINE_DATA_BYTES as usize)
+                    .then(|| serde_json::from_slice::<Value>(bytes).ok())
+                    .flatten()
+                    .filter(|value| {
+                        serde_json::to_vec(value).ok().as_deref() == Some(bytes.as_slice())
+                    });
+                match data {
+                    Some(data) => json!({ "kind": "data", "data": data }),
+                    None => json!({ "kind": "data", "bytes": BASE64.encode(bytes) }),
+                }
+            }
+            value => value_to_json(value),
+        })
+        .collect::<Vec<_>>();
     if many {
         Ok(json!({ "many": values }))
     } else {
@@ -512,6 +545,12 @@ fn resolved_value_from_json(value: &Value) -> anyhow::Result<NexusValue> {
             ))
         }
         Some("data") => {
+            if object.contains_key("bytes") {
+                ensure_exact_keys(object, &["kind", "bytes"], "resolved Data value")?;
+                return Ok(NexusValue::InlineData {
+                    bytes: decode_base64(object.get("bytes"), "resolved Data bytes")?,
+                });
+            }
             ensure_exact_keys(object, &["kind", "data"], "resolved Data value")?;
             Ok(NexusValue::InlineData {
                 bytes: serde_json::to_vec(&object["data"])?,
@@ -683,12 +722,16 @@ mod tests {
     }
 
     #[test]
-    fn resolved_data_cannot_exceed_inline_limit() {
+    fn resolved_data_has_a_separate_execution_limit() {
         let bytes = vec![b'x'; MAX_INLINE_DATA_BYTES as usize + 1];
         assert!(NexusValue::inline_data(bytes.clone()).is_err());
 
         let resolved = vec![NexusValue::InlineData { bytes }];
-        assert!(validate_resolved_values(&resolved, false).is_err());
+        assert!(validate_resolved_values(&resolved, false).is_ok());
+        let too_large = vec![NexusValue::InlineData {
+            bytes: vec![0; crate::execution_limits::MAX_RESOLVED_INPUT_BYTES + 1],
+        }];
+        assert!(validate_resolved_values(&too_large, false).is_err());
     }
 
     #[test]
