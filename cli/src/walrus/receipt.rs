@@ -1,14 +1,15 @@
 //! Local persistence for SDK references and upload recovery.
 
 use {
-    crate::prelude::*,
+    crate::{display::json_output, prelude::*},
     anyhow::{ensure, Context as _},
     nexus_sdk::walrus::WalrusReference,
     std::{io::Write as _, path::Path},
+    tokio::io::AsyncReadExt as _,
 };
 
 pub(crate) async fn load(path: &Path) -> AnyResult<WalrusReference> {
-    let bytes = super::read_bounded(path, 256 * 1024).await?;
+    let bytes = read_bounded(path, 256 * 1024).await?;
     let reference: WalrusReference =
         serde_json::from_slice(&bytes).context("invalid Walrus reference")?;
     reference.nexus_data()?;
@@ -52,7 +53,7 @@ impl Journal {
     }
 
     pub(crate) async fn load(path: &Path) -> AnyResult<Self> {
-        let bytes = super::read_bounded(path, 1024 * 1024).await?;
+        let bytes = read_bounded(path, 1024 * 1024).await?;
         Ok(serde_json::from_slice(&bytes)?)
     }
 
@@ -65,6 +66,34 @@ impl Journal {
         );
         Ok(())
     }
+}
+
+pub(crate) async fn read_bounded(path: &Path, max: usize) -> AnyResult<Vec<u8>> {
+    let file = tokio::fs::File::open(path)
+        .await
+        .with_context(|| format!("cannot read {}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(max as u64 + 1).read_to_end(&mut bytes).await?;
+    ensure!(
+        bytes.len() <= max,
+        "{} exceeds the {max} byte limit",
+        path.display()
+    );
+    Ok(bytes)
+}
+
+/// Adds local artifact paths to the normal task receipt for machine consumers.
+pub(crate) fn print_task_receipt(
+    receipt: &impl Serialize,
+    references: &std::collections::BTreeMap<String, PathBuf>,
+) -> Result<(), NexusCliError> {
+    let mut value =
+        serde_json::to_value(receipt).map_err(|error| NexusCliError::Any(error.into()))?;
+    if !references.is_empty() {
+        value["walrus_references"] =
+            serde_json::to_value(references).map_err(|error| NexusCliError::Any(error.into()))?;
+    }
+    json_output(&value)
 }
 
 #[cfg(test)]
