@@ -150,7 +150,7 @@ nexus walrus list
 nexus walrus extend walrus_reference.json --epochs 2 --max-storage-cost-frost 100000000
 ```
 
-`upload` treats a JSON document as one value. Use `--many` to upload each array item as a separate value. Data is permanent until expiry by default; `--deletable` permits the owner to delete it with `nexus walrus delete REFERENCE --yes`. Each upload is limited to 8 MiB of execution data under the shared SDK [execution limits](../sdk/README.md#execution-limits). The combined inputs of each invocation must also fit that budget. `--max-storage-cost-frost` caps WAL cost per blob, and `--storage-gas-budget` caps SUI gas per transaction. Without an explicit WAL limit, each transaction is capped at its current quote.
+`upload` treats a JSON document as one value. Use `--many` to upload each array item as a separate value. Data is permanent until expiry by default; `--deletable` permits the owner to delete it with `nexus walrus delete REFERENCE --yes`. Each upload is limited to 8 MiB of execution data under the shared SDK [execution limits](../sdk/README.md#execution-limits). The combined inputs of each invocation must also fit that budget. `--max-storage-cost-frost` rejects a storage quote above the configured threshold per blob; the actual WAL charge uses the prices at execution and may differ. `--storage-gas-budget` caps SUI gas per transaction.
 
 The network follows the active Sui RPC. Standard aggregators follow network changes automatically. To select a custom reader, use `nexus walrus configure --aggregator URL --network testnet` (or `mainnet`). `--reset-aggregator` restores the network default. Inspect and download need no signing key. Old publisher configuration is ignored and removed when the configuration is next saved.
 

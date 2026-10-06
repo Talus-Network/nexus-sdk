@@ -50,7 +50,7 @@ let stored = storage.upload(
 let output_port = stored.nexus_data()?;
 ```
 
-The connected Sui chain selects the testnet or mainnet deployment. The wallet pays WAL for storage and SUI for gas and owns the Blob object. The SDK encodes the data, registers storage, uploads to storage nodes, certifies it on Sui, and verifies the aggregator readback. Each transaction receives a gas budget. A separate WAL coin caps storage spending at the quote, subject to the caller's maximum cost. Uploads are permanent until expiry unless explicitly deletable. Only the Blob owner can extend storage or delete a deletable blob.
+The connected Sui chain selects the testnet or mainnet deployment. The wallet pays WAL for storage and SUI for gas and owns the Blob object. The SDK encodes the data, registers storage, uploads to storage nodes, certifies it on Sui, and verifies the aggregator readback. Each transaction receives a gas budget. `max_storage_cost_frost` checks the storage estimate before transaction construction; the actual WAL charge uses the prices at execution and may differ. Uploads are permanent until expiry unless explicitly deletable. Only the Blob owner can extend storage or delete a deletable blob.
 
 For durable operations, use `prepare`, `registration`, `register`, and `finish`. Persist the signed registration before calling `register`, then persist the returned `PendingUpload` before `finish`. After an uncertain submission, retry that saved signed transaction. Do not create another registration. Saved transactions are signature checked before submission. The convenience `upload` method returns recovery information in `UploadError`; applications that may be cancelled or restarted should persist each phase themselves.
 

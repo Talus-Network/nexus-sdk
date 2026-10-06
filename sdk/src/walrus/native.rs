@@ -1,8 +1,6 @@
 //! Native Walrus storage through a shared Nexus wallet. Walrus supplies encoding,
 //! node communication and Move calls; the Nexus wallet signs every transaction.
 
-mod payment;
-
 use {
     super::{StoredBlob, WalrusNetwork, WalrusReader},
     crate::{
@@ -44,7 +42,8 @@ use {
 pub struct UploadOptions {
     pub epochs: u32,
     pub deletable: bool,
-    /// Maximum WAL spent, in FROST. When absent the quoted cost is the cap.
+    /// Maximum estimated WAL storage cost per blob, in FROST. None skips the quote check.
+    /// Actual charges use the prices at execution.
     pub max_storage_cost_frost: Option<u64>,
     /// Maximum Sui gas per transaction. Registration and certification are separate.
     pub gas_budget_mist: u64,
@@ -181,7 +180,7 @@ impl WalrusStorage {
         let cost = storage_cost(encoded_size, storage, write, options.epochs)?;
         ensure!(
             options.max_storage_cost_frost.is_none_or(|max| cost <= max),
-            "storage quote exceeds the WAL spending limit"
+            "estimated storage cost exceeds the configured limit"
         );
         let quote = UploadQuote {
             blob_id: metadata.blob_id().to_string(),
@@ -211,10 +210,6 @@ impl WalrusStorage {
             "upload was prepared for another network"
         );
         let mut builder = self.builder()?;
-        // Gather the complete payment before the budget coin is split.
-        builder
-            .fill_wal_balance(upload.quote.storage_cost_frost)
-            .await?;
         let storage = builder
             .reserve_space(upload.quote.encoded_size, upload.options.epochs)
             .await?;
@@ -225,17 +220,9 @@ impl WalrusStorage {
                 BlobPersistence::from_deletable(upload.options.deletable),
             )
             .await?;
-        let mut ptb = finish_ptb(builder).await?;
-        // The Move calls only receive a coin containing this budget. A price
-        // increase can make the transaction fail, but cannot spend more WAL.
-        payment::cap_payment(
-            &mut ptb,
-            self.wallet.owner(),
-            upload.quote.storage_cost_frost,
-        )?;
         let transaction = self
             .wallet
-            .prepare_transaction(ptb, upload.options.gas_budget_mist)
+            .prepare_transaction(finish_ptb(builder).await?, upload.options.gas_budget_mist)
             .await?;
         let signature = self.wallet.sign_transaction(&transaction)?;
         Ok(UploadRegistration {
@@ -396,6 +383,7 @@ impl WalrusStorage {
         })
     }
 
+    /// Checks the estimated extension cost before submitting at the prices used by Walrus.
     pub async fn extend(
         &self,
         reference: &StoredBlob,
@@ -430,16 +418,13 @@ impl WalrusStorage {
         let cost = storage_cost(blob.storage.storage_size, storage, 0, epochs)?;
         ensure!(
             cost <= max_cost_frost,
-            "extension quote exceeds the WAL spending limit"
+            "estimated extension cost exceeds the configured limit"
         );
         let mut builder = self.builder()?;
         builder
             .extend_blob(blob.id.into(), epochs, blob.storage.storage_size)
             .await?;
-        let mut ptb = finish_ptb(builder).await?;
-        payment::cap_payment(&mut ptb, self.wallet.owner(), cost)?;
-        let tx = self.wallet.prepare_transaction(ptb, gas_budget).await?;
-        self.wallet.execute_transaction(tx).await?;
+        self.submit(builder, gas_budget).await?;
         self.inspect(reference).await
     }
 
@@ -610,7 +595,7 @@ fn storage_cost(size: u64, storage: u64, write: u64, epochs: u32) -> anyhow::Res
 }
 
 // Native transaction completion would create a second wallet. Use its PTB only,
-// then apply our payment cap and the shared wallet's gas and signing policy.
+// then apply the shared wallet's gas and signing policy.
 #[allow(deprecated)]
 async fn finish_ptb(
     builder: WalrusPtbBuilder,

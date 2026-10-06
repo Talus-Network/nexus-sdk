@@ -9,7 +9,7 @@ use {
 pub(crate) struct UploadArgs {
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..=53))]
     pub(crate) epochs: Option<u32>,
-    /// Maximum WAL storage cost per blob, in FROST. Defaults to the current quote.
+    /// Maximum estimated WAL storage cost per blob, in FROST. Actual charges may differ.
     #[arg(long)]
     pub(crate) max_storage_cost_frost: Option<u64>,
     /// Maximum Sui gas per storage transaction, in MIST.
@@ -93,7 +93,7 @@ pub(crate) enum WalrusCommand {
         reference: PathBuf,
         #[arg(long, value_parser = clap::value_parser!(u32).range(1..=53))]
         epochs: u32,
-        /// Maximum WAL storage cost per blob, in FROST.
+        /// Maximum estimated WAL storage cost per blob, in FROST. Actual charges may differ.
         #[arg(long)]
         max_storage_cost_frost: u64,
         #[arg(long, default_value_t = DEFAULT_GAS_BUDGET)]
