@@ -47,7 +47,6 @@ impl WalletClient {
         Ok(Self::from_client(
             client,
             key,
-            rpc_url.to_owned(),
             chain_id,
             info.chain.unwrap_or_default(),
             Duration::from_secs(60),
@@ -58,12 +57,12 @@ impl WalletClient {
     pub(crate) fn from_client(
         client: Arc<sui::grpc::Client>,
         key: sui::crypto::Ed25519PrivateKey,
-        rpc_url: String,
         chain_id: String,
         chain: String,
         transaction_timeout: Duration,
         server_checkpoint_wait_supported: bool,
     ) -> Self {
+        let rpc_url = client.uri().to_string();
         Self {
             client,
             key: Arc::new(key),
@@ -334,7 +333,6 @@ mod tests {
         let wallet = WalletClient::from_client(
             client,
             key,
-            "http://127.0.0.1:1".into(),
             chain.to_string(),
             "testnet".into(),
             Duration::from_secs(1),

@@ -53,7 +53,6 @@ impl Signer {
             pk,
             String::new(),
             String::new(),
-            String::new(),
             transaction_timeout,
             server_checkpoint_wait_supported,
         );

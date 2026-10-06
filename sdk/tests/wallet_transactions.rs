@@ -108,7 +108,7 @@ async fn shared_wallet_prepares_signs_and_confirms_transactions() {
             &shared_wallet.grpc_client()
         ));
         assert_eq!(shared_wallet.chain_id(), chain.to_string());
-        assert_eq!(shared_wallet.rpc_url(), url);
+        assert_eq!(shared_wallet.rpc_url(), format!("{url}/"));
         assert_eq!(shared_wallet.transaction_timeout(), Duration::from_secs(3));
         let transaction = shared_wallet
             .prepare_transaction(empty_ptb(), 1_000_000)

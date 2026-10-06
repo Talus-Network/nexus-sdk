@@ -255,7 +255,7 @@ impl NexusClientBuilder {
         if self
             .wallet
             .as_ref()
-            .is_some_and(|wallet| wallet.rpc_url() != rpc_url)
+            .is_some_and(|wallet| wallet.grpc_client().uri() != rpc_url.as_str())
         {
             return Err(NexusError::Configuration(
                 "RPC URL differs from the supplied wallet".into(),
@@ -356,7 +356,6 @@ impl NexusClientBuilder {
                 super::wallet::WalletClient::from_client(
                     client,
                     pk,
-                    rpc_url.clone(),
                     actual_chain,
                     chain_name,
                     self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
@@ -1255,19 +1254,22 @@ mod tests {
         )
         .await
         .unwrap();
-        let client = NexusClient::builder()
-            .with_wallet(wallet.clone())
-            .with_nexus_objects(sui_mocks::mock_nexus_objects())
-            .with_address_balance_gas(7_000)
-            .build()
-            .await
-            .unwrap();
-        assert_eq!(client.owner().unwrap(), wallet.owner());
-        assert_eq!(client.rpc_url(), wallet.rpc_url());
-        assert!(Arc::ptr_eq(
-            &client.wallet().unwrap().grpc_client(),
-            &wallet.grpc_client()
-        ));
+        for override_url in [None, Some(rpc_url.as_str()), Some(wallet.rpc_url())] {
+            let mut builder = NexusClient::builder()
+                .with_wallet(wallet.clone())
+                .with_nexus_objects(sui_mocks::mock_nexus_objects())
+                .with_address_balance_gas(7_000);
+            if let Some(url) = override_url {
+                builder = builder.with_rpc_url(url);
+            }
+            let client = builder.build().await.unwrap();
+            assert_eq!(client.owner().unwrap(), wallet.owner());
+            assert_eq!(client.rpc_url(), override_url.unwrap_or(wallet.rpc_url()));
+            assert!(Arc::ptr_eq(
+                &client.wallet().unwrap().grpc_client(),
+                &wallet.grpc_client()
+            ));
+        }
         let error = NexusClient::builder()
             .with_wallet(wallet.clone())
             .with_private_key(sui::crypto::Ed25519PrivateKey::new([24; 32]))
