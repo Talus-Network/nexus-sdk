@@ -19,11 +19,12 @@ pub(crate) enum ToolTemplate {
 /// `ValueEnum` because the SDK does not depend on clap.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
 pub(crate) enum MoveToolMode {
-    /// `execute` begins with `UIDRequirements` and `OnchainToolResult`.
+    /// The `execute` parameters begin with `UIDRequirements` and
+    /// `OnchainToolResult`.
     #[default]
     Standard,
-    /// `execute` begins with an Agent vertex authorization proof; every DAG
-    /// vertex over the Tool needs an authorization binding.
+    /// The `execute` parameters begin with an Agent vertex authorization
+    /// proof; every DAG vertex over the Tool needs an authorization binding.
     WorkflowAuthorization,
 }
 
