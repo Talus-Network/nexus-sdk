@@ -38,29 +38,10 @@ impl Signer {
         transaction_timeout: Duration,
         event_decoder: NexusEventDecoder,
     ) -> Self {
-        Self::with_server_checkpoint_wait(client, pk, transaction_timeout, event_decoder, false)
-    }
-
-    pub(super) fn with_server_checkpoint_wait(
-        client: Arc<sui::grpc::Client>,
-        pk: sui::crypto::Ed25519PrivateKey,
-        transaction_timeout: Duration,
-        event_decoder: NexusEventDecoder,
-        server_checkpoint_wait_supported: bool,
-    ) -> Self {
-        let wallet = super::wallet::WalletClient::from_client(
-            Arc::clone(&client),
-            pk,
-            String::new(),
-            String::new(),
-            transaction_timeout,
-            server_checkpoint_wait_supported,
-        );
-        Self {
-            client,
-            wallet,
+        Self::with_wallet(
+            super::wallet::WalletClient::from_client(client, pk, transaction_timeout),
             event_decoder,
-        }
+        )
     }
 
     pub(crate) fn with_wallet(

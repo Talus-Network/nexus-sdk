@@ -120,7 +120,7 @@ pub struct WalrusStorage {
 
 impl WalrusStorage {
     pub async fn new(wallet: WalletClient, aggregator: Option<&str>) -> anyhow::Result<Self> {
-        let network = wallet.chain().parse::<WalrusNetwork>()?;
+        let network = wallet.chain().await?.parse::<WalrusNetwork>()?;
         let (system, staking) = network.contracts();
         let contract = ContractConfig::new(system.parse()?, staking.parse()?);
         let read =
@@ -195,7 +195,7 @@ impl WalrusStorage {
             metadata,
             slivers: Arc::new(slivers),
             digest,
-            chain_id: self.wallet.chain_id().into(),
+            chain_id: self.wallet.chain_id().await?.into(),
             quote,
             options,
         })
@@ -207,7 +207,7 @@ impl WalrusStorage {
         upload: &PreparedUpload,
     ) -> anyhow::Result<UploadRegistration> {
         ensure!(
-            upload.chain_id == self.wallet.chain_id(),
+            upload.chain_id == self.wallet.chain_id().await?,
             "upload was prepared for another network"
         );
         let mut builder = self.builder()?;
@@ -240,7 +240,7 @@ impl WalrusStorage {
         let signature = self.wallet.sign_transaction(&transaction)?;
         Ok(UploadRegistration {
             network: self.network,
-            chain_id: self.wallet.chain_id().into(),
+            chain_id: self.wallet.chain_id().await?.into(),
             blob_id: upload.quote.blob_id.clone(),
             sha256: upload.digest.clone(),
             size: upload.quote.size,
@@ -257,7 +257,7 @@ impl WalrusStorage {
         &self,
         registration: UploadRegistration,
     ) -> anyhow::Result<PendingUpload> {
-        self.check_registration(&registration)?;
+        self.check_registration(&registration).await?;
         let response = self
             .wallet
             .execute_signed_transaction(
@@ -281,9 +281,9 @@ impl WalrusStorage {
         upload: PreparedUpload,
         pending: &PendingUpload,
     ) -> anyhow::Result<StoredBlob> {
-        self.check_registration(&pending.registration)?;
+        self.check_registration(&pending.registration).await?;
         ensure!(
-            upload.chain_id == self.wallet.chain_id(),
+            upload.chain_id == self.wallet.chain_id().await?,
             "upload was prepared for another network"
         );
         ensure!(
@@ -514,10 +514,10 @@ impl WalrusStorage {
         ))
     }
 
-    fn check_registration(&self, registration: &UploadRegistration) -> anyhow::Result<()> {
+    async fn check_registration(&self, registration: &UploadRegistration) -> anyhow::Result<()> {
         ensure!(
             registration.network == self.network
-                && registration.chain_id == self.wallet.chain_id()
+                && registration.chain_id == self.wallet.chain_id().await?
                 && registration.owner == self.wallet.owner()
                 && registration.transaction.sender == self.wallet.owner(),
             "registration belongs to another wallet or network"

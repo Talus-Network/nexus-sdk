@@ -165,6 +165,7 @@ impl TaskPreparation {
                 &self.storage_conf,
                 client.wallet().map_err(NexusCliError::Nexus)?,
             )
+            .await
             .map_err(NexusCliError::Any)?;
             for reference in &self.references {
                 reference

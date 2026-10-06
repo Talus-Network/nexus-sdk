@@ -10,19 +10,23 @@ use {
     },
     std::sync::Arc,
     sui_rpc::client::ExecuteAndWaitError,
-    tokio::time::Duration,
+    tokio::{sync::OnceCell, time::Duration},
 };
 
-/// Clones share the same RPC connection and private key. Domain clients borrow
-/// this authority instead of exporting keys or constructing another wallet.
+/// Clones share the same RPC connection, private key and cached network metadata.
+/// Domain clients borrow this authority instead of constructing another wallet.
 #[derive(Clone)]
 pub struct WalletClient {
     client: Arc<sui::grpc::Client>,
     key: Arc<sui::crypto::Ed25519PrivateKey>,
     rpc_url: String,
-    chain_id: String,
-    chain: String,
+    network_info: Arc<OnceCell<NetworkInfo>>,
     transaction_timeout: Duration,
+}
+
+struct NetworkInfo {
+    chain_id: String,
+    chain: Option<String>,
     server_checkpoint_wait_supported: bool,
 }
 
@@ -32,45 +36,23 @@ impl WalletClient {
         key: sui::crypto::Ed25519PrivateKey,
     ) -> Result<Self, NexusError> {
         let client = Arc::new(sui::grpc::client(rpc_url).map_err(NexusError::Rpc)?);
-        let info = client
-            .as_ref()
-            .clone()
-            .ledger_client()
-            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
-            .await
-            .map_err(|error| NexusError::Rpc(error.into()))?;
-        let wait = sui::grpc::checkpoint_wait::is_supported(&info);
-        let info = info.into_inner();
-        let chain_id = info
-            .chain_id
-            .ok_or_else(|| NexusError::Configuration("Sui RPC omitted its chain ID".into()))?;
-        Ok(Self::from_client(
-            client,
-            key,
-            chain_id,
-            info.chain.unwrap_or_default(),
-            Duration::from_secs(60),
-            wait,
-        ))
+        let wallet = Self::from_client(client, key, Duration::from_secs(60));
+        wallet.chain_id().await?;
+        Ok(wallet)
     }
 
     pub(crate) fn from_client(
         client: Arc<sui::grpc::Client>,
         key: sui::crypto::Ed25519PrivateKey,
-        chain_id: String,
-        chain: String,
         transaction_timeout: Duration,
-        server_checkpoint_wait_supported: bool,
     ) -> Self {
         let rpc_url = client.uri().to_string();
         Self {
             client,
             key: Arc::new(key),
             rpc_url,
-            chain_id,
-            chain,
+            network_info: Arc::new(OnceCell::new()),
             transaction_timeout,
-            server_checkpoint_wait_supported,
         }
     }
 
@@ -82,12 +64,61 @@ impl WalletClient {
         &self.rpc_url
     }
 
-    pub fn chain_id(&self) -> &str {
-        &self.chain_id
+    /// Returns the chain identity, fetching metadata once through this wallet's client.
+    pub async fn chain_id(&self) -> Result<&str, NexusError> {
+        Ok(&self.network_info().await?.chain_id)
     }
 
-    pub fn chain(&self) -> &str {
-        &self.chain
+    /// Returns the network name from the same cached response as the chain identity.
+    pub async fn chain(&self) -> Result<&str, NexusError> {
+        self.network_info()
+            .await?
+            .chain
+            .as_deref()
+            .ok_or_else(|| NexusError::Configuration("Sui RPC omitted its network".into()))
+    }
+
+    async fn network_info(&self) -> Result<&NetworkInfo, NexusError> {
+        self.network_info
+            .get_or_try_init(|| self.fetch_network_info())
+            .await
+    }
+
+    async fn fetch_network_info(&self) -> Result<NetworkInfo, NexusError> {
+        let response = self
+            .client
+            .as_ref()
+            .clone()
+            .ledger_client()
+            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+            .await
+            .map_err(|error| NexusError::Rpc(error.into()))?;
+        let server_checkpoint_wait_supported = sui::grpc::checkpoint_wait::is_supported(&response);
+        let info = response.into_inner();
+        Ok(NetworkInfo {
+            chain_id: info
+                .chain_id
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| NexusError::Configuration("Sui RPC omitted its chain ID".into()))?,
+            chain: info.chain.filter(|name| !name.is_empty()),
+            server_checkpoint_wait_supported,
+        })
+    }
+
+    /// Rechecks an initialized wallet before attaching it to a Nexus client.
+    pub(crate) async fn validate_chain(&self) -> Result<&str, NexusError> {
+        if let Some(info) = self.network_info.get() {
+            let actual = self.fetch_network_info().await?.chain_id;
+            if actual != info.chain_id {
+                return Err(NexusError::ChainMismatch {
+                    expected: info.chain_id.clone(),
+                    actual,
+                });
+            }
+            Ok(&info.chain_id)
+        } else {
+            self.chain_id().await
+        }
     }
 
     pub fn transaction_timeout(&self) -> Duration {
@@ -123,11 +154,12 @@ impl WalletClient {
                 "gas budget must be positive".into(),
             ));
         }
+        let chain_id = self.chain_id().await?;
         let mut client = self.client.as_ref().clone();
         let context = fetch_submission_context(&mut client).await?;
-        if !self.chain_id.is_empty() && context.chain.to_string() != self.chain_id {
+        if context.chain.to_string() != chain_id {
             return Err(NexusError::ChainMismatch {
-                expected: self.chain_id.clone(),
+                expected: chain_id.to_owned(),
                 actual: context.chain.to_string(),
             });
         }
@@ -190,6 +222,7 @@ impl WalletClient {
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
     ) -> Result<(sui::grpc::ExecutedTransaction, sui::types::Digest, u64), NexusError> {
+        let info = self.network_info().await?;
         let mut client = self.client.as_ref().clone();
         let digest = tx.digest();
 
@@ -204,7 +237,7 @@ impl WalletClient {
                 "checkpoint",
             ]));
 
-        let response = if self.server_checkpoint_wait_supported {
+        let response = if info.server_checkpoint_wait_supported {
             // Request metadata makes the node wait inside ExecuteTransaction.
             client
                 .execution_client()
@@ -330,14 +363,7 @@ mod tests {
         let key = sui::crypto::Ed25519PrivateKey::new([17; 32]);
         let client = std::sync::Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
         let chain = sui::types::Digest::new([9; 32]);
-        let wallet = WalletClient::from_client(
-            client,
-            key,
-            chain.to_string(),
-            "testnet".into(),
-            Duration::from_secs(1),
-            false,
-        );
+        let wallet = WalletClient::from_client(client, key, Duration::from_secs(1));
         let mut tx = crate::nexus::address_balance::finish_transaction(
             sui::types::ProgrammableTransaction {
                 inputs: vec![],

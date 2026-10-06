@@ -40,12 +40,15 @@ impl Settings {
         )
     }
 
-    pub(crate) fn for_wallet(conf: &DataStorageConf, wallet: &WalletClient) -> AnyResult<Self> {
+    pub(crate) async fn for_wallet(
+        conf: &DataStorageConf,
+        wallet: &WalletClient,
+    ) -> AnyResult<Self> {
         Self::new(
             conf,
             wallet.rpc_url().into(),
-            wallet.chain_id().into(),
-            wallet.chain(),
+            wallet.chain_id().await?.into(),
+            wallet.chain().await?,
         )
     }
 
@@ -80,7 +83,7 @@ impl Settings {
         let wallet =
             WalletClient::connect(&self.rpc_url, crate::sui::get_signing_key(conf).await?).await?;
         ensure!(
-            wallet.chain_id() == self.chain_id,
+            wallet.chain_id().await? == self.chain_id,
             "Sui network changed while loading the wallet"
         );
         Ok(wallet)

@@ -292,20 +292,30 @@ impl NexusClientBuilder {
             Some(wallet) => wallet.grpc_client(),
             None => Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?),
         };
-        let service_info = client
-            .as_ref()
-            .clone()
-            .ledger_client()
-            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
-            .await
-            .map_err(|error| NexusError::Rpc(error.into()))?;
-        let server_checkpoint_wait_supported =
-            sui::grpc::checkpoint_wait::is_supported(&service_info);
-        let chain_name = service_info.get_ref().chain.clone().unwrap_or_default();
-        let actual_chain = service_info
-            .into_inner()
-            .chain_id
-            .ok_or_else(|| NexusError::Rpc(anyhow::anyhow!("Sui service omitted its chain ID")))?;
+        let wallet = self.wallet.or_else(|| {
+            self.pk.map(|pk| {
+                super::wallet::WalletClient::from_client(
+                    Arc::clone(&client),
+                    pk,
+                    self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
+                )
+            })
+        });
+        let actual_chain = match wallet.as_ref() {
+            Some(wallet) => wallet.validate_chain().await?.to_owned(),
+            None => client
+                .as_ref()
+                .clone()
+                .ledger_client()
+                .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+                .await
+                .map_err(|error| NexusError::Rpc(error.into()))?
+                .into_inner()
+                .chain_id
+                .ok_or_else(|| {
+                    NexusError::Rpc(anyhow::anyhow!("Sui service omitted its chain ID"))
+                })?,
+        };
         if actual_chain != nexus_objects.chain_id {
             return Err(NexusError::ChainMismatch {
                 expected: nexus_objects.chain_id,
@@ -342,27 +352,6 @@ impl NexusClientBuilder {
         let crawler = Arc::new(Crawler::with_state_catalog(Arc::clone(&client), catalog));
         let state_resolver = StateResolver::new(Arc::clone(&crawler));
 
-        let wallet = match self.wallet {
-            Some(wallet) => {
-                if wallet.chain_id() != actual_chain {
-                    return Err(NexusError::ChainMismatch {
-                        expected: wallet.chain_id().to_owned(),
-                        actual: actual_chain,
-                    });
-                }
-                Some(wallet)
-            }
-            None => self.pk.map(|pk| {
-                super::wallet::WalletClient::from_client(
-                    client,
-                    pk,
-                    actual_chain,
-                    chain_name,
-                    self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
-                    server_checkpoint_wait_supported,
-                )
-            }),
-        };
         let signer = wallet.map(|wallet| {
             Signer::with_wallet(
                 match self.transaction_timeout {

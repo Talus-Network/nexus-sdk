@@ -2,16 +2,35 @@
 
 use {
     nexus_sdk::{
-        nexus::{error::NexusError, wallet::WalletClient},
+        events::NexusEventDecoder,
+        nexus::{
+            address_balance::{finish_transaction, SubmissionContext},
+            client::NexusClient,
+            crawler::Crawler,
+            error::NexusError,
+            signer::Signer,
+            state::StateResolver,
+            wallet::WalletClient,
+        },
         sui::{self, crypto::SuiVerifier as _},
-        test_utils::sui_mocks::grpc::{
+        test_utils::sui_mocks::{
             self,
-            MockLedgerService,
-            MockTransactionExecutionService,
-            ServerMocks,
+            grpc::{
+                self,
+                MockLedgerService,
+                MockSubscriptionService,
+                MockTransactionExecutionService,
+                ServerMocks,
+            },
         },
     },
-    std::{sync::Arc, time::Duration},
+    std::{
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
+        time::Duration,
+    },
 };
 
 fn empty_ptb() -> sui::types::ProgrammableTransaction {
@@ -19,6 +38,194 @@ fn empty_ptb() -> sui::types::ProgrammableTransaction {
         inputs: vec![],
         commands: vec![],
     }
+}
+
+fn signer(rpc_url: &str) -> Signer {
+    let client = Arc::new(sui::grpc::client(rpc_url).unwrap());
+    Signer::new(
+        Arc::clone(&client),
+        sui::crypto::Ed25519PrivateKey::new([17; 32]),
+        Duration::from_secs(3),
+        NexusEventDecoder::new(
+            StateResolver::new(Arc::new(Crawler::new(client))),
+            Arc::new(sui_mocks::mock_nexus_objects()),
+        ),
+    )
+}
+
+fn transaction(signer: &Signer, chain: sui::types::Digest) -> sui::types::Transaction {
+    finish_transaction(
+        empty_ptb(),
+        signer.get_active_address(),
+        1_000_000,
+        SubmissionContext {
+            reference_gas_price: 1_000,
+            epoch: 7,
+            chain,
+        },
+        1,
+    )
+}
+
+#[tokio::test]
+async fn wallet_metadata_is_lazy_and_shared_across_signer_clones() {
+    let chain = sui::types::Digest::new([9; 32]);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&calls);
+    let mut ledger = MockLedgerService::new();
+    ledger.expect_get_service_info().returning(move |_| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(tonic::Response::new(
+            sui::grpc::GetServiceInfoResponse::default()
+                .with_chain_id(chain)
+                .with_chain("testnet"),
+        ))
+    });
+    let url = grpc::mock_server(ServerMocks {
+        ledger_service_mock: Some(ledger),
+        ..Default::default()
+    });
+    let signer = signer(&url);
+    let transaction = transaction(&signer, chain);
+    let signature = signer.sign_tx(&transaction).await.unwrap();
+    sui::crypto::ed25519::Ed25519VerifyingKey::new(
+        &sui::crypto::Ed25519PrivateKey::new([17; 32]).public_key(),
+    )
+    .unwrap()
+    .verify_transaction(&transaction, &signature)
+    .unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+    let cloned = signer.clone();
+    let (chain_id, network) = tokio::join!(signer.wallet().chain_id(), cloned.wallet().chain());
+    assert_eq!(chain_id.unwrap(), chain.to_string());
+    assert_eq!(network.unwrap(), "testnet");
+    assert_eq!(cloned.wallet().chain_id().await.unwrap(), chain.to_string());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn wallet_retries_failed_metadata_lookups_and_reports_a_missing_network() {
+    let chain = sui::types::Digest::new([9; 32]);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&calls);
+    let mut ledger = MockLedgerService::new();
+    ledger.expect_get_service_info().returning(move |_| {
+        match observed.fetch_add(1, Ordering::SeqCst) {
+            0 => Err(tonic::Status::permission_denied("service info denied")),
+            1 => Ok(tonic::Response::new(
+                sui::grpc::GetServiceInfoResponse::default(),
+            )),
+            _ => Ok(tonic::Response::new(
+                sui::grpc::GetServiceInfoResponse::default().with_chain_id(chain),
+            )),
+        }
+    });
+    let url = grpc::mock_server(ServerMocks {
+        ledger_service_mock: Some(ledger),
+        ..Default::default()
+    });
+    let signer = signer(&url);
+    let wallet = signer.wallet();
+    assert!(matches!(wallet.chain_id().await, Err(NexusError::Rpc(_))));
+    assert!(matches!(wallet.chain_id().await,
+        Err(NexusError::Configuration(message)) if message.contains("chain ID")));
+    assert_eq!(wallet.chain_id().await.unwrap(), chain.to_string());
+    assert!(matches!(wallet.chain().await,
+        Err(NexusError::Configuration(message)) if message.contains("network")));
+    assert_eq!(wallet.clone().chain_id().await.unwrap(), chain.to_string());
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn wallet_loads_checkpoint_support_on_the_first_signer_submission() {
+    let chain = sui::types::Digest::new([9; 32]);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&calls);
+    let mut ledger = MockLedgerService::new();
+    ledger.expect_get_service_info().returning(move |_| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        let mut response =
+            tonic::Response::new(sui::grpc::GetServiceInfoResponse::default().with_chain_id(chain));
+        response
+            .metadata_mut()
+            .insert("x-sui-checkpoint-wait", "true".parse().unwrap());
+        Ok(response)
+    });
+    let mut execution = MockTransactionExecutionService::new();
+    let mut subscription = MockSubscriptionService::new();
+    let submitted = grpc::mock_checkpointed_execute_transaction_without_gas(
+        &mut execution,
+        &mut subscription,
+        &mut ledger,
+        true,
+        vec![],
+        vec![],
+        vec![],
+        |_| {},
+    );
+    let url = grpc::mock_server(ServerMocks {
+        ledger_service_mock: Some(ledger),
+        execution_service_mock: Some(execution),
+        subscription_service_mock: Some(subscription),
+        ..Default::default()
+    });
+    let signer = signer(&url);
+    let transaction = transaction(&signer, chain);
+    let signature = signer.sign_tx(&transaction).await.unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let result = signer
+        .execute_tx_without_gas_coin(transaction, signature)
+        .await
+        .unwrap();
+    assert_eq!(result.digest, submitted.digest());
+    assert_eq!(result.checkpoint, 1);
+    assert_eq!(signer.wallet().chain_id().await.unwrap(), chain.to_string());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn builder_initializes_wallet_metadata_once_and_rechecks_shared_wallets() {
+    let original = sui::types::Digest::new([9; 32]);
+    let changed = sui::types::Digest::new([8; 32]);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&calls);
+    let mut ledger = MockLedgerService::new();
+    ledger.expect_get_service_info().returning(move |_| {
+        let chain = if observed.fetch_add(1, Ordering::SeqCst) == 0 {
+            original
+        } else {
+            changed
+        };
+        Ok(tonic::Response::new(
+            sui::grpc::GetServiceInfoResponse::default().with_chain_id(chain),
+        ))
+    });
+    let url = grpc::mock_server(ServerMocks {
+        ledger_service_mock: Some(ledger),
+        ..Default::default()
+    });
+    let mut objects = sui_mocks::mock_nexus_objects();
+    objects.chain_id = original.to_string();
+    let client = NexusClient::builder()
+        .with_rpc_url(&url)
+        .with_private_key(sui::crypto::Ed25519PrivateKey::new([17; 32]))
+        .with_nexus_objects(objects.clone())
+        .build()
+        .await
+        .unwrap();
+    let wallet = client.wallet().unwrap().clone();
+    assert_eq!(wallet.chain_id().await.unwrap(), original.to_string());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let result = NexusClient::builder()
+        .with_wallet(wallet)
+        .with_nexus_objects(objects)
+        .build()
+        .await;
+    assert!(matches!(result,
+        Err(NexusError::ChainMismatch { expected, actual })
+            if expected == original.to_string() && actual == changed.to_string()));
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -107,7 +314,7 @@ async fn shared_wallet_prepares_signs_and_confirms_transactions() {
             &wallet.grpc_client(),
             &shared_wallet.grpc_client()
         ));
-        assert_eq!(shared_wallet.chain_id(), chain.to_string());
+        assert_eq!(shared_wallet.chain_id().await.unwrap(), chain.to_string());
         assert_eq!(shared_wallet.rpc_url(), format!("{url}/"));
         assert_eq!(shared_wallet.transaction_timeout(), Duration::from_secs(3));
         let transaction = shared_wallet
