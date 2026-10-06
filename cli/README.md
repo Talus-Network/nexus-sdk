@@ -142,11 +142,12 @@ Walrus uses the same wallet and Sui RPC as Nexus. Configure the wallet with the 
 nexus walrus status
 nexus walrus configure --epochs 5
 nexus walrus upload input.json --estimate
-nexus walrus upload input.json --out input.walrus.json
-nexus walrus inspect input.walrus.json
-nexus walrus download input.walrus.json --out downloaded.json
+# input.json contains the data to upload; walrus_reference.json stores the blob ID, hash, owner and expiry.
+nexus walrus upload input.json --out walrus_reference.json
+nexus walrus inspect walrus_reference.json
+nexus walrus download walrus_reference.json --out downloaded.json
 nexus walrus list
-nexus walrus extend input.walrus.json --epochs 2 --max-storage-cost-frost 100000000
+nexus walrus extend walrus_reference.json --epochs 2 --max-storage-cost-frost 100000000
 ```
 
 `upload` treats a JSON document as one value. Use `--many` to upload each array item as a separate value. Data is permanent until expiry by default; `--deletable` permits the owner to delete it with `nexus walrus delete REFERENCE --yes`. Each upload is limited to 8 MiB of execution data under the shared SDK [execution limits](../sdk/README.md#execution-limits). The combined inputs of each invocation must also fit that budget. `--max-storage-cost-frost` caps WAL cost per blob, and `--storage-gas-budget` caps SUI gas per transaction. Without an explicit WAL limit, each transaction is capped at its current quote.
@@ -158,7 +159,7 @@ Use the same input options for task creation and scheduling:
 ```sh
 nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000   --occurrence-budget-mist 10000000   --input-file inputs.json --remote analyze.document --remote-receipts ./references
 
-nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000   --occurrence-budget-mist 10000000   --input-ref analyze.document=input.walrus.json
+nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000   --occurrence-budget-mist 10000000   --input-ref analyze.document=walrus_reference.json
 ```
 
 `--input-file` reads the same vertex and port object accepted by `--input-json`. Repeat `--input-ref VERTEX.PORT=FILE` to reuse references without buying storage. Duplicate or conflicting input sources are rejected. Local validation and preflight against the published DAG complete before any new storage payment.
