@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Shared signing wallet for Nexus and native Walrus storage, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references.
+- Reusable task input planning and bounded Walrus reads for HTTP tool inputs up to 8 MiB, with exact byte commitments preserved through transport.
+
 #### Fixed
 
 - Tool preparation can retry failed crawler observations until its protocol deadline while retaining completed parallel reads; recovery RPC admission is shared across endpoint connections and leaves ordinary requests unrestricted.
@@ -18,9 +23,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-cli`
 
+#### Added
+
+- Wallet funded Walrus management, upload estimates, durable references and recovery, plus task input files and reusable references. The network follows the Sui RPC; publisher configuration is no longer used.
+
 #### Fixed
 
 - TAP command dispatch keeps its large command future on the heap so callers and tests fit the default thread stack.
+
+### `nexus-toolkit`
+
+#### Added
+
+- Explicit protocol output encoding for tools that upload data through the SDK before signing a Walrus reference. Resolved input decoding supports exact bytes and a bounded 8 MiB execution budget.
 
 ## [`2.1.0`] - 2026-09-17
 

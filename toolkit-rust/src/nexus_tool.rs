@@ -77,6 +77,16 @@ pub trait NexusTool: Send + Sync + 'static {
     /// It is used to generate the `/invoke` endpoint.
     fn invoke(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send;
 
+    /// Encodes output ports before the runtime validates and signs them.
+    /// Override this when an invocation uploads data through the SDK and returns
+    /// explicit Walrus values. Storage policy and wallet authority belong to the
+    /// tool operator; the toolkit does not upload data automatically.
+    fn encode_output(output: Self::Output) -> AnyResult<nexus_sdk::types::OffchainToolOutput> {
+        nexus_sdk::types::OffchainToolOutput::from_json(serde_json::to_value(
+            crate::WithSerdeErrorPath(output),
+        )?)
+    }
+
     /// Authorize an invocation after it has been authenticated via signed HTTP.
     ///
     /// This is an optional ergonomic hook for tool developers to implement their

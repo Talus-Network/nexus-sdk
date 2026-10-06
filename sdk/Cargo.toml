@@ -76,6 +76,9 @@ binding_codegen = [
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
+# Native storage uses the existing wallet signer; no publisher or wallet files.
+walrus_native = ["walrus", "nexus", "dep:walrus-sdk", "dep:walrus-sui"]
+
 # Types feature enables the use of the `types` module.
 types = [
     "tool_fqn",
@@ -363,3 +366,13 @@ toml.workspace = true
 
 [build-dependencies.talus-sui-move-codegen]
 version = "=0.3.0"
+
+[dependencies.walrus-sdk]
+git = "https://github.com/MystenLabs/walrus"
+rev = "14641cc0edcc727825d07aa19df2eef8046a3c0d"
+optional = true
+
+[dependencies.walrus-sui]
+git = "https://github.com/MystenLabs/walrus"
+rev = "14641cc0edcc727825d07aa19df2eef8046a3c0d"
+optional = true
