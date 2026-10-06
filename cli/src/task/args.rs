@@ -53,7 +53,7 @@ pub(crate) struct TaskArgs {
     #[arg(long, value_name = "VERTEX.PORT=FILE", help_heading = "Inputs")]
     input_ref: Vec<String>,
 
-    /// Directory for durable references and upload recovery records.
+    /// Directory where task input uploads save Walrus references and recovery records.
     #[arg(long, value_parser = ValueParser::from(expand_tilde), help_heading = "Inputs")]
     remote_receipts: Option<PathBuf>,
 

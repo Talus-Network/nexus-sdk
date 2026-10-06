@@ -154,17 +154,19 @@ nexus walrus extend walrus_reference.json --epochs 2 --max-storage-cost-frost 10
 
 The network follows the active Sui RPC. Standard aggregators follow network changes automatically. To select a custom reader, use `nexus walrus configure --aggregator URL --network testnet` (or `mainnet`). `--reset-aggregator` restores the network default. Inspect and download need no signing key. Old publisher configuration is ignored and removed when the configuration is next saved.
 
-Use the same input options for task creation and scheduling:
+Use the same input options for task creation and scheduling. `--remote VERTEX.PORT` selects an input to upload to Walrus. `--remote-receipts DIR` chooses an output directory containing one reference file per uploaded input port and records for upload recovery. These reference files use the same format as `nexus walrus upload --out FILE`.
 
 ```sh
-nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000   --occurrence-budget-mist 10000000   --input-file inputs.json --remote analyze.document --remote-receipts ./references
+# Upload analyze.document from inputs.json and save its reference and recovery records in ./references.
+nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000 --occurrence-budget-mist 10000000 --input-file inputs.json --remote analyze.document --remote-receipts ./references
 
-nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000   --occurrence-budget-mist 10000000   --input-ref analyze.document=walrus_reference.json
+# Reuse walrus_reference.json from the standalone upload above.
+nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000 --occurrence-budget-mist 10000000 --input-ref analyze.document=walrus_reference.json
 ```
 
-`--input-file` reads the same vertex and port object accepted by `--input-json`. Repeat `--input-ref VERTEX.PORT=FILE` to reuse references without buying storage. Duplicate or conflicting input sources are rejected. Local validation and preflight against the published DAG complete before any new storage payment.
+`--input-file` reads the same vertex and port object accepted by `--input-json`. Repeat `--input-ref VERTEX.PORT=FILE` to reuse references without buying storage. For a reference created by a task upload, use the path printed by the CLI or listed in the task JSON output under `walrus_references`. Duplicate or conflicting input sources are rejected. Local validation and preflight against the published DAG complete before any new storage payment.
 
-Uploads save signed registrations and progress beside the destination reference in a `.uploads` directory. If a standalone upload is interrupted, run the same command and options with `--resume`. It reuses the paid registration. For task uploads, reuse the same `--remote-receipts` directory to resume matching work. References remain available if task submission fails. Successful task JSON output includes their paths in `walrus_references`. Keep these files until completion; an uncertain submission must be reconciled using its original transaction, since registering again may buy duplicate storage.
+Uploads save signed registrations and progress beside the destination reference in a `.uploads` directory. If a standalone upload is interrupted, run the same command and options with `--resume`. It reuses the paid registration. For task uploads, reuse the same `--remote-receipts` directory to resume matching work. References remain available if task submission fails. Keep these files until completion; an uncertain submission must be reconciled using its original transaction, since registering again may buy duplicate storage.
 
 Scheduled tasks do not renew storage automatically. Choose a retention period covering their occurrences, and extend the owned Blob objects before expiry. Large resolved inputs are supported for HTTP tools; Sui tools retain their transaction size limits.
 
