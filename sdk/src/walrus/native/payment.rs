@@ -21,7 +21,7 @@ pub(super) fn cap_payment(
     let first = ptb
         .commands
         .iter()
-        .position(is_payment)
+        .position(requires_wal_payment)
         .context("Walrus transaction has no storage payment")?;
     let Command::MoveCall(call) = &ptb.commands[first] else {
         unreachable!()
@@ -29,7 +29,7 @@ pub(super) fn cap_payment(
     let coin = *call
         .arguments
         .last()
-        .context("Walrus payment has no coin argument")?;
+        .context("Walrus payment call is missing its coin argument")?;
     ensure!(
         matches!(coin, Argument::Input(_)),
         "unexpected Walrus payment coin source"
@@ -42,14 +42,15 @@ pub(super) fn cap_payment(
     let limited = Argument::NestedResult(first, 0);
     for command in &mut ptb.commands {
         remap(command, first)?;
-        if is_payment(command) {
+        if requires_wal_payment(command) {
             let Command::MoveCall(call) = command else {
                 unreachable!()
             };
+            // The first call was checked above; later calls must also use the same coin.
             let payment = call
                 .arguments
                 .last_mut()
-                .context("Walrus payment has no coin")?;
+                .context("Walrus payment call is missing its coin argument")?;
             ensure!(
                 *payment == coin,
                 "Walrus transaction uses more than one payment coin"
@@ -71,7 +72,7 @@ pub(super) fn cap_payment(
     Ok(())
 }
 
-fn is_payment(command: &Command) -> bool {
+fn requires_wal_payment(command: &Command) -> bool {
     matches!(command, Command::MoveCall(call) if call.module.as_str() == "system" &&
         matches!(call.function.as_str(), "reserve_space" | "register_blob" | "extend_blob"))
 }
