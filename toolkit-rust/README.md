@@ -83,10 +83,13 @@ formatting would otherwise change travel as base64 bytes to preserve the digest.
 The runtime accepts both forms. Upgrade receiving tool runtimes before using
 large references or data that needs the new `bytes` form.
 
-The combined decoded input limit is 8 MiB per invocation. The default HTTP body
-limit is 12 MiB to accommodate base64 and metadata. Proxy body limits must allow
-that envelope. Chain inline limits and the signed response size limits still
-apply; large results must be uploaded explicitly before encoding.
+The shared SDK [execution limits](../sdk/README.md#execution-limits) allow 8 MiB
+across each complete input set or output set, with independent budgets for each.
+The HTTP invocation envelope is 12 MiB to accommodate base64 and metadata. Proxy
+body limits must allow that envelope. Omit `invoke_max_body_bytes` from toolkit
+configuration; an existing declaration is accepted only if it matches the SDK
+constant. Chain inline limits and the signed response size limits still apply;
+large results must be uploaded explicitly before encoding.
 
 For more detailed instructions and examples, visit the [Nexus Toolkit docs][nexus-toolkit-docs].
 

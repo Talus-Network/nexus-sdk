@@ -20,6 +20,26 @@ Move package transaction construction requires the `move_publish` feature. It ac
 If you are upgrading direct SDK usage after the move to generated Move bindings,
 see the [SDK migration guide](./MIGRATION.md).
 
+## Execution limits
+
+[`execution_limits`](src/execution_limits.rs) defines the shared HTTP execution
+contract for the SDK, CLI, Leader and Toolkit. Use these constants rather than
+copying their values or selecting a different execution budget locally.
+
+| Constant | Limit | Scope |
+| --- | --- | --- |
+| `MAX_RESOLVED_DATA_BYTES` | 8 MiB | All resolved bytes in one input set or one output set |
+| `MAX_INVOKE_BODY_BYTES` | 12 MiB | Encoded HTTP invocation body, including base64 and metadata |
+
+Inputs and outputs have independent budgets. Each invocation has its own budget;
+the limit is not a total for an entire DAG. Inline and downloaded bytes count
+equally, including every value in a `Many` port. Object IDs count as 32 bytes.
+The toolkit rejects configuration that declares a different invocation body limit.
+Changes to these limits require a coordinated SDK and runtime release.
+
+These SDK rules do not change the published Move contracts. Their inline, port,
+and encoded output bounds remain defined by the generated `protocol_limits`.
+
 ## Walrus storage
 
 Enable `walrus_native` for wallet funded uploads and management. `full` includes
@@ -62,13 +82,13 @@ cancelled or restarted should persist each phase themselves.
 
 `WalrusReader` needs only an aggregator. It bounds downloads, verifies SHA256,
 and resolves canonical references into transient execution values. A combined
-8 MiB execution budget applies to all ports in one HTTP tool call. The chain's
+execution budget applies to all ports in one HTTP tool call, as defined above. The chain's
 inline and encoded port limits remain unchanged. Sui tools still require
 resolved data to fit their transaction limits. Reads preserve exact bytes,
 including JSON formatting, so the digest authenticated by a tool remains valid.
 
 `WalrusReference` carries local network, ownership, expiry and content metadata.
-Only `NexusData::WalrusData` blob IDs and digests become protocol inputs or
+Only `NexusValue::WalrusData` blob IDs and digests become protocol inputs or
 outputs. `scheduler::TaskInputPlan` validates selectors and port shapes before
 payment and checks that upload results commit to the intended bytes. Call the
 scheduler's authoritative `preflight_task_inputs` before materializing a plan.

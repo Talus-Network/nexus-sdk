@@ -6,7 +6,7 @@ mod payment;
 use {
     super::{StoredBlob, WalrusNetwork, WalrusReader},
     crate::{
-        execution_limits::MAX_RESOLVED_INPUT_BYTES,
+        execution_limits::MAX_RESOLVED_DATA_BYTES,
         nexus::wallet::WalletClient,
         sui::{self, traits::*},
     },
@@ -130,7 +130,7 @@ impl WalrusStorage {
         let nodes = WalrusNodeClient::new_read_client_with_refresher(config, read.clone()).await?;
         let reader = WalrusReader::new(
             aggregator.unwrap_or(network.aggregator_url()),
-            MAX_RESOLVED_INPUT_BYTES,
+            MAX_RESOLVED_DATA_BYTES,
         )?;
         Ok(Self {
             wallet,
@@ -155,7 +155,7 @@ impl WalrusStorage {
         options: UploadOptions,
     ) -> anyhow::Result<PreparedUpload> {
         ensure!(
-            bytes.len() <= MAX_RESOLVED_INPUT_BYTES,
+            bytes.len() <= MAX_RESOLVED_DATA_BYTES,
             "blob exceeds execution byte limit"
         );
         ensure!(

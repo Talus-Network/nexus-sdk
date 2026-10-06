@@ -263,6 +263,28 @@ impl ToolResponse {
 }
 
 #[tokio::test]
+async fn invocation_body_boundary_uses_the_shared_execution_limit() {
+    let server = ToolServer::new().await;
+    let limit = nexus_sdk::execution_limits::MAX_INVOKE_BODY_BYTES as usize;
+    for (size, status) in [
+        (limit, StatusCode::UNAUTHORIZED),
+        (limit + 1, StatusCode::PAYLOAD_TOO_LARGE),
+    ] {
+        // An admitted body reaches authentication; an oversized body is
+        // rejected by the transport before authentication or tool invocation.
+        let response = server
+            .client
+            .post(format!("{}/invoke", server.url))
+            .body(vec![b' '; size])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+        assert!(!response.headers().contains_key(HEADER_TOOL_SIGNATURE));
+    }
+}
+
+#[tokio::test]
 async fn signed_outputs_preserve_inline_and_walrus_values_with_schema_cardinality() {
     let server = ToolServer::new().await;
     for case in ["valid", "singleton"] {

@@ -3,7 +3,7 @@
 use {
     super::input_json::{hint_remote_fields, is_canonical_nexus_data, nexus_data_from_json_value},
     crate::{
-        execution_limits::MAX_RESOLVED_INPUT_BYTES,
+        execution_limits::MAX_RESOLVED_DATA_BYTES,
         scheduler::TaskInputs,
         types::NexusData,
         walrus::WalrusUploadData,
@@ -37,8 +37,8 @@ impl TaskInputPlan {
         let mut prepared = TaskInputs::new();
         let mut uploads = BTreeMap::new();
         let mut flattened = serde_json::Map::new();
-        let mut total_bytes = 0usize;
         for (vertex, data) in vertices {
+            let mut total_bytes = 0usize;
             let ports = data.as_object().ok_or_else(|| {
                 anyhow!(
                     "Input JSON for vertex '{vertex}' must be an object with port names as keys"
@@ -69,6 +69,10 @@ impl TaskInputPlan {
                 };
                 result.insert(port.clone(), value);
             }
+            ensure!(
+                total_bytes <= MAX_RESOLVED_DATA_BYTES,
+                "remote inputs for vertex '{vertex}' exceed the execution byte limit"
+            );
             prepared.insert(vertex.clone(), result);
         }
         for handle in &selected {
@@ -77,10 +81,6 @@ impl TaskInputPlan {
                 "Remote input selector '{handle}' does not identify an input field"
             );
         }
-        ensure!(
-            total_bytes <= MAX_RESOLVED_INPUT_BYTES,
-            "remote inputs exceed the execution byte limit"
-        );
         let hints = hint_remote_fields(&Value::Object(flattened), &selected)?;
         ensure!(
             hints.is_empty(),
@@ -118,7 +118,7 @@ impl TaskInputPlan {
                 .map(|(port, value)| (port.clone(), value.clone()))
                 .collect();
             let resolved = reader.resolve_ports(existing).await?;
-            let mut remaining = MAX_RESOLVED_INPUT_BYTES;
+            let mut remaining = MAX_RESOLVED_DATA_BYTES;
             for value in resolved.values().flatten() {
                 let size = match value {
                     crate::types::NexusValue::InlineData { bytes } => bytes.len(),
@@ -172,6 +172,24 @@ impl TaskInputPlan {
 #[cfg(test)]
 mod tests {
     use {super::*, serde_json::json};
+
+    #[test]
+    fn each_vertex_has_an_independent_execution_budget() {
+        let data = "x".repeat(MAX_RESOLVED_DATA_BYTES / 2);
+        let separate = TaskInputPlan::new(
+            &json!({"first": {"input": data}, "second": {"input": data}}),
+            &["first.input".into(), "second.input".into()],
+        )
+        .expect("separate invocations do not share a data budget");
+        assert_eq!(separate.uploads.len(), 2);
+
+        let error = TaskInputPlan::new(
+            &json!({"one": {"first": data, "second": data}}),
+            &["one.first".into(), "one.second".into()],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("vertex 'one'"));
+    }
 
     #[tokio::test]
     async fn prepares_large_remote_values_and_materializes_only_selected_ports() {
@@ -274,7 +292,7 @@ mod tests {
     async fn existing_bytes_and_pending_uploads_must_fit_one_execution() {
         use sha2::{Digest as _, Sha256};
         let mut server = mockito::Server::new_async().await;
-        let bytes = vec![b'a'; MAX_RESOLVED_INPUT_BYTES - 10];
+        let bytes = vec![b'a'; MAX_RESOLVED_DATA_BYTES - 10];
         let reference = NexusData::walrus_data(
             b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             Sha256::digest(&bytes).to_vec(),
@@ -295,7 +313,7 @@ mod tests {
         )
         .unwrap();
         let reader =
-            crate::walrus::WalrusReader::new(&server.url(), MAX_RESOLVED_INPUT_BYTES).unwrap();
+            crate::walrus::WalrusReader::new(&server.url(), MAX_RESOLVED_DATA_BYTES).unwrap();
         let error = plan.verify_references(&reader).await.unwrap_err();
         assert!(error.to_string().contains("pending uploads exceed"));
         get.assert_async().await;

@@ -13,7 +13,7 @@ use {
     },
     anyhow::{ensure, Context as _},
     nexus_sdk::{
-        execution_limits::MAX_RESOLVED_INPUT_BYTES,
+        execution_limits::MAX_RESOLVED_DATA_BYTES,
         walrus::{WalrusReader, WalrusStorage, WalrusUploadData},
     },
     serde_json::Value,
@@ -36,7 +36,7 @@ async fn run(command: WalrusCommand) -> AnyResult<()> {
             conf.data_storage.walrus_save_for_epochs = Some(epochs);
         }
         if let Some(url) = aggregator {
-            WalrusReader::new(url.as_str(), MAX_RESOLVED_INPUT_BYTES)?;
+            WalrusReader::new(url.as_str(), MAX_RESOLVED_DATA_BYTES)?;
             conf.data_storage.walrus_aggregator_url = Some(url);
             conf.data_storage.walrus_network = network;
         }
@@ -62,7 +62,7 @@ async fn run(command: WalrusCommand) -> AnyResult<()> {
             };
             print_value(
                 &json!({"network": settings.network, "chain_id": settings.chain_id, "payer": owner,
-                "aggregator": settings.aggregator, "epochs": settings.epochs, "max_input_bytes": MAX_RESOLVED_INPUT_BYTES}),
+                "aggregator": settings.aggregator, "epochs": settings.epochs, "max_resolved_data_bytes": MAX_RESOLVED_DATA_BYTES}),
             )?;
         }
         WalrusCommand::Upload {
@@ -75,7 +75,7 @@ async fn run(command: WalrusCommand) -> AnyResult<()> {
             out,
         } => {
             let data = WalrusUploadData::from_json_document(
-                read_bounded(&file, MAX_RESOLVED_INPUT_BYTES).await?,
+                read_bounded(&file, MAX_RESOLVED_DATA_BYTES).await?,
                 many,
             )?;
             let uploader =

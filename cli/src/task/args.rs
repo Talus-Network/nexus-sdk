@@ -118,7 +118,7 @@ impl TaskArgs {
                 serde_json::from_slice(
                     &crate::walrus::read_bounded(
                         &path,
-                        nexus_sdk::execution_limits::MAX_RESOLVED_INPUT_BYTES,
+                        nexus_sdk::execution_limits::MAX_RESOLVED_DATA_BYTES,
                     )
                     .await
                     .map_err(NexusCliError::Any)?,

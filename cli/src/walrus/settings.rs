@@ -4,7 +4,7 @@ use {
     crate::prelude::*,
     anyhow::{ensure, Context as _},
     nexus_sdk::{
-        execution_limits::MAX_RESOLVED_INPUT_BYTES,
+        execution_limits::MAX_RESOLVED_DATA_BYTES,
         nexus::wallet::WalletClient,
         walrus::{WalrusNetwork, WalrusReader, WalrusReference},
     },
@@ -62,7 +62,7 @@ impl Settings {
             (1..=53).contains(&epochs),
             "Walrus epochs must be between 1 and 53"
         );
-        WalrusReader::new(&aggregator, MAX_RESOLVED_INPUT_BYTES)?;
+        WalrusReader::new(&aggregator, MAX_RESOLVED_DATA_BYTES)?;
         Ok(Self {
             network,
             chain_id,
@@ -73,7 +73,7 @@ impl Settings {
     }
 
     pub(crate) fn reader(&self) -> AnyResult<WalrusReader> {
-        WalrusReader::new(&self.aggregator, MAX_RESOLVED_INPUT_BYTES)
+        WalrusReader::new(&self.aggregator, MAX_RESOLVED_DATA_BYTES)
     }
 
     pub(super) async fn wallet(&self, conf: &CliConf) -> AnyResult<WalletClient> {

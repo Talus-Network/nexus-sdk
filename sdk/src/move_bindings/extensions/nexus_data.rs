@@ -34,7 +34,7 @@ pub(super) fn validate_resolved_values(values: &[NexusValue], many: bool) -> any
         bail!("resolved Nexus values have invalid cardinality");
     }
     let object_kind = values[0].is_object();
-    let mut remaining = crate::execution_limits::MAX_RESOLVED_INPUT_BYTES;
+    let mut remaining = crate::execution_limits::MAX_RESOLVED_DATA_BYTES;
     for value in values {
         if value.is_object() != object_kind {
             bail!("resolved Nexus values must have one homogeneous value kind");
@@ -729,7 +729,7 @@ mod tests {
         let resolved = vec![NexusValue::InlineData { bytes }];
         assert!(validate_resolved_values(&resolved, false).is_ok());
         let too_large = vec![NexusValue::InlineData {
-            bytes: vec![0; crate::execution_limits::MAX_RESOLVED_INPUT_BYTES + 1],
+            bytes: vec![0; crate::execution_limits::MAX_RESOLVED_DATA_BYTES + 1],
         }];
         assert!(validate_resolved_values(&too_large, false).is_err());
     }

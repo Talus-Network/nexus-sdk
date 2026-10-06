@@ -1,6 +1,6 @@
 use {
     crate::{
-        execution_limits::MAX_RESOLVED_INPUT_BYTES,
+        execution_limits::MAX_RESOLVED_DATA_BYTES,
         sui,
         types::{NexusData, NexusValue},
     },
@@ -70,7 +70,7 @@ pub struct StoredBlob {
 impl StoredBlob {
     pub fn nexus_value(&self) -> anyhow::Result<NexusValue> {
         ensure!(
-            self.size <= MAX_RESOLVED_INPUT_BYTES,
+            self.size <= MAX_RESOLVED_DATA_BYTES,
             "blob exceeds execution byte limit"
         );
         NexusValue::walrus_data(self.blob_id.as_bytes(), hex::decode(&self.sha256)?)
@@ -112,7 +112,7 @@ impl WalrusReference {
             !self.chain_id.is_empty(),
             "Walrus reference has no chain identity"
         );
-        let mut remaining = MAX_RESOLVED_INPUT_BYTES;
+        let mut remaining = MAX_RESOLVED_DATA_BYTES;
         let values = self
             .blobs
             .iter()
@@ -279,7 +279,7 @@ mod tests {
         assert!(saved.nexus_data().is_err());
         assert!(saved.blobs[0].verify_bytes(b"contents").is_err());
         saved = reference();
-        saved.blobs[0].size = MAX_RESOLVED_INPUT_BYTES;
+        saved.blobs[0].size = MAX_RESOLVED_DATA_BYTES;
         saved.many = true;
         saved.blobs.push(reference().blobs.remove(0));
         assert!(saved

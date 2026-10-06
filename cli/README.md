@@ -155,7 +155,9 @@ nexus walrus extend input.walrus.json --epochs 2 --max-storage-cost-frost 100000
 item as a separate value. Data is permanent until expiry by default;
 `--deletable` permits the owner to delete it with
 `nexus walrus delete REFERENCE --yes`. Each upload is limited to 8 MiB of
-execution data. `--max-storage-cost-frost` caps WAL cost per blob, and
+execution data under the shared SDK [execution limits](../sdk/README.md#execution-limits).
+The combined inputs of each invocation must also fit that budget.
+`--max-storage-cost-frost` caps WAL cost per blob, and
 `--storage-gas-budget` caps SUI gas per transaction. Without an explicit WAL
 limit, each transaction is capped at its current quote.
 

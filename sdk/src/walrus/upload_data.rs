@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        execution_limits::MAX_RESOLVED_INPUT_BYTES,
+        execution_limits::MAX_RESOLVED_DATA_BYTES,
         types::{NexusData, NexusValue},
     },
     anyhow::{ensure, Context as _},
@@ -26,7 +26,7 @@ impl WalrusUploadData {
             .try_fold(0usize, |total, value| total.checked_add(value.len()))
             .context("upload size overflow")?;
         ensure!(
-            total <= MAX_RESOLVED_INPUT_BYTES,
+            total <= MAX_RESOLVED_DATA_BYTES,
             "remote input exceeds the execution byte limit"
         );
         Ok(data)
@@ -35,7 +35,7 @@ impl WalrusUploadData {
     /// Keeps the exact document bytes for One; Many encodes each JSON array item.
     pub fn from_json_document(bytes: Vec<u8>, many: bool) -> anyhow::Result<Self> {
         ensure!(
-            bytes.len() <= MAX_RESOLVED_INPUT_BYTES,
+            bytes.len() <= MAX_RESOLVED_DATA_BYTES,
             "JSON document exceeds the execution byte limit"
         );
         let value: Value =
@@ -127,8 +127,7 @@ mod tests {
         assert!(WalrusUploadData::new(vec![vec![], vec![]], false).is_err());
         assert!(WalrusUploadData::new(vec![vec![]; 257], true).is_err());
         assert!(
-            WalrusUploadData::new(vec![vec![0; MAX_RESOLVED_INPUT_BYTES / 2 + 1]; 2], true)
-                .is_err()
+            WalrusUploadData::new(vec![vec![0; MAX_RESOLVED_DATA_BYTES / 2 + 1]; 2], true).is_err()
         );
     }
 }

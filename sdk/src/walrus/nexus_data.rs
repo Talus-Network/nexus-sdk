@@ -91,7 +91,7 @@ impl WalrusClient {
     /// Wallet owners can instead use `WalrusStorage::upload` with `walrus_native`.
     pub async fn upload_value(&self, bytes: Vec<u8>, epochs: u8) -> anyhow::Result<NexusValue> {
         anyhow::ensure!(
-            bytes.len() <= crate::execution_limits::MAX_RESOLVED_INPUT_BYTES,
+            bytes.len() <= crate::execution_limits::MAX_RESOLVED_DATA_BYTES,
             "blob exceeds execution byte limit"
         );
         anyhow::ensure!(

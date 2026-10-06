@@ -345,7 +345,7 @@ impl MetaSchema {
         input_ports: &'a HashMap<String, Vec<NexusValue>>,
     ) -> anyhow::Result<Vec<&'a [NexusValue]>> {
         self.validate_for_tool(true)?;
-        let mut remaining = crate::execution_limits::MAX_RESOLVED_INPUT_BYTES;
+        let mut remaining = crate::execution_limits::MAX_RESOLVED_DATA_BYTES;
         for value in input_ports.values().flatten() {
             let size = match value {
                 NexusValue::InlineData { bytes } => bytes.len(),
@@ -916,7 +916,54 @@ mod tests {
     }
 
     #[test]
+    fn maximum_input_shape_fits_the_shared_http_envelope() {
+        use crate::{
+            execution_limits::{MAX_INVOKE_BODY_BYTES, MAX_RESOLVED_DATA_BYTES},
+            move_bindings::protocol_limits::primitives::data::MAX_MANY_VALUES,
+        };
+        let port_count = MAX_INPUT_PORTS as usize;
+        let values_per_port = MAX_MANY_VALUES as usize;
+        let value_count = port_count * values_per_port;
+        let value_size = MAX_RESOLVED_DATA_BYTES / value_count;
+        let mut ports = Vec::new();
+        let mut inputs = HashMap::new();
+        for index in 0..port_count {
+            let name = format!("{index:a>width$}", width = MAX_IDENTIFIER_BYTES as usize);
+            ports.push(PortSchema::new(
+                name.as_bytes().to_vec(),
+                true,
+                ValueKind::Data,
+            ));
+            inputs.insert(
+                name,
+                vec![
+                    NexusValue::InlineData {
+                        bytes: vec![0; value_size]
+                    };
+                    values_per_port
+                ],
+            );
+        }
+        let first = inputs.values_mut().next().unwrap();
+        let NexusValue::InlineData { bytes } = &mut first[0] else {
+            unreachable!();
+        };
+        bytes.resize(value_size + MAX_RESOLVED_DATA_BYTES % value_count, 0);
+        let schema = MetaSchema::new(
+            ports,
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        );
+        let transport = schema.resolved_inputs_to_json(&inputs).unwrap();
+        assert!(serde_json::to_vec(&transport).unwrap().len() as u64 <= MAX_INVOKE_BODY_BYTES);
+        assert_eq!(
+            schema.resolved_inputs_from_json(&transport).unwrap(),
+            inputs
+        );
+    }
+
+    #[test]
     fn resolved_execution_budget_is_shared_by_all_ports() {
+        use crate::execution_limits::{MAX_INVOKE_BODY_BYTES, MAX_RESOLVED_DATA_BYTES};
         let schema = MetaSchema::new(
             vec![
                 PortSchema::new(b"a".to_vec(), false, ValueKind::Data),
@@ -925,9 +972,22 @@ mod tests {
             vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
         );
         let value = NexusValue::InlineData {
-            bytes: vec![0; crate::execution_limits::MAX_RESOLVED_INPUT_BYTES / 2 + 1],
+            bytes: vec![0; MAX_RESOLVED_DATA_BYTES / 2],
         };
-        let inputs = HashMap::from([("a".into(), vec![value.clone()]), ("b".into(), vec![value])]);
+        let mut inputs =
+            HashMap::from([("a".into(), vec![value.clone()]), ("b".into(), vec![value])]);
+        let transport = schema.resolved_inputs_to_json(&inputs).unwrap();
+        assert!(serde_json::to_vec(&transport).unwrap().len() as u64 <= MAX_INVOKE_BODY_BYTES);
+        assert_eq!(
+            schema.resolved_inputs_from_json(&transport).unwrap(),
+            inputs
+        );
+        assert!(schema.resolved_inputs_sha256(&inputs).is_ok());
+
+        let NexusValue::InlineData { bytes } = &mut inputs.get_mut("b").unwrap()[0] else {
+            unreachable!();
+        };
+        bytes.push(0);
         assert!(schema.resolved_inputs_to_json(&inputs).is_err());
         assert!(schema.resolved_inputs_sha256(&inputs).is_err());
     }

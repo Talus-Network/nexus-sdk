@@ -3,7 +3,7 @@
 use {
     super::{WalrusClient, WalrusContentDigestMismatch},
     crate::{
-        execution_limits::MAX_RESOLVED_INPUT_BYTES,
+        execution_limits::MAX_RESOLVED_DATA_BYTES,
         types::{NexusData, NexusValue},
     },
     anyhow::{ensure, Context as _},
@@ -30,8 +30,8 @@ impl WalrusReader {
             "Walrus aggregator URL must not contain credentials"
         );
         ensure!(
-            (1..=MAX_RESOLVED_INPUT_BYTES).contains(&max_bytes),
-            "Walrus read budget must be between 1 and {MAX_RESOLVED_INPUT_BYTES} bytes"
+            (1..=MAX_RESOLVED_DATA_BYTES).contains(&max_bytes),
+            "Walrus read budget must be between 1 and {MAX_RESOLVED_DATA_BYTES} bytes"
         );
         Ok(Self {
             client: WalrusClient::builder()
@@ -172,7 +172,7 @@ mod tests {
         ] {
             assert!(WalrusReader::new(url, 100).is_err());
         }
-        for budget in [0, MAX_RESOLVED_INPUT_BYTES + 1] {
+        for budget in [0, MAX_RESOLVED_DATA_BYTES + 1] {
             assert!(WalrusReader::new("https://storage.example", budget).is_err());
         }
     }

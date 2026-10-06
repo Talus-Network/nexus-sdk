@@ -531,8 +531,7 @@ mod tests {
 
     #[test]
     fn invoke_auth_runtime_requires_configuration_for_the_selected_tool() {
-        let defaults =
-            ToolkitRuntimeConfig::from_json_str(r#"{"invoke_max_body_bytes":1024}"#).unwrap();
+        let defaults = ToolkitRuntimeConfig::from_json_str("{}").unwrap();
         assert!(matches!(
             InvokeAuthRuntime::from_toolkit_config_for_tool_id(&defaults, "xyz.demo@1").unwrap(),
             InvokeAuthRuntime::Unsigned
@@ -540,7 +539,6 @@ mod tests {
 
         let leader = SigningKey::from_bytes(&[7; 32]);
         let config = serde_json::json!({
-            "invoke_max_body_bytes": 1024,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders": allowed_leaders_file("leader", 0, &leader),
