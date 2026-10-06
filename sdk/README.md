@@ -22,36 +22,22 @@ see the [SDK migration guide](./MIGRATION.md).
 
 ## Execution limits
 
-[`execution_limits`](src/execution_limits.rs) defines the shared HTTP execution
-contract for the SDK, CLI, Leader and Toolkit. Use these constants rather than
-copying their values or selecting a different execution budget locally.
+[`execution_limits`](src/execution_limits.rs) defines the shared HTTP execution contract for the SDK, CLI, Leader and Toolkit. Use these constants rather than copying their values or selecting a different execution budget locally.
 
 | Constant | Limit | Scope |
 | --- | --- | --- |
 | `MAX_RESOLVED_DATA_BYTES` | 8 MiB | All resolved bytes in one input set or one output set |
 | `MAX_INVOKE_BODY_BYTES` | 12 MiB | Encoded HTTP invocation body, including base64 and metadata |
 
-Inputs and outputs have independent budgets. Each invocation has its own budget;
-the limit is not a total for an entire DAG. Inline and downloaded bytes count
-equally, including every value in a `Many` port. Object IDs count as 32 bytes.
-The toolkit rejects configuration that declares a different invocation body limit.
-Changes to these limits require a coordinated SDK and runtime release.
+Inputs and outputs have independent budgets. Each invocation has its own budget; the limit is not a total for an entire DAG. Inline and downloaded bytes count equally, including every value in a `Many` port. Object IDs count as 32 bytes. The toolkit rejects configuration that declares a different invocation body limit. Changes to these limits require a coordinated SDK and runtime release.
 
-These SDK rules do not change the published Move contracts. Their inline, port,
-and encoded output bounds remain defined by the generated `protocol_limits`.
+These SDK rules do not change the published Move contracts. Their inline, port, and encoded output bounds remain defined by the generated `protocol_limits`.
 
 ## Walrus storage
 
-Enable `walrus_native` for wallet funded uploads and management. `full` includes
-reading and protocol references without the native upload dependencies. The
-native dependency is pinned to the Walrus revision that uses the workspace's
-Sui version.
+Enable `walrus_native` for wallet funded uploads and management. `full` includes reading and protocol references without the native upload dependencies. The native dependency is pinned to the Walrus revision that uses the workspace's Sui version.
 
-`nexus::wallet::WalletClient` owns one signing key and RPC connection. Nexus and
-Walrus share it; no executable, temporary wallet file, or second key store is
-needed. An existing `NexusClient` exposes `wallet()`. A standalone application
-can call `WalletClient::connect(rpc_url, key)` and pass its clone to
-`NexusClient::builder().with_wallet(wallet)`.
+`nexus::wallet::WalletClient` owns one signing key and RPC connection. Nexus and Walrus share it; no executable, temporary wallet file, or second key store is needed. An existing `NexusClient` exposes `wallet()`. A standalone application can call `WalletClient::connect(rpc_url, key)` and pass its clone to `NexusClient::builder().with_wallet(wallet)`.
 
 ```rust,ignore
 use nexus_sdk::walrus::{UploadOptions, WalrusStorage};
@@ -64,38 +50,15 @@ let stored = storage.upload(
 let output_port = stored.nexus_data()?;
 ```
 
-The connected Sui chain selects the testnet or mainnet deployment. The wallet
-pays WAL for storage and SUI for gas and owns the Blob object. The SDK encodes
-the data, registers storage, uploads to storage nodes, certifies it on Sui,
-and verifies the aggregator readback. Each transaction receives a gas budget.
-A separate WAL coin caps storage spending at the quote, subject to the caller's
-maximum cost. Uploads are permanent until expiry unless explicitly deletable.
-Only the Blob owner can extend storage or delete a deletable blob.
+The connected Sui chain selects the testnet or mainnet deployment. The wallet pays WAL for storage and SUI for gas and owns the Blob object. The SDK encodes the data, registers storage, uploads to storage nodes, certifies it on Sui, and verifies the aggregator readback. Each transaction receives a gas budget. A separate WAL coin caps storage spending at the quote, subject to the caller's maximum cost. Uploads are permanent until expiry unless explicitly deletable. Only the Blob owner can extend storage or delete a deletable blob.
 
-For durable operations, use `prepare`, `registration`, `register`, and `finish`.
-Persist the signed registration before calling `register`, then persist the
-returned `PendingUpload` before `finish`. After an uncertain submission, retry
-that saved signed transaction. Do not create another registration. Saved
-transactions are signature checked before submission. The convenience `upload`
-method returns recovery information in `UploadError`; applications that may be
-cancelled or restarted should persist each phase themselves.
+For durable operations, use `prepare`, `registration`, `register`, and `finish`. Persist the signed registration before calling `register`, then persist the returned `PendingUpload` before `finish`. After an uncertain submission, retry that saved signed transaction. Do not create another registration. Saved transactions are signature checked before submission. The convenience `upload` method returns recovery information in `UploadError`; applications that may be cancelled or restarted should persist each phase themselves.
 
-`WalrusReader` needs only an aggregator. It bounds downloads, verifies SHA256,
-and resolves canonical references into transient execution values. A combined
-execution budget applies to all ports in one HTTP tool call, as defined above. The chain's
-inline and encoded port limits remain unchanged. Sui tools still require
-resolved data to fit their transaction limits. Reads preserve exact bytes,
-including JSON formatting, so the digest authenticated by a tool remains valid.
+`WalrusReader` needs only an aggregator. It bounds downloads, verifies SHA256, and resolves canonical references into transient execution values. A combined execution budget applies to all ports in one HTTP tool call, as defined above. The chain's inline and encoded port limits remain unchanged. Sui tools still require resolved data to fit their transaction limits. Reads preserve exact bytes, including JSON formatting, so the digest authenticated by a tool remains valid.
 
-`WalrusReference` carries local network, ownership, expiry and content metadata.
-Only `NexusValue::WalrusData` blob IDs and digests become protocol inputs or
-outputs. `scheduler::TaskInputPlan` validates selectors and port shapes before
-payment and checks that upload results commit to the intended bytes. Call the
-scheduler's authoritative `preflight_task_inputs` before materializing a plan.
+`WalrusReference` carries local network, ownership, expiry and content metadata. Only `NexusValue::WalrusData` blob IDs and digests become protocol inputs or outputs. `scheduler::TaskInputPlan` validates selectors and port shapes before payment and checks that upload results commit to the intended bytes. Call the scheduler's authoritative `preflight_task_inputs` before materializing a plan.
 
-Storage expiry is independent of task lifetime. The owner must retain data for
-all future task occurrences and extend it before expiry. Walrus data is public;
-a blob reference does not grant confidentiality.
+Storage expiry is independent of task lifetime. The owner must retain data for all future task occurrences and extend it before expiry. Walrus data is public; a blob reference does not grant confidentiality.
 
 ## Runtime observations
 

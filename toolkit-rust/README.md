@@ -43,11 +43,7 @@ Nexus Tools are HTTP servers. Nexus expects Tools to be reachable over **HTTPS**
 
 ## Large outputs through Walrus
 
-A tool can upload its own output through the SDK and return the resulting
-`NexusData` reference. The operator supplies the wallet and storage policy;
-the toolkit does not upload automatically. Complete the upload before returning
-the output and choose a tool timeout that covers it. Persist the SDK registration
-and pending upload if invocation cancellation or restarts must be recoverable.
+A tool can upload its own output through the SDK and return the resulting `NexusData` reference. The operator supplies the wallet and storage policy; the toolkit does not upload automatically. Complete the upload before returning the output and choose a tool timeout that covers it. Persist the SDK registration and pending upload if invocation cancellation or restarts must be recoverable.
 
 Override `NexusTool::encode_output` to return explicit protocol ports:
 
@@ -70,26 +66,11 @@ fn encode_output(output: Output) -> anyhow::Result<nexus_sdk::types::OffchainToo
 }
 ```
 
-Inside `invoke`, call `WalrusStorage::upload` and use the returned
-`StoredBlob::nexus_data()` for the port. Ordinary outputs retain their existing
-inline encoding. The runtime validates explicit ports against metadata, then
-signs the exact canonical reference. Port order must match metadata order.
+Inside `invoke`, call `WalrusStorage::upload` and use the returned `StoredBlob::nexus_data()` for the port. Ordinary outputs retain their existing inline encoding. The runtime validates explicit ports against metadata, then signs the exact canonical reference. Port order must match metadata order.
 
-The leader uses its aggregator to read referenced output, checks its digest,
-and resolves it for the next tool. It does not upload or own the blob. The
-next toolkit runtime checks the signed input commitment before decoding JSON.
-Compact inline JSON retains the existing transport. Large data and JSON whose
-formatting would otherwise change travel as base64 bytes to preserve the digest.
-The runtime accepts both forms. Upgrade receiving tool runtimes before using
-large references or data that needs the new `bytes` form.
+The leader uses its aggregator to read referenced output, checks its digest, and resolves it for the next tool. It does not upload or own the blob. The next toolkit runtime checks the signed input commitment before decoding JSON. Compact inline JSON retains the existing transport. Large data and JSON whose formatting would otherwise change travel as base64 bytes to preserve the digest. The runtime accepts both forms. Upgrade receiving tool runtimes before using large references or data that needs the new `bytes` form.
 
-The shared SDK [execution limits](../sdk/README.md#execution-limits) allow 8 MiB
-across each complete input set or output set, with independent budgets for each.
-The HTTP invocation envelope is 12 MiB to accommodate base64 and metadata. Proxy
-body limits must allow that envelope. Omit `invoke_max_body_bytes` from toolkit
-configuration; an existing declaration is accepted only if it matches the SDK
-constant. Chain inline limits and the signed response size limits still apply;
-large results must be uploaded explicitly before encoding.
+The shared SDK [execution limits](../sdk/README.md#execution-limits) allow 8 MiB across each complete input set or output set, with independent budgets for each. The HTTP invocation envelope is 12 MiB to accommodate base64 and metadata. Proxy body limits must allow that envelope. Omit `invoke_max_body_bytes` from toolkit configuration; an existing declaration is accepted only if it matches the SDK constant. Chain inline limits and the signed response size limits still apply; large results must be uploaded explicitly before encoding.
 
 For more detailed instructions and examples, visit the [Nexus Toolkit docs][nexus-toolkit-docs].
 
