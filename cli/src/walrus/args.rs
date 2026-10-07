@@ -1,9 +1,6 @@
 //! Command arguments and their SDK upload options.
 
-use {
-    crate::prelude::*,
-    nexus_sdk::walrus::{UploadOptions, WalrusNetwork},
-};
+use {crate::prelude::*, nexus_sdk::walrus::WalrusNetwork, nexus_walrus::UploadOptions};
 
 #[derive(Args, Clone, Debug)]
 pub(crate) struct UploadArgs {

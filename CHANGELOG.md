@@ -6,15 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+## [`2.1.1`] - 2026-10-07
+
 ### `nexus-sdk`
 
 #### Added
 
-- Shared signing wallet for Nexus and native Walrus storage, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references.
+- Shared signing wallet for Nexus and the native Walrus adapter, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references. The adapter is distributed as `nexus-walrus` through Git while the SDK and toolkit remain publishable on crates.io.
 - Reusable task input planning and bounded Walrus reads for HTTP tool inputs up to 8 MiB, with exact byte commitments preserved through transport.
 
 #### Fixed
 
+- Preserved the published `ExecutionCostResult` shape. `execution_cost_details` adds outstanding invocation identities without changing existing callers.
 - Tool preparation can retry failed crawler observations until its protocol deadline while retaining completed parallel reads; recovery RPC admission is shared across endpoint connections and leaves ordinary requests unrestricted.
 - Added occurrence recovery that discovers expired invocations, preserves committed results, resolves payment locks, and settles finished occurrences. The CLI uses this path when no invocation ID is supplied and cost inspection exposes outstanding invocation IDs.
 - Recovery uses the Sui client's resumable transaction reader with a caller supplied policy and the server's default request size. Validated scan progress, checkpoint search bounds, and completed metadata reads survive interruptions.
@@ -41,7 +44,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Explicit protocol output encoding for tools that upload data through the SDK before signing a Walrus reference. Resolved input decoding supports exact bytes and a bounded 8 MiB execution budget.
+- Explicit protocol output encoding for tools that upload data through the SDK or native adapter before signing a Walrus reference. Resolved input decoding supports exact bytes and a bounded 8 MiB execution budget.
+
+#### Fixed
+
+- Existing `invoke_max_body_bytes` settings continue to control HTTP admission. The default is 12 MiB, independent of the 8 MiB resolved execution budget.
 
 ## [`2.1.0`] - 2026-09-17
 

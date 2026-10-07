@@ -217,9 +217,14 @@ struct ToolServer {
 
 impl ToolServer {
     async fn new<T: NexusTool<Input = Input>>() -> Self {
+        Self::with_body_limit::<T>(None).await
+    }
+
+    async fn with_body_limit<T: NexusTool<Input = Input>>(limit: Option<u64>) -> Self {
         let leader = SigningKey::from_bytes(&[7; 32]);
         let config = ToolkitRuntimeConfig::from_json_str(
             &json!({
+                "invoke_max_body_bytes": limit,
                 "signed_http": {
                     "mode": "required",
                     "allowed_leaders": {
@@ -343,6 +348,30 @@ async fn invocation_body_boundary_uses_the_shared_execution_limit() {
             .unwrap();
         assert_eq!(response.status(), status);
         assert!(!response.headers().contains_key(HEADER_TOOL_SIGNATURE));
+    }
+}
+
+#[tokio::test]
+async fn configured_body_limits_control_admission_without_changing_tool_execution() {
+    let envelope = nexus_sdk::execution_limits::MAX_INVOKE_BODY_BYTES;
+    for limit in [1024, 10 * 1024 * 1024, envelope + 1] {
+        let server = ToolServer::with_body_limit::<TypedOutputTool>(Some(limit)).await;
+        for (size, expected) in [
+            (limit, StatusCode::UNAUTHORIZED),
+            (limit + 1, StatusCode::PAYLOAD_TOO_LARGE),
+        ] {
+            let response = server
+                .client
+                .post(format!("{}/invoke", server.url))
+                .body(vec![b' '; size as usize])
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected);
+        }
+        let response = server.invoke("valid").await;
+        assert_eq!(response.status, StatusCode::OK);
+        response.verify(&response.body).unwrap();
     }
 }
 

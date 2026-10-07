@@ -12,6 +12,7 @@ This repository includes open-source Nexus packages:
 - [`nexus-cli`][nexus-cli-repo]
 - [`nexus-sdk`][nexus-sdk-repo]
 - [`nexus-toolkit-rust`][nexus-toolkit-rust-repo]
+- [Native Walrus adapter](./walrus/README.md)
 - [Standard Nexus Tools][nexus-tools-repo]
 
 ---
@@ -52,7 +53,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v2.1.0 \
+  --tag v2.1.1 \
   --locked
 ```
 

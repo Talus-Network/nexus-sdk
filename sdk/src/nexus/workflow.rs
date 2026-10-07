@@ -445,9 +445,15 @@ pub struct ExecutionCostResult {
     pub locked_budget_mist: u64,
     pub consumed: u64,
     pub outstanding_locks: u64,
-    pub outstanding_invocation_ids: Vec<sui::types::Address>,
     pub accomplished: bool,
     pub refunded: bool,
+}
+
+/// Payment accounting and the invocation identities holding its outstanding locks.
+#[non_exhaustive]
+pub struct ExecutionCostDetails {
+    pub summary: ExecutionCostResult,
+    pub outstanding_invocation_ids: Vec<sui::types::Address>,
 }
 
 pub struct WorkflowActions {
@@ -2094,6 +2100,14 @@ impl WorkflowActions {
         &self,
         dag_execution_id: sui::types::Address,
     ) -> Result<ExecutionCostResult, NexusError> {
+        Ok(self.execution_cost_details(dag_execution_id).await?.summary)
+    }
+
+    /// Fetch payment accounting and outstanding invocation identities from one payment snapshot.
+    pub async fn execution_cost_details(
+        &self,
+        dag_execution_id: sui::types::Address,
+    ) -> Result<ExecutionCostDetails, NexusError> {
         let execution = fetch_execution(&self.client, dag_execution_id, &[]).await?;
         if execution
             .object
@@ -2114,7 +2128,7 @@ impl WorkflowActions {
         .await
         .map_err(NexusError::Rpc)?;
 
-        Ok(ExecutionCostResult::from_payment(
+        Ok(ExecutionCostDetails::from_payment(
             payment.object_id,
             payment.data,
         ))
@@ -2741,21 +2755,23 @@ fn select_invocation_abort_candidate(
     }
 }
 
-impl ExecutionCostResult {
+impl ExecutionCostDetails {
     fn from_payment(payment_id: sui::types::Address, payment: ExecutionPaymentInnerV1) -> Self {
         Self {
-            payment_id,
-            max_budget_mist: payment.max_budget_mist,
-            locked_budget_mist: payment.locked_budget_mist,
-            consumed: payment.consumed,
-            outstanding_locks: payment.locks(),
+            summary: ExecutionCostResult {
+                payment_id,
+                max_budget_mist: payment.max_budget_mist,
+                locked_budget_mist: payment.locked_budget_mist,
+                consumed: payment.consumed,
+                outstanding_locks: payment.locks(),
+                accomplished: payment.accomplished,
+                refunded: payment.refunded,
+            },
             outstanding_invocation_ids: payment
                 .locked_vertices
                 .iter()
                 .map(|lock| lock.invocation_id.bytes)
                 .collect(),
-            accomplished: payment.accomplished,
-            refunded: payment.refunded,
         }
     }
 }
@@ -5472,93 +5488,106 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_actions_execution_cost() {
-        let nexus_objects = sui_mocks::mock_nexus_context();
-        let execution_ref = sui_mocks::mock_sui_object_ref();
-        let payment_ref = sui_mocks::mock_sui_object_ref();
-        let execution_id = *execution_ref.object_id();
+        for detailed in [false, true] {
+            let nexus_objects = sui_mocks::mock_nexus_context();
+            let execution_ref = sui_mocks::mock_sui_object_ref();
+            let payment_ref = sui_mocks::mock_sui_object_ref();
+            let execution_id = *execution_ref.object_id();
+            let invocation_id = sui::types::Address::from_static("0x123");
 
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+            let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+            let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
-        mock_get_dag_execution_bcs(
-            &mut ledger_service_mock,
-            &mut state_service_mock,
-            &nexus_objects,
-            execution_ref,
-            &sui::types::ObjectReference::new(
-                sui::types::Address::from_static("0xd"),
-                0,
-                sui::types::Digest::ZERO,
-            ),
-            vec![],
-        );
+            mock_get_dag_execution_bcs(
+                &mut ledger_service_mock,
+                &mut state_service_mock,
+                &nexus_objects,
+                execution_ref,
+                &sui::types::ObjectReference::new(
+                    sui::types::Address::from_static("0xd"),
+                    0,
+                    sui::types::Digest::ZERO,
+                ),
+                vec![],
+            );
 
-        mock_execution_payment_field(
-            &mut ledger_service_mock,
-            &mut state_service_mock,
-            &nexus_objects,
-            execution_id,
-            payment_ref.clone(),
-            ExecutionPaymentInnerV1 {
+            mock_execution_payment_field(
+                &mut ledger_service_mock,
+                &mut state_service_mock,
+                &nexus_objects,
                 execution_id,
-                agent_id: crate::move_bindings::sui_framework::object::ID::new(
-                    sui::types::Address::from_static("0xa"),
-                ),
-                skill_id: 11,
-                interface_revision: crate::move_bindings::interface::version::InterfaceVersion::new(
-                    7,
-                ),
-                payment_policy:
-                    crate::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
-                source_kind:
-                    crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
-                        sui::types::Address::from_static("0x1"),
+                payment_ref.clone(),
+                ExecutionPaymentInnerV1 {
+                    execution_id,
+                    agent_id: crate::move_bindings::sui_framework::object::ID::new(
+                        sui::types::Address::from_static("0xa"),
                     ),
-                max_budget_mist: 100_000,
-                gas_budget_mist: 83_334,
-                priority_fee_reserve_mist: 16_666,
-                locked_budget_mist: 100_000,
-                funds: crate::move_bindings::sui_framework::balance::Balance {
-                    value: 58_000,
-                    phantom_t0: std::marker::PhantomData,
+                    skill_id: 11,
+                    interface_revision:
+                        crate::move_bindings::interface::version::InterfaceVersion::new(7),
+                    payment_policy:
+                        crate::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
+                    source_kind:
+                        crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+                            sui::types::Address::from_static("0x1"),
+                        ),
+                    max_budget_mist: 100_000,
+                    gas_budget_mist: 83_334,
+                    priority_fee_reserve_mist: 16_666,
+                    locked_budget_mist: 100_000,
+                    funds: crate::move_bindings::sui_framework::balance::Balance {
+                        value: 58_000,
+                        phantom_t0: std::marker::PhantomData,
+                    },
+                    consumed: 42_000,
+                    tool_fee_charged: 42_000,
+                    priority_fee_charged: 0,
+                    priority_fee_percentage: 20,
+                    accomplished: true,
+                    refunded: false,
+                    final_state: ExecutionPaymentFinalState::Accomplished,
+                    tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
+                        contents: vec![],
+                    },
+                    locked_vertices: vec![invocation_lock(vec![1, 2, 3], invocation_id)],
                 },
-                consumed: 42_000,
-                tool_fee_charged: 42_000,
-                priority_fee_charged: 0,
-                priority_fee_percentage: 20,
-                accomplished: true,
-                refunded: false,
-                final_state: ExecutionPaymentFinalState::Accomplished,
-                tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
-                    contents: vec![],
-                },
-                locked_vertices: vec![],
-            },
-        );
+            );
 
-        let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            package_service_mock: Some(package_service_mock),
-            state_service_mock: Some(state_service_mock),
-            ..Default::default()
-        });
+            let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
+            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service_mock),
+                package_service_mock: Some(package_service_mock),
+                state_service_mock: Some(state_service_mock),
+                ..Default::default()
+            });
 
-        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+            let client =
+                nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
-        let result = client
-            .workflow()
-            .execution_cost(execution_id)
-            .await
-            .expect("Failed to fetch execution cost");
+            let result = if detailed {
+                let details = client
+                    .workflow()
+                    .execution_cost_details(execution_id)
+                    .await
+                    .expect("Failed to fetch execution cost details");
+                assert_eq!(details.outstanding_invocation_ids, vec![invocation_id]);
+                details.summary
+            } else {
+                client
+                    .workflow()
+                    .execution_cost(execution_id)
+                    .await
+                    .expect("Failed to fetch execution cost")
+            };
 
-        assert_eq!(result.payment_id, *payment_ref.object_id());
-        assert_eq!(result.max_budget_mist, 100_000);
-        assert_eq!(result.locked_budget_mist, 100_000);
-        assert_eq!(result.consumed, 42_000);
-        assert_eq!(result.outstanding_locks, 0);
-        assert!(result.accomplished);
-        assert!(!result.refunded);
+            assert_eq!(result.payment_id, *payment_ref.object_id());
+            assert_eq!(result.max_budget_mist, 100_000);
+            assert_eq!(result.locked_budget_mist, 100_000);
+            assert_eq!(result.consumed, 42_000);
+            assert_eq!(result.outstanding_locks, 1);
+            assert!(result.accomplished);
+            assert!(!result.refunded);
+        }
     }
 
     #[tokio::test]

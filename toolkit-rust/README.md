@@ -25,7 +25,7 @@ You can also manually include the Nexus Toolkit in your existing project.
 Add the following lines to your project's `Cargo.toml`:
 
 ```toml
-nexus-toolkit = "2.1.0"
+nexus-toolkit = "2.1.1"
 ```
 
 ---
@@ -66,11 +66,11 @@ fn encode_output(output: Output) -> anyhow::Result<nexus_sdk::types::OffchainToo
 }
 ```
 
-Inside `invoke`, call `WalrusStorage::upload` and use the returned `StoredBlob::nexus_data()` for the port. Ordinary outputs retain their existing inline encoding. The runtime validates explicit ports against metadata, then signs the exact canonical reference. Port order must match metadata order.
+Inside `invoke`, call `nexus_walrus::WalrusStorage::upload` through the [native Walrus adapter](https://github.com/Talus-Network/nexus-sdk/tree/v2.1.1/walrus) and use the returned `StoredBlob::nexus_data()` for the port. Ordinary outputs retain their existing inline encoding. The runtime validates explicit ports against metadata, then signs the exact canonical reference. Port order must match metadata order.
 
 The leader uses its aggregator to read referenced output, checks its digest, and resolves it for the next tool. It does not upload or own the blob. The next toolkit runtime checks the signed input commitment before decoding JSON. Compact inline JSON retains the existing transport. Large data and JSON whose formatting would otherwise change travel as base64 bytes to preserve the digest. The runtime accepts both forms. Upgrade receiving tool runtimes before using large references or data that needs the new `bytes` form.
 
-The shared SDK [execution limits](../sdk/README.md#execution-limits) allow 8 MiB across each complete input set or output set, with independent budgets for each. The HTTP invocation envelope is 12 MiB to accommodate base64 and metadata. Proxy body limits must allow that envelope. Omit `invoke_max_body_bytes` from toolkit configuration; an existing declaration is accepted only if it matches the SDK constant. Chain inline limits and the signed response size limits still apply; large results must be uploaded explicitly before encoding.
+The shared SDK [execution limits](../sdk/README.md#execution-limits) allow 8 MiB across each complete input set or output set, with independent budgets for each. The default HTTP admission limit is 12 MiB to accommodate base64 and metadata. Omit `invoke_max_body_bytes` from toolkit configuration to use this default, or retain an explicit value to control HTTP admission. The configured HTTP limit and any proxy limits must accommodate the inputs your tool accepts. They do not change the resolved execution budget. Chain inline limits and the signed response size limits still apply. Large results must be uploaded explicitly before encoding.
 
 For more detailed instructions and examples, visit the [Nexus Toolkit docs][nexus-toolkit-docs].
 

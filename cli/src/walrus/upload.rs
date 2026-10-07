@@ -10,8 +10,9 @@ use {
     anyhow::{ensure, Context as _},
     nexus_sdk::{
         nexus::wallet::WalletClient,
-        walrus::{UploadOptions, WalrusReference, WalrusStorage, WalrusUploadData},
+        walrus::{WalrusReference, WalrusUploadData},
     },
+    nexus_walrus::{UploadOptions, WalrusStorage},
     serde_json::Value,
     std::path::Path,
 };

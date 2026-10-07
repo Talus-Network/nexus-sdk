@@ -25,11 +25,6 @@ pub use {client::*, models::*};
 mod reference;
 #[cfg(feature = "types")]
 pub use reference::*;
-#[cfg(feature = "walrus_native")]
-mod native;
-#[cfg(feature = "walrus_native")]
-pub use native::*;
-
 #[cfg(feature = "types")]
 mod upload_data;
 #[cfg(feature = "types")]
