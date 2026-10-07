@@ -1,6 +1,6 @@
 # Native Walrus storage
 
-`nexus-walrus` provides wallet funded uploads, storage management, and recovery through the shared Nexus wallet. The CLI includes this adapter in its release binaries.
+`nexus-walrus` provides wallet funded uploads, storage management, and recovery through the shared Nexus wallet.
 
 The adapter is distributed through Git because the upstream Walrus dependencies are not published on crates.io. It depends on the registry SDK so applications share the same wallet and protocol types:
 
