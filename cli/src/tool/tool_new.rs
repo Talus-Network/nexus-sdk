@@ -343,7 +343,7 @@ mod tests {
 
         assert!(move_toml_contents.contains(r#"name = "test_tool""#));
         assert!(move_toml_contents.contains(r#"version = "1.0.0""#));
-        assert!(move_toml_contents.contains("edition = \"2024\""));
+        assert!(move_toml_contents.contains("edition = \"2024.alpha\""));
         assert!(move_toml_contents
             .contains(r#"nexus_primitives = { r.mvr = "@talus/nexus-primitives" }"#));
         assert!(move_toml_contents
