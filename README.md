@@ -12,7 +12,7 @@ This repository includes open-source Nexus packages:
 - [`nexus-cli`][nexus-cli-repo]
 - [`nexus-sdk`][nexus-sdk-repo]
 - [`nexus-toolkit-rust`][nexus-toolkit-rust-repo]
-- [Native Walrus adapter](./walrus/README.md)
+- [`nexus-walrus`][nexus-walrus-repo]
 - [Standard Nexus Tools][nexus-tools-repo]
 
 ---
@@ -138,6 +138,7 @@ Learn more about `just` in the [official manual][just-manual].
 [nexus-cli-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/cli
 [nexus-sdk-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/sdk
 [nexus-toolkit-rust-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/toolkit-rust
+[nexus-walrus-repo]: https://github.com/Talus-Network/nexus-sdk/tree/main/walrus
 [nexus-tools-repo]: https://github.com/Talus-Network/nexus-tools
 [nexus-docs]: https://docs.talus.network
 [cargo-binstall]: https://github.com/cargo-bins/cargo-binstall
