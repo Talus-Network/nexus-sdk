@@ -237,19 +237,20 @@ impl OccurrenceHandle {
     /// or a transport error when payment state cannot be read.
     pub async fn cost(&self) -> Result<OccurrenceCost, SchedulerError> {
         let execution_id = dispatched_execution_id(&self.snapshot_with(&self.client).await?)?;
-        let cost = self
+        let details = self
             .client
             .workflow()
-            .execution_cost(execution_id)
+            .execution_cost_details(execution_id)
             .await
             .map_err(SchedulerError::from)?;
+        let cost = details.summary;
         Ok(OccurrenceCost {
             payment_id: cost.payment_id,
             max_budget_mist: cost.max_budget_mist,
             locked_budget_mist: cost.locked_budget_mist,
             consumed_mist: cost.consumed,
             outstanding_locks: cost.outstanding_locks,
-            outstanding_invocation_ids: cost.outstanding_invocation_ids,
+            outstanding_invocation_ids: details.outstanding_invocation_ids,
             accomplished: cost.accomplished,
             refunded: cost.refunded,
         })

@@ -42,8 +42,8 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8], replace: bool) -> AnyResul
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Journal {
-    pub(crate) registration: nexus_sdk::walrus::UploadRegistration,
-    pub(crate) pending: Option<nexus_sdk::walrus::PendingUpload>,
+    pub(crate) registration: nexus_walrus::UploadRegistration,
+    pub(crate) pending: Option<nexus_walrus::PendingUpload>,
     pub(crate) stored: Option<nexus_sdk::walrus::StoredBlob>,
 }
 

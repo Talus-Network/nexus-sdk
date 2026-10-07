@@ -2,13 +2,13 @@
 //! node communication and Move calls; the Nexus wallet signs every transaction.
 
 use {
-    super::{StoredBlob, WalrusNetwork, WalrusReader},
-    crate::{
+    anyhow::{ensure, Context as _},
+    nexus_sdk::{
         execution_limits::MAX_RESOLVED_DATA_BYTES,
         nexus::wallet::WalletClient,
         sui::{self, traits::*},
+        walrus::{StoredBlob, WalrusNetwork, WalrusReader},
     },
-    anyhow::{ensure, Context as _},
     serde::{Deserialize, Serialize},
     sha2::{Digest as _, Sha256},
     std::sync::Arc,
@@ -55,7 +55,7 @@ impl Default for UploadOptions {
             epochs: 2,
             deletable: false,
             max_storage_cost_frost: None,
-            gas_budget_mist: crate::nexus::client::DEFAULT_GAS_BUDGET,
+            gas_budget_mist: nexus_sdk::nexus::client::DEFAULT_GAS_BUDGET,
         }
     }
 }

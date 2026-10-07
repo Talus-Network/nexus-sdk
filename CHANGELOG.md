@@ -6,12 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+## [`2.1.1`] - 2026-10-07
+
 ### `nexus-sdk`
 
 #### Added
 
-- Shared signing wallet for Nexus and native Walrus storage, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references.
+- Shared signing wallet for Nexus and the native Walrus adapter, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references.
 - Reusable task input planning and bounded Walrus reads for HTTP tool inputs up to 8 MiB, with exact byte commitments preserved through transport.
+- Added `execution_cost_details` to report outstanding invocation IDs alongside execution costs.
 
 #### Fixed
 
@@ -41,7 +44,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Explicit protocol output encoding for tools that upload data through the SDK before signing a Walrus reference. Resolved input decoding supports exact bytes and a bounded 8 MiB execution budget.
+- Explicit protocol output encoding for tools that upload data through the SDK or native adapter before signing a Walrus reference. Resolved input decoding supports exact bytes and a bounded 8 MiB execution budget.
+
+#### Changed
+
+- Increased the default `/invoke` request body limit from 10 MiB to 12 MiB to accommodate encoding overhead for 8 MiB inputs.
 
 ## [`2.1.0`] - 2026-09-17
 

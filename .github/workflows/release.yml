@@ -114,7 +114,8 @@ jobs:
       - name: Install build dependencies
         if: ${{ runner.os == 'Linux' }}
         run: |
-          sudo apt install -y musl-tools pkg-config
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config clang libclang-dev
 
       - name: Cache Build
         uses: Swatinem/rust-cache@v2

@@ -2,6 +2,16 @@
 
 This guide covers code that imports `nexus-sdk` directly. Toolkit users should follow the Toolkit guide instead of depending on this crate unless they need SDK internals.
 
+## Upgrading from 2.1.0 to 2.1.1
+
+Update SDK and toolkit dependencies together to `2.1.1`. `execution_cost` retains its existing result shape. Use `execution_cost_details` for a summary plus outstanding invocation identities from the same payment snapshot.
+
+Native Walrus uploads use the separate [Walrus adapter](../walrus/README.md), distributed through the `v2.1.1` Git tag. Existing SDK readers and publisher uploads remain available. Applications using native storage from an unreleased Git revision should replace the `walrus_native` feature with a `nexus-walrus` dependency and import `WalrusStorage` and upload types from `nexus_walrus`.
+
+Applications using an earlier Git revision should rename `MAX_RESOLVED_INPUT_BYTES` to `MAX_RESOLVED_DATA_BYTES`. The limit now applies to both inputs and outputs. `NexusClientBuilder` no longer implements `UnwindSafe` or `RefUnwindSafe`.
+
+The toolkit preserves explicit `invoke_max_body_bytes` settings. Its default HTTP admission limit is now 12 MiB. Resolved inputs and outputs each have a separate 8 MiB budget. An HTTP limit cannot raise that budget. Proxy limits must accommodate the requests your tools accept.
+
 ## Upgrading from 2.0.0 to 2.1.0
 
 Version `2.1.0` intentionally includes Rust API changes despite its minor version number. Review these changes before updating the SDK or toolkit. Cargo requirements such as `"2.0.0"` permit `2.1.0`; consumers that need time to migrate can temporarily use `"=2.0.0"`.

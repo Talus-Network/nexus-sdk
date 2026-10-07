@@ -14,8 +14,9 @@ use {
     anyhow::{ensure, Context as _},
     nexus_sdk::{
         execution_limits::MAX_RESOLVED_DATA_BYTES,
-        walrus::{WalrusReader, WalrusStorage, WalrusUploadData},
+        walrus::{WalrusReader, WalrusUploadData},
     },
+    nexus_walrus::WalrusStorage,
     serde_json::Value,
 };
 

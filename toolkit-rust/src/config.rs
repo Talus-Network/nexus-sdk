@@ -16,9 +16,9 @@
 //! `/invoke` requests MUST include a `Content-Length` header and it MUST be less than or equal to
 //! [`ToolkitRuntimeConfig::invoke_max_body_bytes`]. This is enforced using
 //! `warp::body::content_length_limit`, which rejects requests without `Content-Length`.
-//! The limit comes from the shared SDK execution contract. Existing configs may
-//! declare `invoke_max_body_bytes` only if it equals that limit; omit the field
-//! to follow the SDK automatically.
+//! The default accommodates the SDK execution envelope. Operators may override
+//! `invoke_max_body_bytes` to set their HTTP admission limit. This does not change
+//! the separate SDK budget for resolved input and output data.
 //!
 //! # Signed HTTP (application-layer signatures)
 //! If the config includes a `signed_http` section in `required` mode, the runtime:
@@ -136,6 +136,7 @@ pub enum SignedHttpMode {
 /// config format can be documented and unit-tested.
 #[derive(Clone)]
 pub struct ToolkitRuntimeConfig {
+    invoke_max_body_bytes: u64,
     signed_http: Option<SignedHttpRuntimeConfig>,
     source_path: Option<PathBuf>,
 }
@@ -194,9 +195,9 @@ impl ToolkitRuntimeConfig {
         Self::from_json_bytes(json.as_bytes())
     }
 
-    /// Shared SDK limit for the encoded `/invoke` request body.
+    /// Maximum admitted `/invoke` request body size, independent of the resolved data budget.
     pub fn invoke_max_body_bytes(&self) -> u64 {
-        MAX_INVOKE_BODY_BYTES
+        self.invoke_max_body_bytes
     }
 
     /// True if the runtime requires signed HTTP requests.
@@ -217,6 +218,7 @@ impl ToolkitRuntimeConfig {
 
     fn default_for_runtime() -> Self {
         Self {
+            invoke_max_body_bytes: MAX_INVOKE_BODY_BYTES,
             signed_http: None,
             source_path: None,
         }
@@ -230,7 +232,7 @@ impl ToolkitRuntimeConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ToolkitRuntimeConfigFile {
-    /// Accepted for existing configuration files only when it matches the SDK.
+    /// HTTP admission limit, defaulting to the SDK execution envelope.
     #[serde(default)]
     pub invoke_max_body_bytes: Option<u64>,
     #[serde(default)]
@@ -275,13 +277,6 @@ impl TryFrom<ToolkitRuntimeConfigFile> for ToolkitRuntimeConfig {
     type Error = anyhow::Error;
 
     fn try_from(file: ToolkitRuntimeConfigFile) -> Result<Self, Self::Error> {
-        if let Some(limit) = file.invoke_max_body_bytes {
-            anyhow::ensure!(
-                limit == MAX_INVOKE_BODY_BYTES,
-                "invoke_max_body_bytes must equal the shared SDK limit ({MAX_INVOKE_BODY_BYTES}); remove this field to use the execution contract"
-            );
-        }
-
         let signed_http = match file.signed_http {
             None => None,
             Some(s) if s.mode == SignedHttpMode::Disabled => None,
@@ -289,6 +284,7 @@ impl TryFrom<ToolkitRuntimeConfigFile> for ToolkitRuntimeConfig {
         };
 
         Ok(Self {
+            invoke_max_body_bytes: file.invoke_max_body_bytes.unwrap_or(MAX_INVOKE_BODY_BYTES),
             signed_http,
             source_path: None,
         })
@@ -515,28 +511,22 @@ mod tests {
     };
 
     #[test]
-    fn invocation_body_limit_cannot_diverge_from_the_execution_contract() {
-        for value in [
-            json!({}),
-            json!({"invoke_max_body_bytes": MAX_INVOKE_BODY_BYTES}),
-        ] {
-            let config = ToolkitRuntimeConfig::from_json_str(&value.to_string()).unwrap();
-            assert_eq!(config.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
-        }
+    fn invocation_body_limit_preserves_existing_operator_settings() {
+        let defaults = ToolkitRuntimeConfig::from_json_str("{}").unwrap();
+        assert_eq!(defaults.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
         for limit in [
             0,
+            10 * 1024 * 1024,
             MAX_INVOKE_BODY_BYTES - 1,
+            MAX_INVOKE_BODY_BYTES,
             MAX_INVOKE_BODY_BYTES + 1,
             u64::MAX,
         ] {
-            let error = ToolkitRuntimeConfig::from_json_str(
+            let config = ToolkitRuntimeConfig::from_json_str(
                 &json!({"invoke_max_body_bytes": limit}).to_string(),
             )
-            .err()
-            .expect("local configuration must not change the shared limit");
-            assert!(error
-                .to_string()
-                .contains("must equal the shared SDK limit"));
+            .unwrap();
+            assert_eq!(config.invoke_max_body_bytes(), limit);
         }
     }
 

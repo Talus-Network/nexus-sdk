@@ -12,6 +12,7 @@ jobs:
         cli/**
         sdk/**
         toolkit-rust/**
+        walrus/**
   coverage:
     runs-on: ubuntu-latest
     needs: detect-changes

@@ -88,7 +88,7 @@ impl StorageConf {
 impl WalrusClient {
     /// Uploads arbitrary execution bytes through an operator configured publisher,
     /// verifies the readback and returns the exact digest commitment for a tool port.
-    /// Wallet owners can instead use `WalrusStorage::upload` with `walrus_native`.
+    /// Wallet owners can use `nexus_walrus::WalrusStorage::upload` for native storage.
     pub async fn upload_value(&self, bytes: Vec<u8>, epochs: u8) -> anyhow::Result<NexusValue> {
         anyhow::ensure!(
             bytes.len() <= crate::execution_limits::MAX_RESOLVED_DATA_BYTES,

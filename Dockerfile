@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev clang libclang-de
 COPY cli cli
 COPY sdk sdk
 COPY toolkit-rust toolkit-rust
+COPY walrus walrus
 
 COPY Cargo.lock Cargo.lock
 COPY Cargo.toml Cargo.toml
