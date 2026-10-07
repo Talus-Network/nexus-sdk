@@ -1,0 +1,35 @@
+[package]
+name = "nexus-walrus"
+description = "Native Walrus storage through the shared Nexus wallet."
+publish = false
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bcs.workspace = true
+hex.workspace = true
+serde.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+
+# A registry dependency keeps Git consumers on the same SDK as their application.
+# The workspace patch selects the local SDK during development.
+nexus-sdk = { version = "2.1.1", features = ["nexus", "walrus"] }
+
+[dependencies.walrus-sdk]
+git = "https://github.com/MystenLabs/walrus"
+rev = "14641cc0edcc727825d07aa19df2eef8046a3c0d"
+
+[dependencies.walrus-sui]
+git = "https://github.com/MystenLabs/walrus"
+rev = "14641cc0edcc727825d07aa19df2eef8046a3c0d"

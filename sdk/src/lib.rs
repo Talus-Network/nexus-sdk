@@ -31,6 +31,8 @@ pub mod move_bindings;
 #[cfg(feature = "types")]
 pub mod types;
 
+pub mod execution_limits;
+
 #[cfg(feature = "types")]
 mod move_boundary;
 

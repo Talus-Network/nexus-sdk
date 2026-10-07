@@ -62,6 +62,12 @@ pub trait NexusTool: Send + Sync + 'static {
     /// Returns the FQN of the Tool.
     fn fqn() -> ToolFqn;
     /// Returns the Tool timeout duration. Defaults to 10 seconds.
+    ///
+    /// The runtime applies this deadline to input decoding, construction,
+    /// authorization, invocation, and output serialization. Expiry returns an
+    /// unsigned HTTP 504 response.
+    ///
+    /// Cancellation cannot preempt synchronous work or undo external side effects.
     fn timeout() -> Duration {
         Duration::from_secs(10)
     }
@@ -70,6 +76,16 @@ pub trait NexusTool: Send + Sync + 'static {
     ///
     /// It is used to generate the `/invoke` endpoint.
     fn invoke(&self, input: Self::Input) -> impl Future<Output = Self::Output> + Send;
+
+    /// Encodes output ports before the runtime validates and signs them.
+    /// Override this when an invocation uploads data through the SDK and returns
+    /// explicit Walrus values. Storage policy and wallet authority belong to the
+    /// tool operator; the toolkit does not upload data automatically.
+    fn encode_output(output: Self::Output) -> AnyResult<nexus_sdk::types::OffchainToolOutput> {
+        nexus_sdk::types::OffchainToolOutput::from_json(serde_json::to_value(
+            crate::WithSerdeErrorPath(output),
+        )?)
+    }
 
     /// Authorize an invocation after it has been authenticated via signed HTTP.
     ///

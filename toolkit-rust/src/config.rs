@@ -16,6 +16,9 @@
 //! `/invoke` requests MUST include a `Content-Length` header and it MUST be less than or equal to
 //! [`ToolkitRuntimeConfig::invoke_max_body_bytes`]. This is enforced using
 //! `warp::body::content_length_limit`, which rejects requests without `Content-Length`.
+//! The default accommodates the SDK execution envelope. Operators may override
+//! `invoke_max_body_bytes` to set their HTTP admission limit. This does not change
+//! the separate SDK budget for resolved input and output data.
 //!
 //! # Signed HTTP (application-layer signatures)
 //! If the config includes a `signed_http` section in `required` mode, the runtime:
@@ -32,7 +35,6 @@
 //! # Example config
 //! ```json
 //! {
-//!   "invoke_max_body_bytes": 10485760,
 //!   "signed_http": {
 //!     "mode": "required",
 //!     "allowed_leaders_path": "./allowed_leaders.json",
@@ -70,7 +72,6 @@
 //! );
 //!
 //! let cfg_json = serde_json::to_string_pretty(&json!({
-//!     "invoke_max_body_bytes": 123,
 //!     "signed_http": {
 //!         "mode": "required",
 //!         "allowed_leaders": {
@@ -89,7 +90,7 @@
 //! .unwrap();
 //!
 //! let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
-//! assert_eq!(cfg.invoke_max_body_bytes(), 123);
+//! assert_eq!(cfg.invoke_max_body_bytes(), nexus_sdk::execution_limits::MAX_INVOKE_BODY_BYTES);
 //! assert!(cfg.signed_http_is_required());
 //! assert!(cfg.has_tool(tool_id));
 //! ```
@@ -97,9 +98,12 @@
 use {
     anyhow::Context as _,
     ed25519_dalek::SigningKey,
-    nexus_sdk::signed_http::{
-        keys::parse_ed25519_signing_key,
-        v3::wire::{AllowedLeaders, AllowedLeadersFileV1},
+    nexus_sdk::{
+        execution_limits::MAX_INVOKE_BODY_BYTES,
+        signed_http::{
+            keys::parse_ed25519_signing_key,
+            v3::wire::{AllowedLeaders, AllowedLeadersFileV1},
+        },
     },
     notify::{Event, RecommendedWatcher, RecursiveMode, Watcher},
     serde::Deserialize,
@@ -114,8 +118,6 @@ use {
 
 /// Env var read by the toolkit runtime to locate its JSON config file.
 pub const ENV_TOOLKIT_CONFIG_PATH: &str = "NEXUS_TOOLKIT_CONFIG_PATH";
-
-const DEFAULT_INVOKE_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
 
 /// Signed HTTP mode for the toolkit runtime.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -193,7 +195,7 @@ impl ToolkitRuntimeConfig {
         Self::from_json_bytes(json.as_bytes())
     }
 
-    /// Maximum allowed `/invoke` request body size in bytes.
+    /// Maximum admitted `/invoke` request body size, independent of the resolved data budget.
     pub fn invoke_max_body_bytes(&self) -> u64 {
         self.invoke_max_body_bytes
     }
@@ -216,7 +218,7 @@ impl ToolkitRuntimeConfig {
 
     fn default_for_runtime() -> Self {
         Self {
-            invoke_max_body_bytes: DEFAULT_INVOKE_MAX_BODY_BYTES,
+            invoke_max_body_bytes: MAX_INVOKE_BODY_BYTES,
             signed_http: None,
             source_path: None,
         }
@@ -230,6 +232,7 @@ impl ToolkitRuntimeConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ToolkitRuntimeConfigFile {
+    /// HTTP admission limit, defaulting to the SDK execution envelope.
     #[serde(default)]
     pub invoke_max_body_bytes: Option<u64>,
     #[serde(default)]
@@ -274,10 +277,6 @@ impl TryFrom<ToolkitRuntimeConfigFile> for ToolkitRuntimeConfig {
     type Error = anyhow::Error;
 
     fn try_from(file: ToolkitRuntimeConfigFile) -> Result<Self, Self::Error> {
-        let invoke_max_body_bytes = file
-            .invoke_max_body_bytes
-            .unwrap_or(DEFAULT_INVOKE_MAX_BODY_BYTES);
-
         let signed_http = match file.signed_http {
             None => None,
             Some(s) if s.mode == SignedHttpMode::Disabled => None,
@@ -285,7 +284,7 @@ impl TryFrom<ToolkitRuntimeConfigFile> for ToolkitRuntimeConfig {
         };
 
         Ok(Self {
-            invoke_max_body_bytes,
+            invoke_max_body_bytes: file.invoke_max_body_bytes.unwrap_or(MAX_INVOKE_BODY_BYTES),
             signed_http,
             source_path: None,
         })
@@ -511,6 +510,26 @@ mod tests {
         serde_json::{json, Map},
     };
 
+    #[test]
+    fn invocation_body_limit_preserves_existing_operator_settings() {
+        let defaults = ToolkitRuntimeConfig::from_json_str("{}").unwrap();
+        assert_eq!(defaults.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
+        for limit in [
+            0,
+            10 * 1024 * 1024,
+            MAX_INVOKE_BODY_BYTES - 1,
+            MAX_INVOKE_BODY_BYTES,
+            MAX_INVOKE_BODY_BYTES + 1,
+            u64::MAX,
+        ] {
+            let config = ToolkitRuntimeConfig::from_json_str(
+                &json!({"invoke_max_body_bytes": limit}).to_string(),
+            )
+            .unwrap();
+            assert_eq!(config.invoke_max_body_bytes(), limit);
+        }
+    }
+
     fn make_config_json(
         tool_id: &str,
         tool_sk_hex: &str,
@@ -526,7 +545,6 @@ mod tests {
         );
 
         serde_json::to_string(&json!({
-            "invoke_max_body_bytes": 123,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders": {
@@ -555,7 +573,7 @@ mod tests {
         let cfg_json = make_config_json(tool_id, &tool_sk_hex, "0x1111", &leader_pk_hex);
         let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
 
-        assert_eq!(cfg.invoke_max_body_bytes(), 123);
+        assert_eq!(cfg.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
         assert!(cfg.signed_http_is_required());
         assert!(cfg.has_tool(tool_id));
         assert!(cfg.signed_http().unwrap().tools[tool_id]
@@ -811,7 +829,7 @@ mod tests {
 
         // Default config has no signed HTTP
         assert!(!config.signed_http_is_required());
-        assert_eq!(config.invoke_max_body_bytes(), 10 * 1024 * 1024);
+        assert_eq!(config.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
     }
 
     #[allow(clippy::await_holding_lock)]
@@ -844,7 +862,7 @@ mod tests {
         let config = watcher.current();
 
         // Verify config loaded correctly
-        assert_eq!(config.invoke_max_body_bytes(), 123);
+        assert_eq!(config.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
         assert!(config.signed_http_is_required());
         assert!(config.has_tool(tool_id));
 
@@ -883,11 +901,15 @@ mod tests {
 
         // Verify initial config
         let config = watcher.current();
-        assert_eq!(config.invoke_max_body_bytes(), 123);
+        assert_eq!(config.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
+
+        assert_eq!(
+            config.signed_http().unwrap().tools[tool_id].replay_cache_ttl_ms,
+            DEFAULT_REPLAY_CACHE_TTL_MS
+        );
 
         // Update the config file with new values
         let new_cfg_json = serde_json::to_string(&json!({
-            "invoke_max_body_bytes": 456,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders": {
@@ -903,6 +925,7 @@ mod tests {
                 "tools": {
                     "xyz.demo.tool@1": {
                         "response_signing_key": tool_sk_hex,
+                        "replay_cache_ttl_ms": DEFAULT_REPLAY_CACHE_TTL_MS + 1,
                     },
                 },
             },
@@ -915,7 +938,12 @@ mod tests {
 
         // Verify config was reloaded
         let config = watcher.current();
-        assert_eq!(config.invoke_max_body_bytes(), 456);
+        assert_eq!(config.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
+
+        assert_eq!(
+            config.signed_http().unwrap().tools[tool_id].replay_cache_ttl_ms,
+            DEFAULT_REPLAY_CACHE_TTL_MS + 1
+        );
 
         // Cleanup
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);
@@ -952,9 +980,10 @@ mod tests {
 
         // Verify initial config
         let config = watcher.current();
-        assert_eq!(config.invoke_max_body_bytes(), 123);
+        assert_eq!(config.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
 
         // Write invalid JSON to config file
+        let previous_config = config;
         fs::write(&path, "{ invalid json }").unwrap();
 
         // Wait for debounce + buffer
@@ -962,7 +991,7 @@ mod tests {
 
         // Config should still be the old one (invalid reload is ignored)
         let config = watcher.current();
-        assert_eq!(config.invoke_max_body_bytes(), 123);
+        assert!(Arc::ptr_eq(&previous_config, &config));
 
         // Cleanup
         std::env::remove_var(ENV_TOOLKIT_CONFIG_PATH);

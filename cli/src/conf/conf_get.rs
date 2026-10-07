@@ -35,8 +35,8 @@ mod tests {
         let tools = HashMap::new();
 
         let data_storage_conf = DataStorageConf {
+            walrus_network: None,
             walrus_aggregator_url: None,
-            walrus_publisher_url: None,
             walrus_save_for_epochs: None,
             preferred_remote_storage: None,
         };

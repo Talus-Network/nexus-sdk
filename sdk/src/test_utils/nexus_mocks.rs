@@ -254,3 +254,83 @@ pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
 
     mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await
 }
+
+/// Builds a finalized onchain result receipt without installing any state RPC mocks.
+pub fn mock_finalized_onchain_result(
+    context: &crate::types::NexusContext,
+    transaction: sui::types::Digest,
+    execution_id: sui::types::Address,
+    walk_index: u64,
+    result_id: sui::types::Address,
+    result: crate::move_bindings::interface::onchain_tool_result::OnchainToolResultInnerV1,
+) -> sui::grpc::ExecutedTransaction {
+    use {
+        crate::move_bindings::{
+            interface::onchain_tool_result::OnchainToolResult,
+            primitives::object_state::Inner,
+            sui_framework::object::UID,
+            workflow::execution as execution_move,
+        },
+        serde::Serialize,
+    };
+    fn object<T: Serialize>(
+        id: sui::types::Address,
+        owner: sui::types::Owner,
+        object_type: sui::types::StructTag,
+        value: T,
+        transaction: sui::types::Digest,
+    ) -> sui::grpc::Object {
+        let mut object = sui::grpc::Object::default();
+        object.set_object_id(id);
+        object.set_version(42);
+        object.set_digest(sui::types::Digest::new([9; 32]));
+        object.set_owner(sui::grpc::Owner::from(owner));
+        object.set_object_type(object_type.to_string());
+        object.set_previous_transaction(transaction);
+        let mut contents = sui::grpc::Bcs::default();
+        contents.set_value(bcs::to_bytes(&value).unwrap());
+        object.set_contents(contents);
+        object
+    }
+    fn field<K: Serialize + talus_sui_move::MoveType, V: Serialize + talus_sui_move::MoveType>(
+        context: &crate::types::NexusContext,
+        parent: sui::types::Address,
+        key: K,
+        value: V,
+        transaction: sui::types::Digest,
+    ) -> sui::grpc::Object {
+        let key_type = crate::move_bindings::type_tag::<K>(context);
+        let id = parent.derive_dynamic_child_id(&key_type, &bcs::to_bytes(&key).unwrap());
+        object(
+            id,
+            sui::types::Owner::Object(parent),
+            sui::types::StructTag::new(
+                sui::types::Address::from_static("0x2"),
+                sui::types::Identifier::from_static("dynamic_field"),
+                sui::types::Identifier::from_static("Field"),
+                vec![key_type, crate::move_bindings::type_tag::<V>(context)],
+            ),
+            (id, key, value),
+            transaction,
+        )
+    }
+    sui::grpc::ExecutedTransaction::default()
+        .with_digest(transaction)
+        .with_objects(sui::grpc::ObjectSet::default().with_objects(vec![
+            field(
+                context,
+                execution_id,
+                execution_move::OnchainToolResultKey { walk_index },
+                ID::new(result_id),
+                transaction,
+            ),
+            object(
+                result_id,
+                sui::types::Owner::Shared(11),
+                crate::move_bindings::struct_tag::<OnchainToolResult>(context),
+                OnchainToolResult::new(UID::new(result_id)),
+                transaction,
+            ),
+            field(context, result_id, Inner::new(false), result, transaction),
+        ]))
+}
