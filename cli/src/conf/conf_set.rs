@@ -1,10 +1,7 @@
 use {
     super::output::ConfOutput,
     crate::{cli_conf::StorageKind, command_title, display::json_output, loading, prelude::*},
-    nexus_sdk::{
-        types::SecretValue,
-        walrus::{WALRUS_AGGREGATOR_URL, WALRUS_PUBLISHER_URL},
-    },
+    nexus_sdk::{types::SecretValue, walrus::WALRUS_AGGREGATOR_URL},
 };
 
 /// Set the Nexus CLI configuration from the provided arguments.
@@ -14,7 +11,6 @@ pub(crate) async fn set_nexus_conf(
     sui_rpc_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
-    data_storage_walrus_publisher_url: Option<reqwest::Url>,
     data_storage_walrus_save_for_epochs: Option<u8>,
     data_storage_preferred_remote_storage: Option<StorageKind>,
     data_storage_testnet: bool,
@@ -63,8 +59,6 @@ pub(crate) async fn set_nexus_conf(
 
     conf.data_storage.walrus_aggregator_url =
         data_storage_walrus_aggregator_url.or(conf.data_storage.walrus_aggregator_url);
-    conf.data_storage.walrus_publisher_url =
-        data_storage_walrus_publisher_url.or(conf.data_storage.walrus_publisher_url);
     conf.data_storage.walrus_save_for_epochs =
         data_storage_walrus_save_for_epochs.or(conf.data_storage.walrus_save_for_epochs);
     conf.data_storage.preferred_remote_storage =
@@ -72,8 +66,8 @@ pub(crate) async fn set_nexus_conf(
 
     if data_storage_testnet {
         conf.data_storage = DataStorageConf {
+            walrus_network: None,
             walrus_aggregator_url: Some(WALRUS_AGGREGATOR_URL.parse().expect("valid URL")),
-            walrus_publisher_url: Some(WALRUS_PUBLISHER_URL.parse().expect("valid URL")),
             walrus_save_for_epochs: Some(2),
             preferred_remote_storage: Some(StorageKind::Walrus),
         };
@@ -121,7 +115,6 @@ mod tests {
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(objects_path),
             Some(reqwest::Url::parse("https://aggregator.url").unwrap()),
-            Some(reqwest::Url::parse("https://publisher.url").unwrap()),
             Some(42),
             Some(StorageKind::Walrus),
             false,
@@ -145,10 +138,6 @@ mod tests {
             conf.data_storage.walrus_aggregator_url,
             Some(reqwest::Url::parse("https://aggregator.url").unwrap())
         );
-        assert_eq!(
-            conf.data_storage.walrus_publisher_url,
-            Some(reqwest::Url::parse("https://publisher.url").unwrap())
-        );
         assert_eq!(conf.data_storage.walrus_save_for_epochs, Some(42));
         assert_eq!(
             conf.data_storage.preferred_remote_storage,
@@ -159,7 +148,6 @@ mod tests {
         let result = set_nexus_conf(
             None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
-            None,
             None,
             None,
             None,
@@ -184,10 +172,6 @@ mod tests {
             conf.data_storage.walrus_aggregator_url,
             Some(reqwest::Url::parse("https://aggregator.url").unwrap())
         );
-        assert_eq!(
-            conf.data_storage.walrus_publisher_url,
-            Some(reqwest::Url::parse("https://publisher.url").unwrap())
-        );
         assert_eq!(conf.data_storage.walrus_save_for_epochs, Some(42));
         assert_eq!(
             conf.data_storage.preferred_remote_storage,
@@ -208,7 +192,6 @@ mod tests {
             None,
             None,
             None,
-            None,
             true,
             path.clone(),
         )
@@ -220,10 +203,6 @@ mod tests {
         assert_eq!(
             conf.data_storage.walrus_aggregator_url,
             Some(WALRUS_AGGREGATOR_URL.parse().unwrap())
-        );
-        assert_eq!(
-            conf.data_storage.walrus_publisher_url,
-            Some(WALRUS_PUBLISHER_URL.parse().unwrap())
         );
         assert_eq!(conf.data_storage.walrus_save_for_epochs, Some(2));
         assert_eq!(
@@ -240,7 +219,6 @@ mod tests {
         let result = set_nexus_conf(
             None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
-            None,
             None,
             None,
             None,

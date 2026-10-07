@@ -11,10 +11,7 @@ use {
         ToolkitRuntimeConfig,
     },
     futures::FutureExt,
-    nexus_sdk::{
-        move_bindings::interface::meta_schema::MetaSchema,
-        types::{NexusData, OffchainToolOutput, OffchainToolOutputPort},
-    },
+    nexus_sdk::move_bindings::interface::meta_schema::MetaSchema,
     reqwest::Url,
     serde_json::json,
     std::{panic::AssertUnwindSafe, sync::Arc},
@@ -96,7 +93,6 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// ## Example config
 /// ```json
 /// {
-///   "invoke_max_body_bytes": 10485760,
 ///   "signed_http": {
 ///     "mode": "required",
 ///     "allowed_leaders_path": "./allowed_leaders.json",
@@ -526,7 +522,14 @@ impl InvokePipeline {
 
         let output = tool.invoke(input).await;
 
-        match encode_tagged_output(output) {
+        match T::encode_output(output).and_then(|output| {
+            let schema = MetaSchema::from_offchain_json_schemas(
+                &serde_json::to_vec(&schemars::schema_for!(T::Input))?,
+                &serde_json::to_vec(&schemars::schema_for!(T::Output))?,
+            )?;
+            schema.canonical_output_ports(&output)?;
+            Ok(bcs::to_bytes(&output)?)
+        }) {
             Ok(body) => InvokePipelineResponse {
                 status: StatusCode::OK,
                 body,
@@ -582,45 +585,13 @@ fn decode_tool_input<T: NexusTool>(
         .map_err(|error| ToolInputDecodeError::Deserialization(error.into()))
 }
 
+#[cfg(test)]
 fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8>> {
-    let value = serde_json::to_value(crate::WithSerdeErrorPath(output))?;
-    let serde_json::Value::Object(variants) = value else {
-        anyhow::bail!("tool output must serialize as an externally tagged enum")
-    };
-    if variants.len() != 1 {
-        anyhow::bail!("tool output must contain exactly one variant")
-    }
-    let (tag, payload) = variants.into_iter().next().expect("length checked");
-    let serde_json::Value::Object(payload) = payload else {
-        anyhow::bail!("tool output variant payload must be an object")
-    };
-    let ports = payload
-        .into_iter()
-        .map(|(port_name, value)| {
-            Ok(OffchainToolOutputPort {
-                port_name: port_name.into_bytes(),
-                values: nexus_data(value)?.into_values()?,
-            })
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    let output = OffchainToolOutput {
-        tag: tag.into_bytes(),
-        ports,
-    };
-    Ok(bcs::to_bytes(&output)?)
-}
-
-fn nexus_data(value: serde_json::Value) -> anyhow::Result<NexusData> {
-    if let serde_json::Value::Array(values) = value {
-        return NexusData::inline_data_many(
-            values
-                .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-    }
-
-    NexusData::inline_data(serde_json::to_vec(&value)?)
+    Ok(bcs::to_bytes(
+        &nexus_sdk::types::OffchainToolOutput::from_json(serde_json::to_value(
+            crate::WithSerdeErrorPath(output),
+        )?)?,
+    )?)
 }
 
 async fn invoke_handler<T: NexusTool>(
@@ -648,7 +619,12 @@ async fn invoke_handler<T: NexusTool>(
 mod tests {
     use {
         super::*,
-        nexus_sdk::{fqn, signed_http::v3::wire::AuthenticatedRequest, ToolFqn},
+        nexus_sdk::{
+            fqn,
+            signed_http::v3::wire::AuthenticatedRequest,
+            types::{NexusData, OffchainToolOutput},
+            ToolFqn,
+        },
         schemars::JsonSchema,
         serde::{Deserialize, Serialize},
         serde_json::json,
@@ -806,6 +782,10 @@ mod tests {
 
     #[test]
     fn array_payloads_encode_each_json_value() {
+        let port_data = |value| -> anyhow::Result<NexusData> {
+            let output = OffchainToolOutput::from_json(json!({"ok":{"items":value}}))?;
+            NexusData::from_values(output.ports[0].values.clone(), true)
+        };
         let inline_values = |data: &NexusData| {
             data.values()
                 .expect("encoded Toolkit output should decode")
@@ -818,16 +798,16 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        let homogeneous = nexus_data(json!(["a", "b"])).unwrap();
+        let homogeneous = port_data(json!(["a", "b"])).unwrap();
         assert_eq!(
             inline_values(&homogeneous),
             vec![br#""a""#.to_vec(), br#""b""#.to_vec()]
         );
 
-        let mixed = nexus_data(json!([1, true])).unwrap();
+        let mixed = port_data(json!([1, true])).unwrap();
         assert_eq!(inline_values(&mixed), vec![b"1".to_vec(), b"true".to_vec()]);
 
-        let empty = nexus_data(json!([])).expect_err("empty arrays must not produce Many values");
+        let empty = port_data(json!([])).expect_err("empty arrays must not produce Many values");
         assert!(empty.to_string().contains("requires at least one value"));
     }
 
@@ -1022,6 +1002,74 @@ mod tests {
         let url = super::meta_placeholder_url_("path");
         assert_eq!(url.host_str(), Some("localhost"));
         assert_eq!(url.path(), "/path");
+    }
+
+    #[derive(Serialize, JsonSchema)]
+    enum ExplicitOutput {
+        Ok {
+            #[schemars(with = "String")]
+            message: NexusData,
+        },
+    }
+
+    struct ExplicitTool<const INVALID: bool>;
+    impl<const INVALID: bool> NexusTool for ExplicitTool<INVALID> {
+        type Input = Input;
+        type Output = ExplicitOutput;
+
+        fn fqn() -> ToolFqn {
+            fqn!("xyz.taluslabs.explicit@1")
+        }
+
+        fn description() -> &'static str {
+            "Returns explicit protocol data."
+        }
+
+        async fn new() -> Self {
+            Self
+        }
+
+        async fn health(&self) -> anyhow::Result<StatusCode> {
+            Ok(StatusCode::OK)
+        }
+
+        async fn invoke(&self, _: Input) -> ExplicitOutput {
+            ExplicitOutput::Ok {
+                message: NexusData::walrus_data(
+                    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                    [1; 32],
+                )
+                .unwrap(),
+            }
+        }
+
+        fn encode_output(output: ExplicitOutput) -> anyhow::Result<OffchainToolOutput> {
+            let ExplicitOutput::Ok { message } = output;
+            OffchainToolOutput::from_ports(
+                if INVALID {
+                    b"Unknown".to_vec()
+                } else {
+                    b"Ok".to_vec()
+                },
+                [("message".into(), message)],
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_references_remain_canonical_and_invalid_outputs_are_unsigned() {
+        let input = br#"{"message":"input"}"#;
+        let response = InvokePipeline::run::<ExplicitTool<false>>(input, None).await;
+        assert_eq!(response.status, StatusCode::OK);
+        assert!(response.is_result);
+        let output: OffchainToolOutput = bcs::from_bytes(&response.body).unwrap();
+        assert!(matches!(
+            output.ports[0].values[0],
+            nexus_sdk::types::NexusValue::WalrusData { .. }
+        ));
+        let response = InvokePipeline::run::<ExplicitTool<true>>(input, None).await;
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!response.is_result);
     }
 
     #[test]

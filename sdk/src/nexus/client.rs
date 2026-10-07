@@ -142,6 +142,7 @@ impl AddressBalanceGas {
 /// Builder for [`NexusClient`].
 #[derive(Default)]
 pub struct NexusClientBuilder {
+    wallet: Option<super::wallet::WalletClient>,
     pk: Option<sui::crypto::Ed25519PrivateKey>,
     rpc_url: Option<String>,
     state_catalog_rpc_url: Option<String>,
@@ -161,6 +162,14 @@ impl NexusClientBuilder {
     /// Add a private key to the builder.
     pub fn with_private_key(mut self, pk: sui::crypto::Ed25519PrivateKey) -> Self {
         self.pk = Some(pk);
+        self
+    }
+
+    /// Reuses the wallet authority used by other domain clients such as Walrus.
+    /// Its RPC endpoint becomes the default and must not be overridden with a
+    /// different endpoint. Supplying a second private key is an error.
+    pub fn with_wallet(mut self, wallet: super::wallet::WalletClient) -> Self {
+        self.wallet = Some(wallet);
         self
     }
 
@@ -230,9 +239,28 @@ impl NexusClientBuilder {
     /// Returns [`NexusError::MissingPrivateKey`] when a gas source is
     /// configured without a signing key.
     pub async fn build(self) -> Result<NexusClient, NexusError> {
+        if self.wallet.is_some() && self.pk.is_some() {
+            return Err(NexusError::Configuration(
+                "provide either a wallet or a private key".into(),
+            ));
+        }
         let rpc_url = self
             .rpc_url
+            .or_else(|| {
+                self.wallet
+                    .as_ref()
+                    .map(|wallet| wallet.rpc_url().to_owned())
+            })
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
+        if self
+            .wallet
+            .as_ref()
+            .is_some_and(|wallet| wallet.grpc_client().uri() != rpc_url.as_str())
+        {
+            return Err(NexusError::Configuration(
+                "RPC URL differs from the supplied wallet".into(),
+            ));
+        }
         let nexus_objects = self
             .nexus_objects
             .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?;
@@ -256,24 +284,38 @@ impl NexusClientBuilder {
             (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
             (false, None) => None,
         };
-        if gas_source.is_some() && self.pk.is_none() {
+        if gas_source.is_some() && self.pk.is_none() && self.wallet.is_none() {
             return Err(NexusError::MissingPrivateKey);
         }
 
-        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
-        let service_info = client
-            .as_ref()
-            .clone()
-            .ledger_client()
-            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
-            .await
-            .map_err(|error| NexusError::Rpc(error.into()))?;
-        let server_checkpoint_wait_supported =
-            sui::grpc::checkpoint_wait::is_supported(&service_info);
-        let actual_chain = service_info
-            .into_inner()
-            .chain_id
-            .ok_or_else(|| NexusError::Rpc(anyhow::anyhow!("Sui service omitted its chain ID")))?;
+        let client = match self.wallet.as_ref() {
+            Some(wallet) => wallet.grpc_client(),
+            None => Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?),
+        };
+        let wallet = self.wallet.or_else(|| {
+            self.pk.map(|pk| {
+                super::wallet::WalletClient::from_client(
+                    Arc::clone(&client),
+                    pk,
+                    self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
+                )
+            })
+        });
+        let actual_chain = match wallet.as_ref() {
+            Some(wallet) => wallet.validate_chain().await?.to_owned(),
+            None => client
+                .as_ref()
+                .clone()
+                .ledger_client()
+                .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+                .await
+                .map_err(|error| NexusError::Rpc(error.into()))?
+                .into_inner()
+                .chain_id
+                .ok_or_else(|| {
+                    NexusError::Rpc(anyhow::anyhow!("Sui service omitted its chain ID"))
+                })?,
+        };
         if actual_chain != nexus_objects.chain_id {
             return Err(NexusError::ChainMismatch {
                 expected: nexus_objects.chain_id,
@@ -310,16 +352,16 @@ impl NexusClientBuilder {
         let crawler = Arc::new(Crawler::with_state_catalog(Arc::clone(&client), catalog));
         let state_resolver = StateResolver::new(Arc::clone(&crawler));
 
-        let signer = self.pk.map(|pk| {
-            Signer::with_server_checkpoint_wait(
-                client,
-                pk,
-                self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
+        let signer = wallet.map(|wallet| {
+            Signer::with_wallet(
+                match self.transaction_timeout {
+                    Some(timeout) => wallet.with_transaction_timeout(timeout),
+                    None => wallet,
+                },
                 crate::events::NexusEventDecoder::new(
                     state_resolver.clone(),
                     Arc::clone(&nexus_objects),
                 ),
-                server_checkpoint_wait_supported,
             )
         });
 
@@ -752,11 +794,13 @@ impl NexusClient {
         &self.rpc_url
     }
 
-    /// Return the [`Signer`] configured for this client.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NexusError::MissingPrivateKey`] for a query-only client.
+    /// Shares the signing wallet with storage and other domain clients.
+    /// Returns `MissingPrivateKey` when the client has no signer.
+    pub fn wallet(&self) -> Result<&super::wallet::WalletClient, NexusError> {
+        self.signer().map(Signer::wallet)
+    }
+
+    /// Returns the configured signer, or `MissingPrivateKey` for a reader client.
     pub fn signer(&self) -> Result<&Signer, NexusError> {
         self.signer.as_ref().ok_or(NexusError::MissingPrivateKey)
     }
@@ -1191,6 +1235,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn builder_reuses_the_wallet_and_rejects_a_second_authority() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let wallet = super::super::wallet::WalletClient::connect(
+            &rpc_url,
+            sui::crypto::Ed25519PrivateKey::new([23; 32]),
+        )
+        .await
+        .unwrap();
+        for override_url in [None, Some(rpc_url.as_str()), Some(wallet.rpc_url())] {
+            let mut builder = NexusClient::builder()
+                .with_wallet(wallet.clone())
+                .with_nexus_objects(sui_mocks::mock_nexus_objects())
+                .with_address_balance_gas(7_000);
+            if let Some(url) = override_url {
+                builder = builder.with_rpc_url(url);
+            }
+            let client = builder.build().await.unwrap();
+            assert_eq!(client.owner().unwrap(), wallet.owner());
+            assert_eq!(client.rpc_url(), override_url.unwrap_or(wallet.rpc_url()));
+            assert!(Arc::ptr_eq(
+                &client.wallet().unwrap().grpc_client(),
+                &wallet.grpc_client()
+            ));
+        }
+        let error = NexusClient::builder()
+            .with_wallet(wallet.clone())
+            .with_private_key(sui::crypto::Ed25519PrivateKey::new([24; 32]))
+            .build()
+            .await
+            .err()
+            .expect("two signing authorities must be rejected");
+        assert!(matches!(error, NexusError::Configuration(_)));
+        let error = NexusClient::builder()
+            .with_wallet(wallet)
+            .with_rpc_url("http://different.invalid")
+            .build()
+            .await
+            .err()
+            .expect("a conflicting wallet RPC must be rejected");
+        assert!(matches!(error, NexusError::Configuration(_)));
+    }
+
+    #[tokio::test]
     async fn test_builder_with_private_key() {
         let mut rng = rand::thread_rng();
         let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
@@ -1224,7 +1311,8 @@ mod tests {
             client
                 .signer()
                 .expect("private key should configure a signer")
-                .transaction_timeout,
+                .wallet()
+                .transaction_timeout(),
             Duration::from_secs(5)
         );
     }
@@ -2000,7 +2088,8 @@ mod tests {
             client
                 .signer()
                 .expect("private key should configure a signer")
-                .transaction_timeout,
+                .wallet()
+                .transaction_timeout(),
             Duration::from_secs(10)
         );
     }

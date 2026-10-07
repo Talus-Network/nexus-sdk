@@ -74,3 +74,10 @@ pub(crate) use {
     model::{Deadline, StartTime},
     snapshot::ExecutionObservation,
 };
+
+#[cfg(feature = "walrus")]
+mod input_json;
+#[cfg(feature = "walrus")]
+mod input_plan;
+#[cfg(feature = "walrus")]
+pub use input_plan::TaskInputPlan;

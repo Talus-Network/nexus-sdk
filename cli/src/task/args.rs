@@ -12,7 +12,7 @@ use {
             TaskSpec,
         },
         types::{DEFAULT_ENTRY_GROUP, DEFAULT_PRIORITY_FEE_PERCENTAGE},
-        walrus::StorageConf,
+        walrus::WalrusReference,
     },
 };
 
@@ -44,6 +44,21 @@ pub(crate) struct TaskArgs {
         help = "Input JSON used by every occurrence"
     )]
     input_json: Option<serde_json::Value>,
+
+    /// Read the task input object from a JSON file.
+    #[arg(long, conflicts_with = "input_json", value_parser = ValueParser::from(expand_tilde), help_heading = "Inputs")]
+    input_file: Option<PathBuf>,
+
+    /// Reuse a saved reference without uploading. Repeat for multiple ports.
+    #[arg(long, value_name = "VERTEX.PORT=FILE", help_heading = "Inputs")]
+    input_ref: Vec<String>,
+
+    /// Directory where task input uploads save Walrus references and recovery records.
+    #[arg(long, value_parser = ValueParser::from(expand_tilde), help_heading = "Inputs")]
+    remote_receipts: Option<PathBuf>,
+
+    #[command(flatten)]
+    storage: crate::walrus::UploadArgs,
 
     #[arg(
         long,
@@ -95,11 +110,33 @@ impl TaskArgs {
         } else {
             FailurePolicy::Continue
         });
-        let (input_plan, storage_conf) = prepare_input_plan(self.input_json, self.remote).await?;
+        let conf = crate::walrus::load_conf()
+            .await
+            .map_err(NexusCliError::Any)?;
+        let input_json = match self.input_file {
+            Some(path) => Some(
+                serde_json::from_slice(
+                    &crate::walrus::read_bounded(
+                        &path,
+                        nexus_sdk::execution_limits::MAX_RESOLVED_DATA_BYTES,
+                    )
+                    .await
+                    .map_err(NexusCliError::Any)?,
+                )
+                .map_err(|error| NexusCliError::Any(error.into()))?,
+            ),
+            None => self.input_json,
+        };
+        let (input_plan, references) =
+            prepare_input_plan(input_json, self.remote, self.input_ref, &conf.data_storage).await?;
+        let storage_conf = conf.data_storage;
         Ok(TaskPreparation {
             task,
             input_plan,
             storage_conf,
+            references,
+            storage: self.storage,
+            remote_receipts: self.remote_receipts,
         })
     }
 }
@@ -109,7 +146,10 @@ impl TaskArgs {
 pub(crate) struct TaskPreparation {
     task: TaskSpec,
     input_plan: workflow::EntryPortPlan,
-    storage_conf: StorageConf,
+    storage_conf: DataStorageConf,
+    references: Vec<WalrusReference>,
+    storage: crate::walrus::UploadArgs,
+    remote_receipts: Option<PathBuf>,
 }
 
 impl TaskPreparation {
@@ -117,13 +157,112 @@ impl TaskPreparation {
         self,
         client: &NexusClient,
         scheduler_package: sui::types::Address,
-    ) -> Result<TaskSpec, NexusCliError> {
-        let preflight = self.task.clone().with_inputs(self.input_plan.task_inputs());
+    ) -> Result<(TaskSpec, std::collections::BTreeMap<String, PathBuf>), NexusCliError> {
+        self.preflight(client, scheduler_package).await?;
+        let has_uploads = self.input_plan.has_uploads();
+        let settings = if has_uploads || self.input_plan.has_references() {
+            let settings = crate::walrus::Settings::for_wallet(
+                &self.storage_conf,
+                client.wallet().map_err(NexusCliError::Nexus)?,
+            )
+            .await
+            .map_err(NexusCliError::Any)?;
+            for reference in &self.references {
+                reference
+                    .check_network(settings.network, &settings.chain_id)
+                    .map_err(NexusCliError::Any)?;
+            }
+            self.input_plan
+                .verify_references(&settings.reader().map_err(NexusCliError::Any)?)
+                .await
+                .map_err(NexusCliError::Any)?;
+            Some(settings)
+        } else {
+            None
+        };
+        let uploader = if has_uploads {
+            Some(
+                crate::walrus::Uploader::new(
+                    client.wallet().map_err(NexusCliError::Nexus)?.clone(),
+                    settings.unwrap(),
+                    self.storage,
+                    false,
+                )
+                .await
+                .map_err(NexusCliError::Any)?,
+            )
+        } else {
+            None
+        };
+        let directory = self.remote_receipts.unwrap_or_else(|| {
+            let base = cli_conf_path().unwrap_or_else(|_| PathBuf::from(".nexus/conf.toml"));
+            base.parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("walrus")
+                .join(format!(
+                    "{}-{:016x}",
+                    chrono::Utc::now().timestamp_millis(),
+                    rand::random::<u64>()
+                ))
+        });
+        let mut references = std::collections::BTreeMap::new();
+        let inputs = self
+            .input_plan
+            .materialize_with(|handle, data| {
+                let uploader = uploader.as_ref();
+                let out = directory.join(format!("{}.walrus.json", hex::encode(handle.as_bytes())));
+                references.insert(handle.clone(), out.clone());
+                async move {
+                    let resume = out.exists() || out.with_extension("uploads").exists();
+                    let reference = uploader
+                        .expect("remote uploads have a client")
+                        .upload(&data, &out, resume)
+                        .await?;
+                    crate::display::human_output(&format!(
+                        "Walrus input saved. Reuse with --input-ref {handle}={}",
+                        out.display()
+                    ));
+                    reference.nexus_data()
+                }
+            })
+            .await
+            .map_err(NexusCliError::Any)?;
+        Ok((self.task.with_inputs(inputs), references))
+    }
+
+    async fn preflight(
+        &self,
+        client: &NexusClient,
+        scheduler_package: sui::types::Address,
+    ) -> Result<(), NexusCliError> {
+        let preflight = self
+            .task
+            .clone()
+            .with_inputs(self.input_plan.preflight_inputs());
         client
             .scheduler()
             .preflight_task_inputs(scheduler_package, &preflight)
             .await?;
-        let inputs = self.input_plan.materialize(&self.storage_conf).await?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    async fn materialize_with<F, Fut>(
+        self,
+        client: &NexusClient,
+        package: sui::types::Address,
+        upload: F,
+    ) -> Result<TaskSpec, NexusCliError>
+    where
+        F: FnMut(String, nexus_sdk::walrus::WalrusUploadData) -> Fut,
+        Fut: std::future::Future<Output = AnyResult<nexus_sdk::types::NexusData>>,
+    {
+        self.preflight(client, package).await?;
+        let inputs = self
+            .input_plan
+            .materialize_with(upload)
+            .await
+            .map_err(NexusCliError::Any)?;
         Ok(self.task.with_inputs(inputs))
     }
 }
@@ -651,19 +790,60 @@ fn apply_occurrence_options(
 async fn prepare_input_plan(
     input_json: Option<serde_json::Value>,
     remote: Vec<String>,
-) -> Result<(workflow::EntryPortPlan, StorageConf), NexusCliError> {
-    let conf = CliConf::load().await.unwrap_or_default();
-    let input_json = input_json.unwrap_or_else(|| serde_json::json!({}));
-    let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
-    let storage_conf: StorageConf = conf.data_storage.clone().into();
-    let input_plan = workflow::EntryPortPlan::new(
-        &input_json,
-        preferred_remote_storage,
-        &remote,
-        &storage_conf,
-    )?;
-    conf.save().await.map_err(NexusCliError::Any)?;
-    Ok((input_plan, storage_conf))
+    input_refs: Vec<String>,
+    conf: &DataStorageConf,
+) -> Result<(workflow::EntryPortPlan, Vec<WalrusReference>), NexusCliError> {
+    let mut input = input_json.unwrap_or_else(|| json!({}));
+    let mut references = Vec::new();
+    for argument in input_refs {
+        let (handle, path) = argument
+            .split_once('=')
+            .ok_or_else(|| NexusCliError::Any(anyhow!("--input-ref requires VERTEX.PORT=FILE")))?;
+        let (vertex, port) = handle
+            .split_once('.')
+            .filter(|(v, p)| !v.is_empty() && !p.is_empty())
+            .ok_or_else(|| {
+                NexusCliError::Any(anyhow!("invalid input reference selector '{handle}'"))
+            })?;
+        if remote.iter().any(|selected| selected == handle) {
+            return Err(NexusCliError::Any(anyhow!(
+                "'{handle}' cannot use both --remote and --input-ref"
+            )));
+        }
+        let reference =
+            crate::walrus::receipt::load(&expand_tilde(path).map_err(NexusCliError::Any)?)
+                .await
+                .map_err(NexusCliError::Any)?;
+        let vertices = input
+            .as_object_mut()
+            .ok_or_else(|| NexusCliError::Any(anyhow!("input must be a JSON object")))?;
+        let ports = vertices
+            .entry(vertex)
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+            .ok_or_else(|| NexusCliError::Any(anyhow!("input vertex must be a JSON object")))?;
+        if ports.contains_key(port) {
+            return Err(NexusCliError::Any(anyhow!(
+                "input '{handle}' is supplied more than once"
+            )));
+        }
+        ports.insert(
+            port.into(),
+            reference
+                .nexus_data()
+                .map_err(NexusCliError::Any)?
+                .to_json_value()
+                .map_err(NexusCliError::Any)?,
+        );
+        references.push(reference);
+    }
+    if !remote.is_empty() && conf.preferred_remote_storage == Some(StorageKind::Inline) {
+        return Err(NexusCliError::Any(anyhow!(
+            "remote data requires Walrus storage"
+        )));
+    }
+    let plan = workflow::EntryPortPlan::new(&input, &remote).map_err(NexusCliError::Any)?;
+    Ok((plan, references))
 }
 
 #[cfg(test)]
@@ -878,7 +1058,7 @@ mod tests {
     fn task_preparation(
         dag_id: sui::types::Address,
         input_plan: workflow::EntryPortPlan,
-        storage_conf: StorageConf,
+        storage_conf: DataStorageConf,
     ) -> TaskPreparation {
         TaskPreparation {
             task: TaskSpec::new(
@@ -890,6 +1070,67 @@ mod tests {
             .expect("Task fixture is valid"),
             input_plan,
             storage_conf,
+            references: Vec::new(),
+            storage: Default::default(),
+            remote_receipts: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn saved_input_references_preserve_shape_and_reject_conflicting_sources() {
+        use {
+            nexus_sdk::walrus::{StoredBlob, WalrusNetwork},
+            sha2::{Digest as _, Sha256},
+        };
+        let bytes = br#""saved input""#;
+        let reference = WalrusReference {
+            version: 1,
+            network: WalrusNetwork::Testnet,
+            chain_id: "test chain".into(),
+            many: true,
+            blobs: vec![StoredBlob {
+                blob_id: BLOB_ID_A.into(),
+                sha256: hex::encode(Sha256::digest(bytes)),
+                size: bytes.len(),
+                object_id: sui::types::Address::TWO,
+                owner: sui::types::Address::TWO,
+                end_epoch: 10,
+                deletable: false,
+            }],
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("input.walrus.json");
+        crate::walrus::receipt::save(&reference, &path, false).unwrap();
+        let selector = format!("vertex.port={}", path.display());
+        let (plan, references) = prepare_input_plan(
+            None,
+            vec![],
+            vec![selector.clone()],
+            &DataStorageConf::default(),
+        )
+        .await
+        .unwrap();
+        assert!(!plan.has_uploads());
+        assert!(plan.has_references());
+        assert_eq!(
+            plan.preflight_inputs()["vertex"]["port"],
+            reference.nexus_data().unwrap()
+        );
+        assert_eq!(references, vec![reference]);
+        for (inline, remote, selectors) in [
+            (
+                Some(json!({"vertex":{"port":"inline"}})),
+                vec![],
+                vec![selector.clone()],
+            ),
+            (None, vec!["vertex.port".into()], vec![selector.clone()]),
+            (None, vec![], vec![selector.clone(), selector]),
+        ] {
+            assert!(
+                prepare_input_plan(inline, remote, selectors, &DataStorageConf::default())
+                    .await
+                    .is_err()
+            );
         }
     }
 
@@ -923,6 +1164,10 @@ mod tests {
             },
             entry_group: DEFAULT_ENTRY_GROUP.to_owned(),
             input_json: Some(serde_json::json!("not an input object")),
+            input_file: None,
+            input_ref: Vec::new(),
+            remote_receipts: None,
+            storage: Default::default(),
             remote: Vec::new(),
             prepay_amount_mist: 0,
             occurrence_budget_mist: 0,
@@ -972,10 +1217,10 @@ mod tests {
     #[tokio::test]
     async fn authoritative_dag_mismatch_precedes_walrus_requests() {
         let mut walrus = Server::new_async().await;
-        let storage_conf = StorageConf {
-            walrus_publisher_url: Some(walrus.url()),
-            walrus_aggregator_url: Some(walrus.url()),
+        let storage_conf = DataStorageConf {
+            walrus_aggregator_url: Some(walrus.url().parse().unwrap()),
             walrus_save_for_epochs: Some(2),
+            ..Default::default()
         };
         let put = walrus
             .mock("PUT", "/v1/blobs?epochs=2")
@@ -989,9 +1234,7 @@ mod tests {
             .await;
         let plan = workflow::EntryPortPlan::new(
             &serde_json::json!({ "sum": { "right": "value" } }),
-            None,
             &["sum.right".to_owned()],
-            &storage_conf,
         )
         .expect("local preparation succeeds");
         let context = sui_mocks::mock_nexus_context();
@@ -1039,10 +1282,10 @@ mod tests {
     #[tokio::test]
     async fn authoritative_schema_mismatch_precedes_walrus_requests() {
         let mut walrus = Server::new_async().await;
-        let storage_conf = StorageConf {
-            walrus_publisher_url: Some(walrus.url()),
-            walrus_aggregator_url: Some(walrus.url()),
+        let storage_conf = DataStorageConf {
+            walrus_aggregator_url: Some(walrus.url().parse().unwrap()),
             walrus_save_for_epochs: Some(2),
+            ..Default::default()
         };
         let put = walrus
             .mock("PUT", "/v1/blobs?epochs=2")
@@ -1056,9 +1299,7 @@ mod tests {
             .await;
         let plan = workflow::EntryPortPlan::new(
             &serde_json::json!({ "sum": { "right": "value" } }),
-            None,
             &["sum.right".to_owned()],
-            &storage_conf,
         )
         .expect("local preparation succeeds");
         let context = sui_mocks::mock_nexus_context();
@@ -1106,11 +1347,6 @@ mod tests {
     #[tokio::test]
     async fn empty_many_input_precedes_walrus_requests() {
         let mut walrus = Server::new_async().await;
-        let storage_conf = StorageConf {
-            walrus_publisher_url: Some(walrus.url()),
-            walrus_aggregator_url: Some(walrus.url()),
-            walrus_save_for_epochs: Some(2),
-        };
         let put = walrus
             .mock("PUT", "/v1/blobs?epochs=2")
             .expect(0)
@@ -1124,9 +1360,7 @@ mod tests {
 
         let error = workflow::EntryPortPlan::new(
             &serde_json::json!({ "sum": { "values": [] } }),
-            None,
             &["sum.values".to_owned()],
-            &storage_conf,
         )
         .expect_err("empty Many must fail before remote materialization");
 
@@ -1138,10 +1372,10 @@ mod tests {
     #[tokio::test]
     async fn pinned_skill_selection_conflict_precedes_walrus_requests() {
         let mut walrus = Server::new_async().await;
-        let storage_conf = StorageConf {
-            walrus_publisher_url: Some(walrus.url()),
-            walrus_aggregator_url: Some(walrus.url()),
+        let storage_conf = DataStorageConf {
+            walrus_aggregator_url: Some(walrus.url().parse().unwrap()),
             walrus_save_for_epochs: Some(2),
+            ..Default::default()
         };
         let put = walrus
             .mock("PUT", "/v1/blobs?epochs=2")
@@ -1155,9 +1389,7 @@ mod tests {
             .await;
         let plan = workflow::EntryPortPlan::new(
             &serde_json::json!({ "sum": { "right": "value" } }),
-            None,
             &["sum.right".to_owned()],
-            &storage_conf,
         )
         .expect("local preparation succeeds");
         let agent_id = sui::types::Address::from_static("0xa");
@@ -1181,6 +1413,9 @@ mod tests {
             task,
             input_plan: plan,
             storage_conf,
+            references: Vec::new(),
+            storage: Default::default(),
+            remote_receipts: None,
         }
         .materialize(&client, sui::types::Address::from_static("0xa5"))
         .await
@@ -1200,10 +1435,10 @@ mod tests {
     #[tokio::test]
     async fn authoritative_dag_match_allows_walrus_materialization() {
         let mut walrus = Server::new_async().await;
-        let storage_conf = StorageConf {
-            walrus_publisher_url: Some(walrus.url()),
-            walrus_aggregator_url: Some(walrus.url()),
+        let storage_conf = DataStorageConf {
+            walrus_aggregator_url: Some(walrus.url().parse().unwrap()),
             walrus_save_for_epochs: Some(2),
+            ..Default::default()
         };
         let upload = StorageInfo {
             newly_created: Some(NewlyCreated {
@@ -1230,9 +1465,7 @@ mod tests {
             .await;
         let plan = workflow::EntryPortPlan::new(
             &serde_json::json!({ "sum": { "right": "value" } }),
-            None,
             &["sum.right".to_owned()],
-            &storage_conf,
         )
         .expect("local preparation succeeds");
         let context = sui_mocks::mock_nexus_context();
@@ -1264,8 +1497,22 @@ mod tests {
             nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
         let scheduler_package = context.package_id(PackageRole::Scheduler).unwrap();
 
+        let endpoint = walrus.url();
         let task = task_preparation(dag_id, plan, storage_conf)
-            .materialize(&client, scheduler_package)
+            .materialize_with(&client, scheduler_package, |_, data| {
+                let endpoint = endpoint.clone();
+                async move {
+                    let client = nexus_sdk::walrus::WalrusClient::builder()
+                        .with_publisher_url(&endpoint)
+                        .with_aggregator_url(&endpoint)
+                        .build();
+                    let mut values = Vec::new();
+                    for bytes in data.values() {
+                        values.push(client.upload_value(bytes.clone(), 2).await?);
+                    }
+                    nexus_sdk::types::NexusData::from_values(values, data.is_many())
+                }
+            })
             .await
             .expect("matching authoritative DAG permits materialization");
 

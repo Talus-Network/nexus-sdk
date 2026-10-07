@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Shared signing wallet for Nexus and native Walrus storage, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references.
+- Reusable task input planning and bounded Walrus reads for HTTP tool inputs up to 8 MiB, with exact byte commitments preserved through transport.
+
 #### Fixed
 
 - Tool preparation can retry failed crawler observations until its protocol deadline while retaining completed parallel reads; recovery RPC admission is shared across endpoint connections and leaves ordinary requests unrestricted.
@@ -20,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Wallet funded Walrus management, upload estimates, durable references and recovery, plus task input files and reusable references. The network follows the Sui RPC; publisher configuration is no longer used.
 - `nexus tool new --template move` accepts `--mode standard|workflow-authorization` to choose the generated `execute` signature.
 
 #### Changed
@@ -30,6 +36,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - TAP command dispatch keeps its large command future on the heap so callers and tests fit the default thread stack.
 - Move Tool scaffolds now use MVR dependencies, a versioned `2024.alpha` manifest like the TAP scaffold, and no `[addresses]` table, so a fresh scaffold builds and runs `nexus tap test`.
+
+### `nexus-toolkit`
+
+#### Added
+
+- Explicit protocol output encoding for tools that upload data through the SDK before signing a Walrus reference. Resolved input decoding supports exact bytes and a bounded 8 MiB execution budget.
 
 ## [`2.1.0`] - 2026-09-17
 
