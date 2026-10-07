@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Shared signing wallet for Nexus and the native Walrus adapter, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references. The adapter is distributed as `nexus-walrus` through Git while the SDK and toolkit remain publishable on crates.io.
+- Shared signing wallet for Nexus and the native Walrus adapter, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references.
 - Reusable task input planning and bounded Walrus reads for HTTP tool inputs up to 8 MiB, with exact byte commitments preserved through transport.
 - Added `execution_cost_details` to report outstanding invocation IDs alongside execution costs.
 
