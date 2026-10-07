@@ -26,4 +26,4 @@ Nexus and Walrus share one signing key and RPC connection. The adapter owns no a
 
 See the [SDK storage guide](../sdk/README.md#walrus-storage) for payment policy, ownership, expiry, references, and recovery. Reading blobs and resolving protocol references requires only the SDK.
 
-The workspace patches the registry SDK to the local source during development. Downstream applications use the published SDK and do not inherit that patch.
+Local builds use the SDK source in this repository. Applications that depend on `nexus-walrus` use the SDK from crates.io.
