@@ -38,24 +38,6 @@ This guide outlines the release and versioning strategy for the `nexus` and `nex
 - Review the `CHANGELOG` updating the version from `Unreleased` accordingly, including the release date, and make sure that breaking changes, new features, and bug fixes are clearly documented.
 - After **squash merging** the PR to the `release/v*` branch, tag the last commit in the `release/v*` branch with the expected tag.
 
-## SDK and CLI publication
-
-Prepare SDK releases in a PR to `main`, then update the corresponding release branch after that PR is merged. For 2.1.1, use `release/v2.1.x` and the annotated tag `v2.1.1`.
-
-1. Update the workspace version, SDK and toolkit dependencies, Rust tool templates, installation examples, lockfile, and dated changelog section. Validate the candidate against the current Leader, Tools, and Workbench sources, including any required consumer migrations.
-2. Run `./scripts/check-packages.sh` on the clean release commit. It builds the SDK and toolkit archives with all features and verifies that their published manifests contain only registry dependencies. Native Walrus is distributed through the Git tag as `nexus-walrus`. It and the CLI are not published on crates.io.
-3. After merging the preparation into `main` and updating the release branch, create and push the annotated tag. The tagged commit must belong to the release branch and its workspace version must match the tag.
-4. Wait for the [Release workflow](.github/workflows/release.yml) to finish. It verifies crate archives and builds CLI archives for Linux x86_64, macOS Intel, and macOS Apple Silicon, plus the Debian package and SHA256 files. Successful builds create a draft GitHub release with notes from the matching changelog section.
-5. Run the [crate publishing workflow](.github/workflows/publish-crates.yml) with the release tag. It requires the CLI assets to exist, then uses crates.io trusted publishing to publish the SDK before the toolkit. Use the resume option only after reviewing a partial publication.
-
-   ```sh
-   gh workflow run publish-crates.yml --ref main -f tag=v2.1.1
-   ```
-
-6. Verify both crates on crates.io and docs.rs, then publish the draft GitHub release.
-7. Update [`Formula/nexus-cli.rb` in the Homebrew tap](https://github.com/Talus-Network/homebrew-tap/blob/main/Formula/nexus-cli.rb) in a separate PR. Set the release version and copy the checksum for each of the three archives from the release assets. Merge after the downloads are public, then verify installation and upgrade with `nexus --version` and `nexus walrus --help`.
-8. Update the [AUR package](https://aur.archlinux.org/packages/nexus-cli) through its maintainer. This channel is separate from the repository release automation.
-
 ## Git Flow
 
 > [!IMPORTANT]

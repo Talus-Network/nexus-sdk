@@ -220,7 +220,9 @@ impl ToolServer {
         Self::with_body_limit::<T>(None).await
     }
 
-    async fn with_body_limit<T: NexusTool<Input = Input>>(limit: Option<u64>) -> Self {
+    fn routes<T: NexusTool<Input = Input>>(
+        limit: Option<u64>,
+    ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         let leader = SigningKey::from_bytes(&[7; 32]);
         let config = ToolkitRuntimeConfig::from_json_str(
             &json!({
@@ -247,9 +249,13 @@ impl ToolServer {
             .to_string(),
         )
         .unwrap();
+        routes_for_with_config_::<T>(Arc::new(config))
+    }
+
+    async fn with_body_limit<T: NexusTool<Input = Input>>(limit: Option<u64>) -> Self {
         // Use the same routes as bootstrap!, with isolated configuration and
         // an ephemeral listener so tests need no shared environment or port.
-        let routes = routes_for_with_config_::<T>(Arc::new(config));
+        let routes = Self::routes::<T>(limit);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let task = tokio::spawn(warp::serve(routes).incoming(listener).run());
@@ -331,21 +337,20 @@ impl ToolResponse {
 
 #[tokio::test]
 async fn invocation_body_boundary_uses_the_shared_execution_limit() {
-    let server = ToolServer::new::<TypedOutputTool>().await;
+    let routes = ToolServer::routes::<TypedOutputTool>(None);
     let limit = nexus_sdk::execution_limits::MAX_INVOKE_BODY_BYTES as usize;
     for (size, status) in [
         (limit, StatusCode::UNAUTHORIZED),
         (limit + 1, StatusCode::PAYLOAD_TOO_LARGE),
     ] {
-        // An admitted body reaches authentication; an oversized body is
-        // rejected by the transport before authentication or tool invocation.
-        let response = server
-            .client
-            .post(format!("{}/invoke", server.url))
+        // An admitted body reaches authentication. An oversized body is
+        // rejected before authentication or tool invocation.
+        let response = warp::test::request()
+            .method("POST")
+            .path("/invoke")
             .body(vec![b' '; size])
-            .send()
-            .await
-            .unwrap();
+            .reply(&routes)
+            .await;
         assert_eq!(response.status(), status);
         assert!(!response.headers().contains_key(HEADER_TOOL_SIGNATURE));
     }
@@ -355,20 +360,20 @@ async fn invocation_body_boundary_uses_the_shared_execution_limit() {
 async fn configured_body_limits_control_admission_without_changing_tool_execution() {
     let envelope = nexus_sdk::execution_limits::MAX_INVOKE_BODY_BYTES;
     for limit in [1024, 10 * 1024 * 1024, envelope + 1] {
-        let server = ToolServer::with_body_limit::<TypedOutputTool>(Some(limit)).await;
+        let routes = ToolServer::routes::<TypedOutputTool>(Some(limit));
         for (size, expected) in [
             (limit, StatusCode::UNAUTHORIZED),
             (limit + 1, StatusCode::PAYLOAD_TOO_LARGE),
         ] {
-            let response = server
-                .client
-                .post(format!("{}/invoke", server.url))
+            let response = warp::test::request()
+                .method("POST")
+                .path("/invoke")
                 .body(vec![b' '; size as usize])
-                .send()
-                .await
-                .unwrap();
+                .reply(&routes)
+                .await;
             assert_eq!(response.status(), expected);
         }
+        let server = ToolServer::with_body_limit::<TypedOutputTool>(Some(limit)).await;
         let response = server.invoke("valid").await;
         assert_eq!(response.status, StatusCode::OK);
         response.verify(&response.body).unwrap();

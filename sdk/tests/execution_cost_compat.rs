@@ -2,7 +2,6 @@
 
 use nexus_sdk::{nexus::workflow::ExecutionCostResult, sui::types::Address};
 
-// SDK 2.1.0 consumers can construct and exhaustively destructure this public result.
 #[test]
 fn execution_cost_preserves_the_published_struct_shape() {
     let result = ExecutionCostResult {
