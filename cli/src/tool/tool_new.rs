@@ -42,7 +42,7 @@ impl ToolTemplate {
             anyhow::bail!("Tool description must not be empty");
         }
 
-        let files = match self {
+        match self {
             ToolTemplate::Rust => {
                 let name_kebab_case = name.to_case(Case::Kebab);
                 let name_pascal_case = name.to_case(Case::Pascal);
@@ -56,7 +56,7 @@ impl ToolTemplate {
                 let main_template = env.get_template("main")?;
                 let cargo_template = env.get_template("cargo")?;
 
-                vec![
+                Ok(vec![
                     ("src".to_string(), None),
                     (
                         "src/main.rs".to_string(),
@@ -71,7 +71,7 @@ impl ToolTemplate {
                                 .render(context! { name_kebab_case, name_pascal_case })?,
                         ),
                     ),
-                ]
+                ])
             }
             ToolTemplate::Move => {
                 let name_snake_case = name.to_case(Case::Snake);
@@ -101,7 +101,7 @@ impl ToolTemplate {
                 let tests_move_template = env.get_template("tests_move")?;
                 let gitignore_template = env.get_template("gitignore")?;
 
-                vec![
+                Ok(vec![
                     ("sources".to_string(), None),
                     ("tests".to_string(), None),
                     (
@@ -126,19 +126,9 @@ impl ToolTemplate {
                         ".gitignore".to_string(),
                         Some(gitignore_template.render(context! {})?),
                     ),
-                ]
+                ])
             }
-        };
-
-        Ok(files
-            .into_iter()
-            .map(|(path, content)| {
-                (
-                    path,
-                    content.map(|text| format!("{}\n", text.trim_end_matches('\n'))),
-                )
-            })
-            .collect())
+        }
     }
 }
 
@@ -227,16 +217,6 @@ pub(crate) async fn create_new_tool(
 mod tests {
     use {super::*, assert_matches::assert_matches};
 
-    async fn assert_ends_with_one_newline(path: &std::path::Path) {
-        let contents = tokio::fs::read_to_string(path).await.unwrap();
-
-        assert!(
-            contents.ends_with('\n') && !contents.ends_with("\n\n"),
-            "{} must end with exactly one newline",
-            path.display()
-        );
-    }
-
     fn move_source(name: &str, mode: MoveToolMode) -> String {
         let source_path = format!("sources/{name}.move");
 
@@ -287,10 +267,6 @@ mod tests {
         assert!(contents.contains(&format!(r#"nexus-sdk = "{version}""#)));
         assert!(contents.contains(&format!(r#"nexus-toolkit = "{version}""#)));
         assert!(!contents.contains("git ="));
-
-        for file in ["test/src/main.rs", "test/Cargo.toml"] {
-            assert_ends_with_one_newline(&tempdir.join(file)).await;
-        }
     }
 
     #[tokio::test]
@@ -383,15 +359,6 @@ mod tests {
         let gitignore_contents = tokio::fs::read_to_string(gitignore_path).await.unwrap();
 
         assert!(gitignore_contents.contains("build/*"));
-
-        for file in [
-            "test_tool/Move.toml",
-            "test_tool/sources/test_tool.move",
-            "test_tool/tests/test_tool_tests.move",
-            "test_tool/.gitignore",
-        ] {
-            assert_ends_with_one_newline(&tempdir.join(file)).await;
-        }
     }
 
     #[test]
