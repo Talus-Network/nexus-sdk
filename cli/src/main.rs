@@ -8,12 +8,12 @@ mod execution;
 mod gas;
 mod move_package;
 mod network;
-mod nexus_data_json;
 mod prelude;
 mod sui;
 mod tap;
 mod task;
 mod tool;
+mod walrus;
 mod workflow;
 
 use {crate::prelude::*, std::io::IsTerminal as _};
@@ -39,6 +39,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    #[command(subcommand, about = "Manage wallet funded Walrus storage")]
+    Walrus(walrus::WalrusCommand),
     #[command(subcommand, about = "Manage Nexus Tools")]
     Tool(tool::ToolCommand),
     #[command(subcommand, about = "Manage Nexus Configuration")]
@@ -131,6 +133,7 @@ async fn main() {
 
     // Send each sub-command to the respective handler.
     let result = match cli.command {
+        Command::Walrus(command) => walrus::handle(command).await,
         Command::Tool(tool) => tool::handle(tool).await,
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,

@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+## [`2.1.1`] - 2026-10-07
+
+### `nexus-sdk`
+
+#### Added
+
+- Shared signing wallet for Nexus and the native Walrus adapter, with bounded spending, certified uploads, saved registration recovery, ownership management and portable references.
+- Reusable task input planning and bounded Walrus reads for HTTP tool inputs up to 8 MiB, with exact byte commitments preserved through transport.
+- Added `execution_cost_details` to report outstanding invocation IDs alongside execution costs.
+
+#### Fixed
+
+- Tool preparation can retry failed crawler observations until its protocol deadline while retaining completed parallel reads; recovery RPC admission is shared across endpoint connections and leaves ordinary requests unrestricted.
+- Added occurrence recovery that discovers expired invocations, preserves committed results, resolves payment locks, and settles finished occurrences. The CLI uses this path when no invocation ID is supplied and cost inspection exposes outstanding invocation IDs.
+- Recovery uses the Sui client's resumable transaction reader with a caller supplied policy and the server's default request size. Validated scan progress, checkpoint search bounds, and completed metadata reads survive interruptions.
+- Incomplete history and invalid responses keep recovery pending. Transport deadlines bound individual RPCs without restarting slow operations that make progress. Dropping recovery cancels active reads and retry waits.
+- Finalized onchain Tool results can be decoded directly from transaction receipts with validated execution and walk identity and the initial shared object version, allowing consumption to proceed without waiting for current object reads.
+
+### `nexus-cli`
+
+#### Added
+
+- Wallet funded Walrus management, upload estimates, durable references and recovery, plus task input files and reusable references. The network follows the Sui RPC; publisher configuration is no longer used.
+- `nexus tool new --template move` accepts `--mode standard|workflow-authorization` to choose the generated `execute` signature.
+
+#### Changed
+
+- Move Tool scaffolds default to the Standard `execute` signature, which `task schedule` runs without authorization bindings. Pass `--mode workflow-authorization` for the previous signature that begins with an Agent vertex authorization proof.
+
+#### Fixed
+
+- TAP command dispatch keeps its large command future on the heap so callers and tests fit the default thread stack.
+- Move Tool scaffolds now use MVR dependencies, a versioned `2024.alpha` manifest like the TAP scaffold, and no `[addresses]` table, so a fresh scaffold builds and runs `nexus tap test`.
+
+### `nexus-toolkit`
+
+#### Added
+
+- Explicit protocol output encoding for tools that upload data through the SDK or native adapter before signing a Walrus reference. Resolved input decoding supports exact bytes and a bounded 8 MiB execution budget.
+
+#### Changed
+
+- Increased the default `/invoke` request body limit from 10 MiB to 12 MiB to accommodate encoding overhead for 8 MiB inputs.
+
 ## [`2.1.0`] - 2026-09-17
 
 ### `nexus-sdk`

@@ -10,13 +10,11 @@ use {
         NexusTool,
         ToolkitRuntimeConfig,
     },
-    nexus_sdk::{
-        move_bindings::interface::meta_schema::MetaSchema,
-        types::{NexusData, OffchainToolOutput, OffchainToolOutputPort},
-    },
+    futures::FutureExt,
+    nexus_sdk::move_bindings::interface::meta_schema::MetaSchema,
     reqwest::Url,
     serde_json::json,
-    std::sync::Arc,
+    std::{panic::AssertUnwindSafe, sync::Arc},
     warp::{
         filters::{host::Authority, path::FullPath},
         http::{HeaderMap, StatusCode},
@@ -95,7 +93,6 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// ## Example config
 /// ```json
 /// {
-///   "invoke_max_body_bytes": 10485760,
 ///   "signed_http": {
 ///     "mode": "required",
 ///     "allowed_leaders_path": "./allowed_leaders.json",
@@ -122,6 +119,17 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// ## Request body limits
 /// `/invoke` enforces a `Content-Length` limit via `warp::body::content_length_limit`.
 /// Requests without a `Content-Length` header are rejected.
+///
+/// # Invocation errors and timeouts
+///
+/// The runtime catches unwinding panics during input decoding, tool construction,
+/// authorization, invocation, and output serialization. It returns a generic
+/// HTTP 500 response without the panic payload or a tool result signature.
+///
+/// Recovery requires `panic = "unwind"` (Cargo's default). The final application's
+/// workspace controls this setting; with `panic = "abort"`, a panic terminates the process.
+///
+/// Invocation deadlines follow [`NexusTool::timeout()`].
 ///
 /// # Examples
 ///
@@ -454,6 +462,28 @@ impl InvokePipeline {
         body_bytes: &[u8],
         auth_ctx: Option<crate::AuthContext>,
     ) -> InvokePipelineResponse {
+        let invocation =
+            AssertUnwindSafe(Self::run_inner::<T>(body_bytes, auth_ctx)).catch_unwind();
+        match tokio::time::timeout(T::timeout(), invocation).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(_)) => {
+                log::error!("Tool invocation panicked");
+                InvokePipelineResponse::json(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"error": "tool_invocation_failed"}),
+                )
+            }
+            Err(_) => InvokePipelineResponse::json(
+                StatusCode::GATEWAY_TIMEOUT,
+                json!({"error": "tool_invocation_timeout"}),
+            ),
+        }
+    }
+
+    async fn run_inner<T: NexusTool>(
+        body_bytes: &[u8],
+        auth_ctx: Option<crate::AuthContext>,
+    ) -> InvokePipelineResponse {
         let input = match decode_tool_input::<T>(body_bytes, auth_ctx.as_ref()) {
             Ok(value) => value,
             Err(ToolInputDecodeError::Integrity) => {
@@ -492,7 +522,14 @@ impl InvokePipeline {
 
         let output = tool.invoke(input).await;
 
-        match encode_tagged_output(output) {
+        match T::encode_output(output).and_then(|output| {
+            let schema = MetaSchema::from_offchain_json_schemas(
+                &serde_json::to_vec(&schemars::schema_for!(T::Input))?,
+                &serde_json::to_vec(&schemars::schema_for!(T::Output))?,
+            )?;
+            schema.canonical_output_ports(&output)?;
+            Ok(bcs::to_bytes(&output)?)
+        }) {
             Ok(body) => InvokePipelineResponse {
                 status: StatusCode::OK,
                 body,
@@ -548,45 +585,13 @@ fn decode_tool_input<T: NexusTool>(
         .map_err(|error| ToolInputDecodeError::Deserialization(error.into()))
 }
 
+#[cfg(test)]
 fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8>> {
-    let value = serde_json::to_value(crate::WithSerdeErrorPath(output))?;
-    let serde_json::Value::Object(variants) = value else {
-        anyhow::bail!("tool output must serialize as an externally tagged enum")
-    };
-    if variants.len() != 1 {
-        anyhow::bail!("tool output must contain exactly one variant")
-    }
-    let (tag, payload) = variants.into_iter().next().expect("length checked");
-    let serde_json::Value::Object(payload) = payload else {
-        anyhow::bail!("tool output variant payload must be an object")
-    };
-    let ports = payload
-        .into_iter()
-        .map(|(port_name, value)| {
-            Ok(OffchainToolOutputPort {
-                port_name: port_name.into_bytes(),
-                values: nexus_data(value)?.into_values()?,
-            })
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    let output = OffchainToolOutput {
-        tag: tag.into_bytes(),
-        ports,
-    };
-    Ok(bcs::to_bytes(&output)?)
-}
-
-fn nexus_data(value: serde_json::Value) -> anyhow::Result<NexusData> {
-    if let serde_json::Value::Array(values) = value {
-        return NexusData::inline_data_many(
-            values
-                .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-    }
-
-    NexusData::inline_data(serde_json::to_vec(&value)?)
+    Ok(bcs::to_bytes(
+        &nexus_sdk::types::OffchainToolOutput::from_json(serde_json::to_value(
+            crate::WithSerdeErrorPath(output),
+        )?)?,
+    )?)
 }
 
 async fn invoke_handler<T: NexusTool>(
@@ -614,7 +619,12 @@ async fn invoke_handler<T: NexusTool>(
 mod tests {
     use {
         super::*,
-        nexus_sdk::{fqn, signed_http::v3::wire::AuthenticatedRequest, ToolFqn},
+        nexus_sdk::{
+            fqn,
+            signed_http::v3::wire::AuthenticatedRequest,
+            types::{NexusData, OffchainToolOutput},
+            ToolFqn,
+        },
         schemars::JsonSchema,
         serde::{Deserialize, Serialize},
         serde_json::json,
@@ -772,6 +782,10 @@ mod tests {
 
     #[test]
     fn array_payloads_encode_each_json_value() {
+        let port_data = |value| -> anyhow::Result<NexusData> {
+            let output = OffchainToolOutput::from_json(json!({"ok":{"items":value}}))?;
+            NexusData::from_values(output.ports[0].values.clone(), true)
+        };
         let inline_values = |data: &NexusData| {
             data.values()
                 .expect("encoded Toolkit output should decode")
@@ -784,16 +798,16 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        let homogeneous = nexus_data(json!(["a", "b"])).unwrap();
+        let homogeneous = port_data(json!(["a", "b"])).unwrap();
         assert_eq!(
             inline_values(&homogeneous),
             vec![br#""a""#.to_vec(), br#""b""#.to_vec()]
         );
 
-        let mixed = nexus_data(json!([1, true])).unwrap();
+        let mixed = port_data(json!([1, true])).unwrap();
         assert_eq!(inline_values(&mixed), vec![b"1".to_vec(), b"true".to_vec()]);
 
-        let empty = nexus_data(json!([])).expect_err("empty arrays must not produce Many values");
+        let empty = port_data(json!([])).expect_err("empty arrays must not produce Many values");
         assert!(empty.to_string().contains("requires at least one value"));
     }
 
@@ -813,6 +827,123 @@ mod tests {
         assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(!response.is_result);
         assert!(serde_json::from_slice::<serde_json::Value>(&response.body).is_ok());
+    }
+
+    #[derive(JsonSchema)]
+    enum PanickingOutput {
+        Ok { message: String },
+    }
+
+    impl Serialize for PanickingOutput {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            match self {
+                Self::Ok { message } => panic!("PRIVATE_SERIALIZATION_MARKER {message}"),
+            }
+        }
+    }
+
+    struct FailingTool<const PHASE: u8>;
+
+    impl<const PHASE: u8> NexusTool for FailingTool<PHASE> {
+        type Input = Input;
+        type Output = PanickingOutput;
+
+        fn fqn() -> ToolFqn {
+            fqn!("xyz.taluslabs.failure.test@1")
+        }
+
+        fn description() -> &'static str {
+            "Exercise invocation failure isolation."
+        }
+
+        fn timeout() -> std::time::Duration {
+            std::time::Duration::from_millis(10)
+        }
+
+        async fn new() -> Self {
+            assert!(PHASE != 0, "PRIVATE_CONSTRUCTOR_MARKER");
+            Self
+        }
+
+        async fn authorize(&self, _: crate::AuthContext) -> anyhow::Result<()> {
+            assert!(PHASE != 1, "PRIVATE_AUTHORIZATION_MARKER");
+            Ok(())
+        }
+
+        async fn invoke(&self, _: Input) -> PanickingOutput {
+            if PHASE == 4 {
+                std::future::pending::<()>().await;
+            }
+            assert!(PHASE != 2, "PRIVATE_INVOCATION_MARKER");
+            PanickingOutput::Ok {
+                message: "hello".into(),
+            }
+        }
+
+        async fn health(&self) -> anyhow::Result<StatusCode> {
+            Ok(StatusCode::OK)
+        }
+    }
+
+    #[tokio::test]
+    async fn panics_are_local_errors_and_later_requests_succeed() {
+        let body = br#"{"message":"hello"}"#;
+        let responses = [
+            InvokePipeline::run::<FailingTool<0>>(body, None).await,
+            InvokePipeline::run::<FailingTool<2>>(body, None).await,
+            InvokePipeline::run::<FailingTool<3>>(body, None).await,
+        ];
+        for response in responses {
+            assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert!(!response.is_result);
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
+                json!({"error": "tool_invocation_failed"})
+            );
+        }
+        assert_eq!(
+            InvokePipeline::run::<TestTool>(body, None).await.status,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_panics_do_not_escape_or_become_tool_results() {
+        let transport = resolved_input("message", json!("hello"));
+        let schema = MetaSchema::from_offchain_json_schemas(
+            &serde_json::to_vec(&schemars::schema_for!(Input)).unwrap(),
+            &serde_json::to_vec(&schemars::schema_for!(PanickingOutput)).unwrap(),
+        )
+        .unwrap();
+        let resolved = schema.resolved_inputs_from_json(&transport).unwrap();
+        let auth = AuthenticatedRequest {
+            leader_id: "leader".into(),
+            leader_key_id: 0,
+            input_hash: schema.resolved_inputs_sha256(&resolved).unwrap(),
+            leader_signature: [2; 64],
+            nonce: [3; 32],
+        };
+        let response = InvokePipeline::run::<FailingTool<1>>(
+            &serde_json::to_vec(&transport).unwrap(),
+            Some(auth),
+        )
+        .await;
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!response.is_result);
+        assert!(!String::from_utf8(response.body)
+            .unwrap()
+            .contains("PRIVATE"));
+    }
+
+    #[tokio::test]
+    async fn asynchronous_work_obeys_the_tool_deadline() {
+        let response = InvokePipeline::run::<FailingTool<4>>(br#"{"message":"hello"}"#, None).await;
+        assert_eq!(response.status, StatusCode::GATEWAY_TIMEOUT);
+        assert!(!response.is_result);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
+            json!({"error": "tool_invocation_timeout"})
+        );
     }
 
     #[tokio::test]
@@ -871,6 +1002,74 @@ mod tests {
         let url = super::meta_placeholder_url_("path");
         assert_eq!(url.host_str(), Some("localhost"));
         assert_eq!(url.path(), "/path");
+    }
+
+    #[derive(Serialize, JsonSchema)]
+    enum ExplicitOutput {
+        Ok {
+            #[schemars(with = "String")]
+            message: NexusData,
+        },
+    }
+
+    struct ExplicitTool<const INVALID: bool>;
+    impl<const INVALID: bool> NexusTool for ExplicitTool<INVALID> {
+        type Input = Input;
+        type Output = ExplicitOutput;
+
+        fn fqn() -> ToolFqn {
+            fqn!("xyz.taluslabs.explicit@1")
+        }
+
+        fn description() -> &'static str {
+            "Returns explicit protocol data."
+        }
+
+        async fn new() -> Self {
+            Self
+        }
+
+        async fn health(&self) -> anyhow::Result<StatusCode> {
+            Ok(StatusCode::OK)
+        }
+
+        async fn invoke(&self, _: Input) -> ExplicitOutput {
+            ExplicitOutput::Ok {
+                message: NexusData::walrus_data(
+                    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                    [1; 32],
+                )
+                .unwrap(),
+            }
+        }
+
+        fn encode_output(output: ExplicitOutput) -> anyhow::Result<OffchainToolOutput> {
+            let ExplicitOutput::Ok { message } = output;
+            OffchainToolOutput::from_ports(
+                if INVALID {
+                    b"Unknown".to_vec()
+                } else {
+                    b"Ok".to_vec()
+                },
+                [("message".into(), message)],
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_references_remain_canonical_and_invalid_outputs_are_unsigned() {
+        let input = br#"{"message":"input"}"#;
+        let response = InvokePipeline::run::<ExplicitTool<false>>(input, None).await;
+        assert_eq!(response.status, StatusCode::OK);
+        assert!(response.is_result);
+        let output: OffchainToolOutput = bcs::from_bytes(&response.body).unwrap();
+        assert!(matches!(
+            output.ports[0].values[0],
+            nexus_sdk::types::NexusValue::WalrusData { .. }
+        ));
+        let response = InvokePipeline::run::<ExplicitTool<true>>(input, None).await;
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!response.is_result);
     }
 
     #[test]

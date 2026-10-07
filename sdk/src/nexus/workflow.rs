@@ -71,6 +71,7 @@ const DEFAULT_EXECUTION_INSPECTION_POLL_INTERVAL: Duration = Duration::from_secs
 pub const EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON: &str =
     "walk is not double timeout expired";
 pub const EXPIRED_WALK_ALREADY_TERMINAL_REASON: &str = "walk is already terminal";
+pub const EXPIRED_WALK_OTHER_PAYMENT_LOCKS_REASON: &str = "other walks still hold payment locks";
 
 #[derive(Clone, Debug)]
 pub struct PublishResult {
@@ -211,7 +212,7 @@ pub struct ExpiredWalkResolutionPlan {
     pub kind: ExpiredWalkResolutionKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct ExpiredWalkResolutionResult {
     pub tx_digest: Option<sui::types::Digest>,
     pub tx_checkpoint: Option<u64>,
@@ -446,6 +447,13 @@ pub struct ExecutionCostResult {
     pub outstanding_locks: u64,
     pub accomplished: bool,
     pub refunded: bool,
+}
+
+/// Payment accounting and the invocation identities holding its outstanding locks.
+#[non_exhaustive]
+pub struct ExecutionCostDetails {
+    pub summary: ExecutionCostResult,
+    pub outstanding_invocation_ids: Vec<sui::types::Address>,
 }
 
 pub struct WorkflowActions {
@@ -939,6 +947,15 @@ pub async fn inspect_expired_walk_resolution_at(
     clock_ms: u64,
 ) -> anyhow::Result<ExpiredWalkResolutionPlan> {
     let resolved = fetch_execution(client, params.dag_execution_id, &[]).await?;
+    inspect_expired_walk_in_execution(client, params, clock_ms, &resolved).await
+}
+
+async fn inspect_expired_walk_in_execution(
+    client: &NexusClient,
+    params: ResolveExpiredWalkParams,
+    clock_ms: u64,
+    resolved: &ResolvedExecution,
+) -> anyhow::Result<ExpiredWalkResolutionPlan> {
     let context = &resolved.context;
     let execution = &resolved.object.data;
     let crawler = client.crawler();
@@ -1096,7 +1113,13 @@ pub async fn inspect_expired_walk_resolution_at(
             dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
-            kind: ExpiredWalkResolutionKind::Aborted,
+            kind: if payment.locked_vertices.is_empty() {
+                ExpiredWalkResolutionKind::Aborted
+            } else {
+                ExpiredWalkResolutionKind::Skipped {
+                    reason: EXPIRED_WALK_OTHER_PAYMENT_LOCKS_REASON.to_owned(),
+                }
+            },
         });
     };
 
@@ -1133,6 +1156,55 @@ fn unresolved_timeout_skip_reason(walk: &DAGWalk) -> &'static str {
             EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
         }
         _ => EXPIRED_WALK_ALREADY_TERMINAL_REASON,
+    }
+}
+
+/// Select one actionable expired walk, preserving results before refunding locks.
+/// The caller must inspect again after each confirmed mutation because resolving
+/// one walk can advance or finish other walks in the execution.
+pub async fn inspect_expired_execution_resolution_at(
+    client: &NexusClient,
+    execution_id: sui::types::Address,
+    clock_ms: u64,
+) -> anyhow::Result<Option<ExpiredWalkResolutionPlan>> {
+    let execution = fetch_execution(client, execution_id, &[]).await?;
+    let mut selected: Option<ExpiredWalkResolutionPlan> = None;
+    for (index, walk) in execution.object.data.walks.iter().enumerate() {
+        if walk.timeout_expired_vertex(clock_ms).is_none() {
+            continue;
+        }
+        let plan = inspect_expired_walk_in_execution(
+            client,
+            ResolveExpiredWalkParams {
+                dag_execution_id: execution_id,
+                walk_index: index as u64,
+                invocation_id: None,
+            },
+            clock_ms,
+            &execution,
+        )
+        .await?;
+        if resolution_priority(&plan.kind) == 0 {
+            return Ok(Some(plan));
+        }
+        if resolution_priority(&plan.kind)
+            < selected
+                .as_ref()
+                .map_or(u8::MAX, |plan| resolution_priority(&plan.kind))
+        {
+            selected = Some(plan);
+        }
+    }
+    Ok(selected)
+}
+
+fn resolution_priority(kind: &ExpiredWalkResolutionKind) -> u8 {
+    match kind {
+        ExpiredWalkResolutionKind::Settled { .. }
+        | ExpiredWalkResolutionKind::SettledOnchainResult { .. } => 0,
+        ExpiredWalkResolutionKind::AbortedWithInvocation { .. } => 1,
+        ExpiredWalkResolutionKind::Aborted => 2,
+        ExpiredWalkResolutionKind::Skipped { .. } => u8::MAX,
     }
 }
 
@@ -1307,6 +1379,99 @@ fn onchain_tool_result_has_required_stamps(
             .iter()
             .any(|entry| entry.key == tool_witness_id)
         && stamps.contents.iter().any(|entry| entry.key == result_id)
+}
+
+/// Decodes the finalized onchain result created for one execution walk.
+///
+/// The walk pointer, result object, and stored output must all have been
+/// written by `transaction`. This reads only the finalized receipt, so a
+/// consumer does not depend on current object reads observing the write yet.
+///
+/// # Errors
+///
+/// Returns an error if the receipt is incomplete, ambiguous, or does not
+/// contain a finalized result bound to the requested execution and walk.
+pub fn onchain_tool_result_from_finalized_output(
+    crawler: &Crawler,
+    context: &NexusContext,
+    executed: &sui::grpc::ExecutedTransaction,
+    transaction: sui::types::Digest,
+    execution_id: sui::types::Address,
+    walk_index: u64,
+) -> anyhow::Result<OnchainToolResultState> {
+    use crate::move_bindings::primitives::object_state::Inner;
+
+    let pointers = crawler
+        .transaction_dynamic_field_outputs::<execution_move::OnchainToolResultKey, ID>(
+            executed,
+            transaction,
+            &execution_move::OnchainToolResultKey { walk_index },
+            &crate::move_bindings::type_tag::<execution_move::OnchainToolResultKey>(context),
+            &crate::move_bindings::type_tag::<ID>(context),
+        )?;
+    let mut pointers = pointers
+        .into_iter()
+        .filter(|output| output.object_id == execution_id);
+    let pointer = pointers.next().ok_or_else(|| anyhow!(
+        "Transaction '{transaction}' has no onchain result for execution '{execution_id}' walk {walk_index}"
+    ))?;
+    anyhow::ensure!(
+        pointers.next().is_none(),
+        "Transaction '{transaction}' has repeated onchain result pointers"
+    );
+    let result_id = pointer.data.bytes;
+    let anchor =
+        crawler.transaction_output_object::<OnchainToolResult>(executed, transaction, result_id)?;
+    let initial_version = crawler.transaction_shared_initial_version(
+        executed,
+        transaction,
+        result_id,
+        &crate::move_bindings::struct_tag::<OnchainToolResult>(context),
+    )?;
+    anyhow::ensure!(
+        anchor.data.id.address() == result_id,
+        "Onchain result anchor identity does not match its walk pointer"
+    );
+
+    let outputs = crawler.transaction_dynamic_field_outputs::<Inner, OnchainToolResultInnerV1>(
+        executed,
+        transaction,
+        &Inner::new(false),
+        &crate::move_bindings::type_tag::<Inner>(context),
+        &crate::move_bindings::type_tag::<OnchainToolResultInnerV1>(context),
+    )?;
+    let mut outputs = outputs
+        .into_iter()
+        .filter(|output| output.object_id == result_id);
+    let result = outputs
+        .next()
+        .ok_or_else(|| {
+            anyhow!(
+                "Transaction '{transaction}' has no stored output for onchain result '{result_id}'"
+            )
+        })?
+        .data;
+    anyhow::ensure!(
+        outputs.next().is_none(),
+        "Transaction '{transaction}' has repeated onchain result outputs"
+    );
+    anyhow::ensure!(
+        result.execution_id.bytes == execution_id,
+        "Onchain result belongs to another execution"
+    );
+    anyhow::ensure!(
+        onchain_tool_result_is_finalized(&result),
+        "Onchain result is not finalized"
+    );
+    anyhow::ensure!(
+        result.finalize_tx_digest.as_option().map(Vec::as_slice) == Some(transaction.as_ref()),
+        "Onchain result was finalized by another transaction"
+    );
+
+    Ok(OnchainToolResultState::Finalized {
+        result,
+        object_ref: sui::types::ObjectReference::new(result_id, initial_version, anchor.digest),
+    })
 }
 
 /// Fetch the stored onchain result state for one execution walk.
@@ -1935,6 +2100,14 @@ impl WorkflowActions {
         &self,
         dag_execution_id: sui::types::Address,
     ) -> Result<ExecutionCostResult, NexusError> {
+        Ok(self.execution_cost_details(dag_execution_id).await?.summary)
+    }
+
+    /// Fetch payment accounting and outstanding invocation identities from one payment snapshot.
+    pub async fn execution_cost_details(
+        &self,
+        dag_execution_id: sui::types::Address,
+    ) -> Result<ExecutionCostDetails, NexusError> {
         let execution = fetch_execution(&self.client, dag_execution_id, &[]).await?;
         if execution
             .object
@@ -1955,7 +2128,7 @@ impl WorkflowActions {
         .await
         .map_err(NexusError::Rpc)?;
 
-        Ok(ExecutionCostResult::from_payment(
+        Ok(ExecutionCostDetails::from_payment(
             payment.object_id,
             payment.data,
         ))
@@ -2257,6 +2430,55 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)
     }
 
+    /// Resolve currently eligible expired work using confirmed chain time.
+    ///
+    /// Every transaction is confirmed before selecting the next walk. This only
+    /// sequences recovery mutations of this shared execution object; independent
+    /// executions and ordinary tool calls remain concurrent. A repeated unchanged
+    /// plan ends the pass so stale reads cannot cause an unbounded submission loop.
+    pub async fn resolve_expired_execution(
+        &self,
+        execution_id: sui::types::Address,
+    ) -> Result<Vec<ExpiredWalkResolutionResult>, NexusError> {
+        let mut results = Vec::new();
+        let mut previous = None;
+        loop {
+            let clock = self
+                .client
+                .crawler()
+                .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
+                .await
+                .map_err(NexusError::Rpc)?;
+            let Some(plan) = inspect_expired_execution_resolution_at(
+                &self.client,
+                execution_id,
+                clock.data.timestamp_ms,
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            else {
+                break;
+            };
+            if previous.as_ref() == Some(&plan) {
+                break;
+            }
+            let result = self
+                .resolve_expired_walk(ResolveExpiredWalkParams {
+                    dag_execution_id: execution_id,
+                    walk_index: plan.walk_index,
+                    invocation_id: None,
+                })
+                .await?;
+            previous = Some(plan);
+            let progressed = result.tx_digest.is_some();
+            results.push(result);
+            if !progressed {
+                break;
+            }
+        }
+        Ok(results)
+    }
+
     /// Classify and submit the existing Move entry that matches one expired walk.
     pub async fn resolve_expired_walk(
         &self,
@@ -2533,16 +2755,23 @@ fn select_invocation_abort_candidate(
     }
 }
 
-impl ExecutionCostResult {
+impl ExecutionCostDetails {
     fn from_payment(payment_id: sui::types::Address, payment: ExecutionPaymentInnerV1) -> Self {
         Self {
-            payment_id,
-            max_budget_mist: payment.max_budget_mist,
-            locked_budget_mist: payment.locked_budget_mist,
-            consumed: payment.consumed,
-            outstanding_locks: payment.locks(),
-            accomplished: payment.accomplished,
-            refunded: payment.refunded,
+            summary: ExecutionCostResult {
+                payment_id,
+                max_budget_mist: payment.max_budget_mist,
+                locked_budget_mist: payment.locked_budget_mist,
+                consumed: payment.consumed,
+                outstanding_locks: payment.locks(),
+                accomplished: payment.accomplished,
+                refunded: payment.refunded,
+            },
+            outstanding_invocation_ids: payment
+                .locked_vertices
+                .iter()
+                .map(|lock| lock.invocation_id.bytes)
+                .collect(),
         }
     }
 }
@@ -3598,6 +3827,164 @@ mod tests {
                 .expect("fetch should succeed");
 
         assert!(result.is_none());
+    }
+
+    fn finalized_onchain_result(
+        execution_id: sui::types::Address,
+        transaction: sui::types::Digest,
+    ) -> OnchainToolResultInnerV1 {
+        OnchainToolResultInnerV1 {
+            execution_id: ID::new(execution_id),
+            finalized: true,
+            stamps: Some(VecMap { contents: vec![] }).into(),
+            tag: Some(b"ok".to_vec()).into(),
+            named_payload: Some(VecMap { contents: vec![] }).into(),
+            finalize_tx_digest: Some(transaction.into_inner().to_vec()).into(),
+            finalize_recipient: Some(sui::types::Address::from_static("0xa1")).into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn onchain_result_receipt_resolves_consumption_without_current_state_reads() {
+        let context = sui_mocks::mock_nexus_context();
+        let transaction = sui::types::Digest::new([1; 32]);
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let result_id = sui::types::Address::from_static("0xe2");
+        let receipt = nexus_mocks::mock_finalized_onchain_result(
+            &context,
+            transaction,
+            execution_id,
+            7,
+            result_id,
+            finalized_onchain_result(execution_id, transaction),
+        );
+        // No RPC is permitted, including a latest read for the result.
+        let crawler = crawler_from_mocks(Default::default(), Default::default()).await;
+        let state = onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &receipt,
+            transaction,
+            execution_id,
+            7,
+        )
+        .unwrap();
+        let (_, result_ref) = state.consume_ready_result().unwrap();
+        assert_eq!(*result_ref.object_id(), result_id);
+        assert_eq!(
+            result_ref.version(),
+            11,
+            "consumption uses the initial shared version"
+        );
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &receipt,
+            transaction,
+            execution_id,
+            8
+        )
+        .is_err());
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &receipt,
+            transaction,
+            result_id,
+            7
+        )
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn onchain_result_receipt_rejects_unproven_results() {
+        let context = sui_mocks::mock_nexus_context();
+        let transaction = sui::types::Digest::new([1; 32]);
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let result_id = sui::types::Address::from_static("0xe2");
+        let crawler = crawler_from_mocks(Default::default(), Default::default()).await;
+        let valid = finalized_onchain_result(execution_id, transaction);
+        let mut wrong_execution = valid.clone();
+        wrong_execution.execution_id = ID::new(result_id);
+        let mut unfinished = valid.clone();
+        unfinished.finalized = false;
+        let mut wrong_transaction = valid.clone();
+        wrong_transaction.finalize_tx_digest = Some(vec![2; 32]).into();
+        let mut missing_payload = valid.clone();
+        missing_payload.named_payload = None.into();
+        for result in [
+            wrong_execution,
+            unfinished,
+            wrong_transaction,
+            missing_payload,
+        ] {
+            let receipt = nexus_mocks::mock_finalized_onchain_result(
+                &context,
+                transaction,
+                execution_id,
+                7,
+                result_id,
+                result,
+            );
+            assert!(onchain_tool_result_from_finalized_output(
+                &crawler,
+                &context,
+                &receipt,
+                transaction,
+                execution_id,
+                7
+            )
+            .is_err());
+        }
+        let receipt = nexus_mocks::mock_finalized_onchain_result(
+            &context,
+            transaction,
+            execution_id,
+            7,
+            result_id,
+            valid,
+        );
+        for omitted in 0..3 {
+            let mut incomplete = receipt.clone();
+            incomplete.objects.as_mut().unwrap().objects.remove(omitted);
+            assert!(onchain_tool_result_from_finalized_output(
+                &crawler,
+                &context,
+                &incomplete,
+                transaction,
+                execution_id,
+                7
+            )
+            .is_err());
+        }
+        let mut repeated = receipt.clone();
+        repeated
+            .objects
+            .as_mut()
+            .unwrap()
+            .objects
+            .push(receipt.objects().objects[0].clone());
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &repeated,
+            transaction,
+            execution_id,
+            7
+        )
+        .is_err());
+        let mut inherited = receipt.clone();
+        inherited.objects.as_mut().unwrap().objects[2]
+            .set_previous_transaction(sui::types::Digest::new([2; 32]));
+        assert!(onchain_tool_result_from_finalized_output(
+            &crawler,
+            &context,
+            &inherited,
+            transaction,
+            execution_id,
+            7
+        )
+        .is_err());
     }
 
     #[tokio::test]
@@ -5101,93 +5488,106 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_actions_execution_cost() {
-        let nexus_objects = sui_mocks::mock_nexus_context();
-        let execution_ref = sui_mocks::mock_sui_object_ref();
-        let payment_ref = sui_mocks::mock_sui_object_ref();
-        let execution_id = *execution_ref.object_id();
+        for detailed in [false, true] {
+            let nexus_objects = sui_mocks::mock_nexus_context();
+            let execution_ref = sui_mocks::mock_sui_object_ref();
+            let payment_ref = sui_mocks::mock_sui_object_ref();
+            let execution_id = *execution_ref.object_id();
+            let invocation_id = sui::types::Address::from_static("0x123");
 
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+            let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+            let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
-        mock_get_dag_execution_bcs(
-            &mut ledger_service_mock,
-            &mut state_service_mock,
-            &nexus_objects,
-            execution_ref,
-            &sui::types::ObjectReference::new(
-                sui::types::Address::from_static("0xd"),
-                0,
-                sui::types::Digest::ZERO,
-            ),
-            vec![],
-        );
+            mock_get_dag_execution_bcs(
+                &mut ledger_service_mock,
+                &mut state_service_mock,
+                &nexus_objects,
+                execution_ref,
+                &sui::types::ObjectReference::new(
+                    sui::types::Address::from_static("0xd"),
+                    0,
+                    sui::types::Digest::ZERO,
+                ),
+                vec![],
+            );
 
-        mock_execution_payment_field(
-            &mut ledger_service_mock,
-            &mut state_service_mock,
-            &nexus_objects,
-            execution_id,
-            payment_ref.clone(),
-            ExecutionPaymentInnerV1 {
+            mock_execution_payment_field(
+                &mut ledger_service_mock,
+                &mut state_service_mock,
+                &nexus_objects,
                 execution_id,
-                agent_id: crate::move_bindings::sui_framework::object::ID::new(
-                    sui::types::Address::from_static("0xa"),
-                ),
-                skill_id: 11,
-                interface_revision: crate::move_bindings::interface::version::InterfaceVersion::new(
-                    7,
-                ),
-                payment_policy:
-                    crate::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
-                source_kind:
-                    crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
-                        sui::types::Address::from_static("0x1"),
+                payment_ref.clone(),
+                ExecutionPaymentInnerV1 {
+                    execution_id,
+                    agent_id: crate::move_bindings::sui_framework::object::ID::new(
+                        sui::types::Address::from_static("0xa"),
                     ),
-                max_budget_mist: 100_000,
-                gas_budget_mist: 83_334,
-                priority_fee_reserve_mist: 16_666,
-                locked_budget_mist: 100_000,
-                funds: crate::move_bindings::sui_framework::balance::Balance {
-                    value: 58_000,
-                    phantom_t0: std::marker::PhantomData,
+                    skill_id: 11,
+                    interface_revision:
+                        crate::move_bindings::interface::version::InterfaceVersion::new(7),
+                    payment_policy:
+                        crate::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
+                    source_kind:
+                        crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+                            sui::types::Address::from_static("0x1"),
+                        ),
+                    max_budget_mist: 100_000,
+                    gas_budget_mist: 83_334,
+                    priority_fee_reserve_mist: 16_666,
+                    locked_budget_mist: 100_000,
+                    funds: crate::move_bindings::sui_framework::balance::Balance {
+                        value: 58_000,
+                        phantom_t0: std::marker::PhantomData,
+                    },
+                    consumed: 42_000,
+                    tool_fee_charged: 42_000,
+                    priority_fee_charged: 0,
+                    priority_fee_percentage: 20,
+                    accomplished: true,
+                    refunded: false,
+                    final_state: ExecutionPaymentFinalState::Accomplished,
+                    tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
+                        contents: vec![],
+                    },
+                    locked_vertices: vec![invocation_lock(vec![1, 2, 3], invocation_id)],
                 },
-                consumed: 42_000,
-                tool_fee_charged: 42_000,
-                priority_fee_charged: 0,
-                priority_fee_percentage: 20,
-                accomplished: true,
-                refunded: false,
-                final_state: ExecutionPaymentFinalState::Accomplished,
-                tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
-                    contents: vec![],
-                },
-                locked_vertices: vec![],
-            },
-        );
+            );
 
-        let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            package_service_mock: Some(package_service_mock),
-            state_service_mock: Some(state_service_mock),
-            ..Default::default()
-        });
+            let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
+            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service_mock),
+                package_service_mock: Some(package_service_mock),
+                state_service_mock: Some(state_service_mock),
+                ..Default::default()
+            });
 
-        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+            let client =
+                nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
-        let result = client
-            .workflow()
-            .execution_cost(execution_id)
-            .await
-            .expect("Failed to fetch execution cost");
+            let result = if detailed {
+                let details = client
+                    .workflow()
+                    .execution_cost_details(execution_id)
+                    .await
+                    .expect("Failed to fetch execution cost details");
+                assert_eq!(details.outstanding_invocation_ids, vec![invocation_id]);
+                details.summary
+            } else {
+                client
+                    .workflow()
+                    .execution_cost(execution_id)
+                    .await
+                    .expect("Failed to fetch execution cost")
+            };
 
-        assert_eq!(result.payment_id, *payment_ref.object_id());
-        assert_eq!(result.max_budget_mist, 100_000);
-        assert_eq!(result.locked_budget_mist, 100_000);
-        assert_eq!(result.consumed, 42_000);
-        assert_eq!(result.outstanding_locks, 0);
-        assert!(result.accomplished);
-        assert!(!result.refunded);
+            assert_eq!(result.payment_id, *payment_ref.object_id());
+            assert_eq!(result.max_budget_mist, 100_000);
+            assert_eq!(result.locked_budget_mist, 100_000);
+            assert_eq!(result.consumed, 42_000);
+            assert_eq!(result.outstanding_locks, 1);
+            assert!(result.accomplished);
+            assert!(!result.refunded);
+        }
     }
 
     #[tokio::test]

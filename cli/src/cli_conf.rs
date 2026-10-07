@@ -1,6 +1,6 @@
 use {
     crate::prelude::*,
-    nexus_sdk::{sui, types::SecretValue, walrus::StorageConf},
+    nexus_sdk::{sui, types::SecretValue},
 };
 
 /// Struct holding the config structure.
@@ -101,22 +101,12 @@ pub(crate) enum StorageKind {
 /// Remote data storage configuration.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct DataStorageConf {
+    /// Network associated with a custom aggregator.
+    pub(crate) walrus_network: Option<nexus_sdk::walrus::WalrusNetwork>,
     /// The preferred Walrus aggregator URL.
     pub(crate) walrus_aggregator_url: Option<reqwest::Url>,
-    /// The preferred Walrus publisher URL.
-    pub(crate) walrus_publisher_url: Option<reqwest::Url>,
     /// How many epochs to save remote data for?
     pub(crate) walrus_save_for_epochs: Option<u8>,
     /// What is the preferred remote storage backend?
     pub(crate) preferred_remote_storage: Option<StorageKind>,
-}
-
-impl From<DataStorageConf> for StorageConf {
-    fn from(val: DataStorageConf) -> StorageConf {
-        StorageConf {
-            walrus_aggregator_url: val.walrus_aggregator_url.map(|url| url.to_string()),
-            walrus_publisher_url: val.walrus_publisher_url.map(|url| url.to_string()),
-            walrus_save_for_epochs: val.walrus_save_for_epochs,
-        }
-    }
 }

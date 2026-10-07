@@ -98,6 +98,7 @@ pub type Result<T> = std::result::Result<T, WalrusError>;
 /// Builder for WalrusClient configuration
 pub struct WalrusClientBuilder {
     client: Client,
+    publisher_client: Option<Client>,
     publisher_url: String,
     aggregator_url: String,
 }
@@ -107,6 +108,7 @@ impl Default for WalrusClientBuilder {
     fn default() -> Self {
         Self {
             client: Client::new(),
+            publisher_client: None,
             publisher_url: WALRUS_PUBLISHER_URL.to_string(),
             aggregator_url: WALRUS_AGGREGATOR_URL.to_string(),
         }
@@ -125,6 +127,13 @@ impl WalrusClientBuilder {
         self
     }
 
+    /// Use a separate client for uploads, keeping publisher credentials out of
+    /// requests to an aggregator.
+    pub fn with_publisher_client(mut self, client: Client) -> Self {
+        self.publisher_client = Some(client);
+        self
+    }
+
     /// Set a custom publisher URL
     pub fn with_publisher_url(mut self, url: &str) -> Self {
         self.publisher_url = url.to_string();
@@ -140,6 +149,7 @@ impl WalrusClientBuilder {
     /// Build the WalrusClient with the configured settings
     pub fn build(self) -> WalrusClient {
         WalrusClient {
+            publisher_client: self.publisher_client.unwrap_or_else(|| self.client.clone()),
             client: self.client,
             publisher_url: self.publisher_url,
             aggregator_url: self.aggregator_url,
@@ -150,6 +160,7 @@ impl WalrusClientBuilder {
 /// Client for interacting with the Walrus decentralized blob storage system
 pub struct WalrusClient {
     client: Client,
+    publisher_client: Client,
     publisher_url: String,
     aggregator_url: String,
 }
@@ -225,7 +236,7 @@ impl WalrusClient {
         }
 
         let response = self
-            .client
+            .publisher_client
             .put(&url)
             .header("Content-Type", "application/json")
             .body(json_content)
@@ -280,7 +291,7 @@ impl WalrusClient {
 
         // Send PUT request with raw blob content
         let response = self
-            .client
+            .publisher_client
             .put(&url)
             .body(data.into())
             .send()
@@ -412,12 +423,8 @@ impl WalrusClient {
         Ok(bytes.to_vec())
     }
 
-    /// Reads one blob under a caller-provided byte ceiling and repository deadlines.
-    pub(crate) async fn read_file_bounded(
-        &self,
-        blob_id: &str,
-        max_bytes: usize,
-    ) -> Result<Vec<u8>> {
+    /// Reads one blob within the byte ceiling and both read and total deadlines.
+    pub async fn read_file_bounded(&self, blob_id: &str, max_bytes: usize) -> Result<Vec<u8>> {
         let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
         self.read_url_bounded(
             &url,

@@ -345,6 +345,19 @@ impl MetaSchema {
         input_ports: &'a HashMap<String, Vec<NexusValue>>,
     ) -> anyhow::Result<Vec<&'a [NexusValue]>> {
         self.validate_for_tool(true)?;
+        let mut remaining = crate::execution_limits::MAX_RESOLVED_DATA_BYTES;
+        for value in input_ports.values().flatten() {
+            let size = match value {
+                NexusValue::InlineData { bytes } => bytes.len(),
+                NexusValue::Object { .. } => 32,
+                NexusValue::WalrusData { .. } => {
+                    bail!("resolved inputs contain a Walrus reference")
+                }
+            };
+            remaining = remaining
+                .checked_sub(size)
+                .context("resolved inputs exceed execution byte limit")?;
+        }
         if input_ports.len() != self.input_ports.len() {
             bail!(
                 "Tool input contains {} ports but schema requires {}",
@@ -834,6 +847,7 @@ mod tests {
 
         let encoded = schema.resolved_inputs_to_json(&inputs).unwrap();
         assert!(encoded["ports"][0]["value"].get("many").is_some());
+        assert_eq!(encoded["ports"][0]["value"]["many"][0]["data"], "one");
         assert_eq!(schema.resolved_inputs_from_json(&encoded).unwrap(), inputs);
         assert!(schema
             .resolved_inputs_from_json(&json!({
@@ -858,6 +872,124 @@ mod tests {
                 .unwrap()
             ],
         ));
+    }
+
+    #[test]
+    fn resolved_transport_preserves_exact_bytes_and_reference_commitments() {
+        let schema = MetaSchema::new(
+            vec![PortSchema::new(
+                b"document".to_vec(),
+                false,
+                ValueKind::Data,
+            )],
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        );
+        let bytes = format!(
+            "  {{\n  \"data\": {}\n}}\n",
+            serde_json::to_string(&"🦭".repeat(30_000)).unwrap()
+        )
+        .into_bytes();
+        assert!(NexusData::inline_data(bytes.clone()).is_err());
+        let reference = NexusData::walrus_data(
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            Sha256::digest(&bytes).to_vec(),
+        )
+        .unwrap();
+        let original_hash = schema
+            .canonical_inputs_sha256(&HashMap::from([("document".into(), reference)]))
+            .unwrap();
+        let resolved = HashMap::from([("document".into(), vec![NexusValue::InlineData { bytes }])]);
+        let json = schema.resolved_inputs_to_json(&resolved).unwrap();
+        let decoded = schema.resolved_inputs_from_json(&json).unwrap();
+        assert_eq!(decoded, resolved);
+        assert_eq!(
+            schema.resolved_inputs_sha256(&decoded).unwrap(),
+            original_hash
+        );
+        assert_eq!(
+            schema.resolved_inputs_to_semantic_json(&decoded).unwrap()["document"]["data"],
+            "🦭".repeat(30_000)
+        );
+        let mut malformed = json;
+        malformed["ports"][0]["value"]["one"]["bytes"] = json!("not base64 !");
+        assert!(schema.resolved_inputs_from_json(&malformed).is_err());
+    }
+
+    #[test]
+    fn maximum_input_shape_fits_the_shared_http_envelope() {
+        use crate::{
+            execution_limits::{MAX_INVOKE_BODY_BYTES, MAX_RESOLVED_DATA_BYTES},
+            move_bindings::protocol_limits::primitives::data::MAX_MANY_VALUES,
+        };
+        let port_count = MAX_INPUT_PORTS as usize;
+        let values_per_port = MAX_MANY_VALUES as usize;
+        let value_count = port_count * values_per_port;
+        let value_size = MAX_RESOLVED_DATA_BYTES / value_count;
+        let mut ports = Vec::new();
+        let mut inputs = HashMap::new();
+        for index in 0..port_count {
+            let name = format!("{index:a>width$}", width = MAX_IDENTIFIER_BYTES as usize);
+            ports.push(PortSchema::new(
+                name.as_bytes().to_vec(),
+                true,
+                ValueKind::Data,
+            ));
+            inputs.insert(
+                name,
+                vec![
+                    NexusValue::InlineData {
+                        bytes: vec![0; value_size]
+                    };
+                    values_per_port
+                ],
+            );
+        }
+        let first = inputs.values_mut().next().unwrap();
+        let NexusValue::InlineData { bytes } = &mut first[0] else {
+            unreachable!();
+        };
+        bytes.resize(value_size + MAX_RESOLVED_DATA_BYTES % value_count, 0);
+        let schema = MetaSchema::new(
+            ports,
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        );
+        let transport = schema.resolved_inputs_to_json(&inputs).unwrap();
+        assert!(serde_json::to_vec(&transport).unwrap().len() as u64 <= MAX_INVOKE_BODY_BYTES);
+        assert_eq!(
+            schema.resolved_inputs_from_json(&transport).unwrap(),
+            inputs
+        );
+    }
+
+    #[test]
+    fn resolved_execution_budget_is_shared_by_all_ports() {
+        use crate::execution_limits::{MAX_INVOKE_BODY_BYTES, MAX_RESOLVED_DATA_BYTES};
+        let schema = MetaSchema::new(
+            vec![
+                PortSchema::new(b"a".to_vec(), false, ValueKind::Data),
+                PortSchema::new(b"b".to_vec(), false, ValueKind::Data),
+            ],
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        );
+        let value = NexusValue::InlineData {
+            bytes: vec![0; MAX_RESOLVED_DATA_BYTES / 2],
+        };
+        let mut inputs =
+            HashMap::from([("a".into(), vec![value.clone()]), ("b".into(), vec![value])]);
+        let transport = schema.resolved_inputs_to_json(&inputs).unwrap();
+        assert!(serde_json::to_vec(&transport).unwrap().len() as u64 <= MAX_INVOKE_BODY_BYTES);
+        assert_eq!(
+            schema.resolved_inputs_from_json(&transport).unwrap(),
+            inputs
+        );
+        assert!(schema.resolved_inputs_sha256(&inputs).is_ok());
+
+        let NexusValue::InlineData { bytes } = &mut inputs.get_mut("b").unwrap()[0] else {
+            unreachable!();
+        };
+        bytes.push(0);
+        assert!(schema.resolved_inputs_to_json(&inputs).is_err());
+        assert!(schema.resolved_inputs_sha256(&inputs).is_err());
     }
 
     #[test]

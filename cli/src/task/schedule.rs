@@ -5,7 +5,7 @@ use {
     },
     crate::{
         command_title,
-        display::{human_output, json_output},
+        display::human_output,
         loading,
         notify_success,
         prelude::*,
@@ -26,7 +26,7 @@ pub(crate) async fn run(
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let scheduler_package =
         resolve_creator_package(&client, scheduler_package, PackageRole::Scheduler).await?;
-    let task = task.materialize(&client, scheduler_package).await?;
+    let (task, walrus_references) = task.materialize(&client, scheduler_package).await?;
     let progress = loading!("Submitting atomic Task schedule transaction...");
     let receipt = client
         .scheduler()
@@ -43,5 +43,5 @@ pub(crate) async fn run(
         count = receipt.delta().scheduled().len()
     );
     human_output(&output::render_task_receipt(&receipt, None));
-    json_output(&receipt)
+    crate::walrus::print_task_receipt(&receipt, &walrus_references)
 }

@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["toolkit-rust", "cli", "sdk"]
+members = ["toolkit-rust", "cli", "sdk", "walrus"]
 
 [workspace.package]
 edition = "2021"
-version = "2.1.0"
+version = "2.1.1"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -82,8 +82,9 @@ warp = { version = "0.4.3", features = ["server"] }
 zeroize = "1.7"
 
 # === Nexus deps ===
-nexus-toolkit = { version = "2.1.0", path = "toolkit-rust" }
-nexus-sdk = { version = "2.1.0", path = "sdk" }
+nexus-toolkit = { version = "2.1.1", path = "toolkit-rust" }
+nexus-sdk = { version = "2.1.1", path = "sdk" }
+nexus-walrus = { path = "walrus" }
 
 # === Move package build deps ===
 move-binary-format = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
@@ -101,6 +102,11 @@ sui-move-natives = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v
 sui-package-alt = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
 sui-protocol-config = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
 sui-types = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }
+
+# The Git distributed Walrus adapter depends on the registry SDK so downstream
+# applications share its wallet and protocol types. Use this checkout locally.
+[patch.crates-io]
+nexus-sdk = { path = "sdk" }
 
 [profile.release]
 # debug = 1 means line tables only, which is minimum needed for good stack traces

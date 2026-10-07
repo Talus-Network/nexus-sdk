@@ -1,8 +1,10 @@
 {{ description_doc }}
 module {{ name_snake_case }}::{{ name_snake_case }};
 
+{% if workflow_authorization %}
 use nexus_interface::authorization::AgentVertexAuthorization;
 use nexus_primitives::authorization::{Self as primitive_authorization, ProvenValue};
+{% endif %}
 use nexus_primitives::data;
 use nexus_interface::onchain_tool_result::{Self as onchain_tool_result, OnchainToolResult};
 use nexus_primitives::proof_of_uid::UIDRequirements;
@@ -66,15 +68,23 @@ fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
 /// Execute function with standardized Nexus signature.
 ///
 /// CRITICAL REQUIREMENTS:
-/// 1. Internal authorization parameter: _authorization: ProvenValue<AgentVertexAuthorization>
-/// 2. Internal workflow requirements parameter: requirements: UIDRequirements
-/// 3. Internal result parameter: result: OnchainToolResult
-/// 4. Last parameter: ctx: &mut TxContext
-/// 5. No return value; finalize and share result
-/// 6. Must satisfy the tool witness requirement
-/// 7. Must be public so current Nexus code can compose it in one transaction
+{% set offset = 1 if workflow_authorization else 0 %}
+{% if workflow_authorization %}
+/// 1. Internal authorization parameter: authorization: ProvenValue<AgentVertexAuthorization>
+///    The Tool then only runs through an Agent skill that binds a grant to
+///    each vertex: `nexus task schedule --agent-id <ID> --skill-id <N>
+///    --authorization-binding <VERTEX>=<OBJECT_ID>`.
+{% endif %}
+/// {{ offset + 1 }}. Internal workflow requirements parameter: requirements: UIDRequirements
+/// {{ offset + 2 }}. Internal result parameter: result: OnchainToolResult
+/// {{ offset + 3 }}. Last parameter: ctx: &mut TxContext
+/// {{ offset + 4 }}. No return value; finalize and share result
+/// {{ offset + 5 }}. Must satisfy the tool witness requirement
+/// {{ offset + 6 }}. Must be public so current Nexus code can compose it in one transaction
 public fun execute(
+{% if workflow_authorization %}
     authorization: ProvenValue<AgentVertexAuthorization>,
+{% endif %}
     requirements: UIDRequirements,
     result: OnchainToolResult,
     state: &mut {{ name_pascal_case }}State,
@@ -83,7 +93,9 @@ public fun execute(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+{% if workflow_authorization %}
     primitive_authorization::drop(authorization);
+{% endif %}
     let mut requirements = requirements;
     // REQUIRED: Satisfy the requirement with this tool's witness UID.
     requirements.satisfy(&state.witness().id);

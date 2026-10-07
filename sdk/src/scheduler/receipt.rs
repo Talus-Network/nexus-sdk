@@ -223,6 +223,35 @@ impl AbortReceipt {
     }
 }
 
+/// An expired occurrence can require several resolutions and a final settlement,
+/// or no mutation. `AbortReceipt` represents exactly one abort transaction and
+/// remains unchanged for callers requesting a specific invocation.
+#[cfg(feature = "nexus")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoveryReceipt {
+    pub(crate) occurrence: crate::scheduler::OccurrenceSnapshot,
+    pub(crate) resolutions: Vec<crate::nexus::workflow::ExpiredWalkResolutionResult>,
+    pub(crate) settlement: Option<TaskMutationReceipt>,
+}
+
+#[cfg(feature = "nexus")]
+impl RecoveryReceipt {
+    /// Returns the observed occurrence after recovery, including any unfinished work.
+    pub const fn occurrence(&self) -> &crate::scheduler::OccurrenceSnapshot {
+        &self.occurrence
+    }
+
+    /// Returns the walk resolutions submitted during this pass.
+    pub fn resolutions(&self) -> &[crate::nexus::workflow::ExpiredWalkResolutionResult] {
+        &self.resolutions
+    }
+
+    /// Returns the Task settlement submitted when runtime work finished.
+    pub const fn settlement(&self) -> Option<&TaskMutationReceipt> {
+        self.settlement.as_ref()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

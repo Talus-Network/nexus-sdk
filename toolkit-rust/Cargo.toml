@@ -32,6 +32,7 @@ hyper-util = { version = "0.1", features = ["server-auto", "http1", "http2", "se
 warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
+futures.workspace = true
 notify = "8.2.0"
 tls-listener.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
@@ -43,8 +44,11 @@ nexus-sdk = { workspace = true, features = ["signed_http", "types"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
+mockito.workspace = true
+nexus-sdk = { workspace = true, features = ["walrus"] }
 rcgen = "0.13"
 reqwest = { version = "0.12.14", default-features = false, features = ["json", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 tempfile.workspace = true
 tokio = { version = "1.44.1", features = ["macros"] }
+warp = { workspace = true, features = ["test"] }

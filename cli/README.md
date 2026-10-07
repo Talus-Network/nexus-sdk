@@ -36,7 +36,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v2.1.0 \
+  --tag v2.1.1 \
   --locked
 ```
 
@@ -76,6 +76,8 @@ Scheduled work follows `Task -> Schedule -> Occurrence`.
 atomically. Task and occurrence inspection read durable object state. Run
 `nexus task occurrence list --task-id <OBJECT_ID> --json` to page through
 retained occurrence records, and `nexus task --help` for complete examples.
+
+For expired work, `nexus task occurrence abort-expired --task-id <OBJECT_ID> --occurrence-id <U64>` discovers eligible invocations automatically. It settles available results, refunds expired payment locks, and settles the occurrence when execution finishes. The output reports the resulting occurrence state and each confirmed resolution; work still awaiting its timeout remains pending. Supplying `--invocation-id` limits the command to that invocation. `nexus task occurrence cost` includes outstanding invocation IDs in both human and JSON output.
 
 For an Agent skill whose onchain Tool requires workflow authorization, bind
 each vertex that requires a grant to its recipient when creating the Task:
@@ -131,6 +133,42 @@ focused fixtures, unit test limits and a complete embedded application. The
 application owns its Agent, creates its DAG and skill, schedules a Task,
 authenticates the onchain Tool callback and finalizes a Nexus result before the
 Testnet integration path begins.
+
+## Walrus
+
+Walrus uses the same wallet and Sui RPC as Nexus. Configure the wallet with the existing Sui commands. Fund that address with SUI for gas and WAL for storage on the selected network. No publisher URL or separate wallet is required.
+
+```sh
+nexus walrus status
+nexus walrus configure --epochs 5
+nexus walrus upload input.json --estimate
+# input.json contains the data to upload; walrus_reference.json stores the blob ID, hash, owner and expiry.
+nexus walrus upload input.json --out walrus_reference.json
+nexus walrus inspect walrus_reference.json
+nexus walrus download walrus_reference.json --out downloaded.json
+nexus walrus list
+nexus walrus extend walrus_reference.json --epochs 2 --max-storage-cost-frost 100000000
+```
+
+`upload` treats a JSON document as one value. Use `--many` to upload each array item as a separate value. Data is permanent until expiry by default; `--deletable` permits the owner to delete it with `nexus walrus delete REFERENCE --yes`. Each upload is limited to 8 MiB of execution data under the shared SDK [execution limits](../sdk/README.md#execution-limits). The combined inputs of each invocation must also fit that budget. `--max-storage-cost-frost` rejects a storage quote above the configured threshold per blob; the actual WAL charge uses the prices at execution and may differ. `--storage-gas-budget` caps SUI gas per transaction.
+
+The network follows the active Sui RPC. Standard aggregators follow network changes automatically. To select a custom reader, use `nexus walrus configure --aggregator URL --network testnet` (or `mainnet`). `--reset-aggregator` restores the network default. Inspect and download need no signing key. Old publisher configuration is ignored and removed when the configuration is next saved.
+
+Use the same input options for task creation and scheduling. `--remote VERTEX.PORT` selects an input to upload to Walrus. `--remote-receipts DIR` chooses an output directory containing one reference file per uploaded input port and records for upload recovery. These reference files use the same format as `nexus walrus upload --out FILE`.
+
+```sh
+# Upload analyze.document from inputs.json and save its reference and recovery records in ./references.
+nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000 --occurrence-budget-mist 10000000 --input-file inputs.json --remote analyze.document --remote-receipts ./references
+
+# Reuse walrus_reference.json from the standalone upload above.
+nexus task create --dag-id DAG_ID --prepay-amount-mist 100000000 --occurrence-budget-mist 10000000 --input-ref analyze.document=walrus_reference.json
+```
+
+`--input-file` reads the same vertex and port object accepted by `--input-json`. Repeat `--input-ref VERTEX.PORT=FILE` to reuse references without buying storage. For a reference created by a task upload, use the path printed by the CLI or listed in the task JSON output under `walrus_references`. Duplicate or conflicting input sources are rejected. Local validation and preflight against the published DAG complete before any new storage payment.
+
+Uploads save signed registrations and progress beside the destination reference in a `.uploads` directory. If a standalone upload is interrupted, run the same command and options with `--resume`. It reuses the paid registration. For task uploads, reuse the same `--remote-receipts` directory to resume matching work. References remain available if task submission fails. Keep these files until completion; an uncertain submission must be reconciled using its original transaction, since registering again may buy duplicate storage.
+
+Scheduled tasks do not renew storage automatically. Choose a retention period covering their occurrences, and extend the owned Blob objects before expiry. Large resolved inputs are supported for HTTP tools; Sui tools retain their transaction size limits.
 
 For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 
