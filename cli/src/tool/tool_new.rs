@@ -2,7 +2,7 @@
 
 use {
     crate::{command_title, display::json_output, loading, notify_success, prelude::*},
-    convert_case::{Boundary, Case, Casing},
+    convert_case::{Case, Casing},
     minijinja::{context, Environment},
     tokio::fs::create_dir_all,
 };
@@ -28,18 +28,6 @@ pub(crate) enum MoveToolMode {
     WorkflowAuthorization,
 }
 
-/// Converts a Tool name to `case`, keeping digits attached to the surrounding
-/// letters: `sha256_hash` stays `sha256_hash`, `base64Encode` becomes
-/// `base64_encode`.
-fn convert_name(name: &str, case: Case) -> String {
-    name.without_boundaries(&[
-        Boundary::LOWER_DIGIT,
-        Boundary::UPPER_DIGIT,
-        Boundary::DIGIT_LOWER,
-    ])
-    .to_case(case)
-}
-
 impl ToolTemplate {
     /// For each template, transform the template based on the given variables
     /// and return the files to write.
@@ -56,8 +44,8 @@ impl ToolTemplate {
 
         let files = match self {
             ToolTemplate::Rust => {
-                let name_kebab_case = convert_name(name, Case::Kebab);
-                let name_pascal_case = convert_name(name, Case::Pascal);
+                let name_kebab_case = name.to_case(Case::Kebab);
+                let name_pascal_case = name.to_case(Case::Pascal);
                 let description_literal = serde_json::to_string(description)?;
 
                 let mut env = Environment::new();
@@ -86,9 +74,9 @@ impl ToolTemplate {
                 ]
             }
             ToolTemplate::Move => {
-                let name_snake_case = convert_name(name, Case::Snake);
-                let name_pascal_case = convert_name(name, Case::Pascal);
-                let name_uppercase = convert_name(name, Case::UpperSnake);
+                let name_snake_case = name.to_case(Case::Snake);
+                let name_pascal_case = name.to_case(Case::Pascal);
+                let name_uppercase = name.to_case(Case::UpperSnake);
                 let workflow_authorization = matches!(mode, MoveToolMode::WorkflowAuthorization);
                 let description_doc = description
                     .lines()
@@ -250,7 +238,7 @@ mod tests {
     }
 
     fn move_source(name: &str, mode: MoveToolMode) -> String {
-        let source_path = format!("sources/{}.move", convert_name(name, Case::Snake));
+        let source_path = format!("sources/{name}.move");
 
         ToolTemplate::Move
             .transform(name, "Increments an onchain counter.", mode)
@@ -259,16 +247,6 @@ mod tests {
             .find_map(|(path, contents)| (path == source_path).then_some(contents))
             .flatten()
             .expect("Move source present")
-    }
-
-    fn rust_manifest(name: &str) -> String {
-        ToolTemplate::Rust
-            .transform(name, "Echoes its input.", MoveToolMode::Standard)
-            .unwrap()
-            .into_iter()
-            .find_map(|(path, contents)| (path == "Cargo.toml").then_some(contents))
-            .flatten()
-            .expect("Cargo.toml present")
     }
 
     #[tokio::test]
@@ -438,28 +416,6 @@ mod tests {
             !move_contents.contains("\n\n\n"),
             "mode conditionals must not leave blank lines"
         );
-    }
-
-    #[test]
-    fn digits_stay_attached_to_tool_names() {
-        let move_contents = move_source("sha256_hash", MoveToolMode::Standard);
-
-        assert!(move_contents.contains("module sha256_hash::sha256_hash;"));
-        assert!(move_contents.contains("public struct SHA256_HASH has drop {}"));
-        assert!(move_contents.contains("public struct Sha256HashWitness has key, store"));
-
-        assert!(rust_manifest("sha256-hash").contains(r#"name = "sha256-hash""#));
-    }
-
-    #[test]
-    fn digit_before_uppercase_still_splits_words() {
-        let move_contents = move_source("base64Encode", MoveToolMode::Standard);
-
-        assert!(move_contents.contains("module base64_encode::base64_encode;"));
-        assert!(move_contents.contains("public struct BASE64_ENCODE has drop {}"));
-        assert!(move_contents.contains("public struct Base64EncodeWitness has key, store"));
-
-        assert!(rust_manifest("base64Encode").contains(r#"name = "base64-encode""#));
     }
 
     #[tokio::test]

@@ -30,7 +30,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - TAP command dispatch keeps its large command future on the heap so callers and tests fit the default thread stack.
 - Move Tool scaffolds now use MVR dependencies, a versioned `2024.alpha` manifest like the TAP scaffold, and no `[addresses]` table, so a fresh scaffold builds and runs `nexus tap test`.
-- `nexus tool new` keeps digits attached to Tool names, so `sha256_hash` no longer becomes `sha_256_hash`.
 - Scaffolded files end with exactly one trailing newline.
 
 ## [`2.1.0`] - 2026-09-17
