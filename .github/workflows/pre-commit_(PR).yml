@@ -1,6 +1,7 @@
 name: Pre-commit hook (PR)
 on:
   pull_request:
+  workflow_dispatch:
 
 # Fix for OOM.
 env:
@@ -12,9 +13,14 @@ env:
 
 
 jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect_rust_changes.yml
+
   run-pre-commit:
     name: Run pre-commit hook (PR branch)
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.changed != 'false') }}
     steps:
       - name: Get architecture
         id: get-arch

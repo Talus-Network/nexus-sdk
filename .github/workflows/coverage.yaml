@@ -6,17 +6,11 @@ on:
 
 jobs:
   detect-changes:
-    uses: ./.github/workflows/detect_changes.yml
-    with:
-      files: |
-        cli/**
-        sdk/**
-        toolkit-rust/**
-        walrus/**
+    uses: ./.github/workflows/detect_rust_changes.yml
   coverage:
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: needs.detect-changes.outputs.changed == 'true'
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.changed != 'false') }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
