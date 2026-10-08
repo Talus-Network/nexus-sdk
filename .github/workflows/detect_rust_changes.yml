@@ -1,0 +1,30 @@
+name: Detect Rust Changes
+
+on:
+  workflow_call:
+    outputs:
+      changed:
+        description: Whether Rust build or test inputs changed
+        value: ${{ jobs.detect-changes.outputs.changed }}
+
+jobs:
+  detect-changes:
+    uses: ./.github/workflows/detect_changes.yml
+    with:
+      files: |
+        cli/**
+        sdk/**
+        toolkit-rust/**
+        walrus/**
+        **/*.rs
+        **/Cargo.toml
+        **/Cargo.lock
+        .cargo/**
+        .config/**
+        rust-toolchain*
+        rustfmt.toml
+        .pre-commit/**
+        helpers/**
+        justfile
+        .github/actions/**
+        !**/*.md
