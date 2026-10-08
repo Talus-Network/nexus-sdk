@@ -40,6 +40,7 @@ jobs:
         with:
           toolchain: stable
           override: true
+          rustflags: ""
 
       - name: Verify the tag and release branch
         shell: bash
