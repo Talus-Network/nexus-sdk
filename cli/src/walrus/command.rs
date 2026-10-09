@@ -4,7 +4,7 @@ use {
     super::{
         args::WalrusCommand,
         receipt::{self, atomic_write, read_bounded},
-        settings::{load_conf, Settings},
+        settings::Settings,
         upload::Uploader,
     },
     crate::{
@@ -25,7 +25,7 @@ pub(crate) async fn handle(command: WalrusCommand) -> AnyResult<(), NexusCliErro
 }
 
 async fn run(command: WalrusCommand) -> AnyResult<()> {
-    let mut conf = load_conf().await?;
+    let mut conf = CliConf::load_or_default().await?;
     if let WalrusCommand::Configure {
         epochs,
         aggregator,

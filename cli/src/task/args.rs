@@ -110,7 +110,7 @@ impl TaskArgs {
         } else {
             FailurePolicy::Continue
         });
-        let conf = crate::walrus::load_conf()
+        let conf = CliConf::load_or_default()
             .await
             .map_err(NexusCliError::Any)?;
         let input_json = match self.input_file {

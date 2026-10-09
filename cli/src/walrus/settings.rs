@@ -109,20 +109,6 @@ fn aggregator_for(conf: &DataStorageConf, network: WalrusNetwork) -> AnyResult<S
     Ok(url.to_string())
 }
 
-pub(crate) async fn load_conf() -> AnyResult<CliConf> {
-    match CliConf::load().await {
-        Ok(conf) => Ok(conf),
-        Err(error)
-            if error
-                .downcast_ref::<std::io::Error>()
-                .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound) =>
-        {
-            Ok(CliConf::default())
-        }
-        Err(error) => Err(error),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

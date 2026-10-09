@@ -369,7 +369,13 @@ pub(crate) async fn register_off_chain_tool(
     if !no_save && !caps_to_save.is_empty() {
         let save_handle = loading!("Saving the owner caps to the CLI configuration...");
 
-        let mut conf = CliConf::load().await.unwrap_or_default();
+        let mut conf = match CliConf::load_or_default().await {
+            Ok(conf) => conf,
+            Err(e) => {
+                save_handle.error();
+                return Err(NexusCliError::Any(e));
+            }
+        };
         for (fqn, caps) in caps_to_save {
             conf.tools.insert(fqn, caps);
         }
