@@ -50,7 +50,9 @@ impl CliConf {
         match tokio::fs::read_to_string(path).await {
             Ok(conf) => toml::from_str(&conf).with_context(|| {
                 format!(
-                    "Failed to parse Nexus CLI configuration at {}",
+                    "Failed to parse Nexus CLI configuration at {}.\n\
+                     Fix the file by hand, or move it away to start from a default \
+                     configuration. Run with -v to see the parse error.",
                     path.display()
                 )
             }),
