@@ -10,6 +10,6 @@ pub(crate) use {
     args::{UploadArgs, WalrusCommand},
     command::handle,
     receipt::{print_task_receipt, read_bounded},
-    settings::{load_conf, Settings},
+    settings::Settings,
     upload::Uploader,
 };

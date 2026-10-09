@@ -16,9 +16,9 @@ pub(crate) async fn set_nexus_conf(
     data_storage_testnet: bool,
     conf_path: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
-    let mut conf = CliConf::load_from_path(&conf_path)
+    let mut conf = CliConf::load_from_path_or_default(&conf_path)
         .await
-        .unwrap_or_default();
+        .map_err(NexusCliError::Any)?;
 
     command_title!("Updating Nexus CLI Configuration");
     let conf_handle = loading!("Updating configuration...");
@@ -229,5 +229,28 @@ mod tests {
         .await;
 
         assert_matches!(result, Err(NexusCliError::Any(_)));
+    }
+
+    #[tokio::test]
+    async fn test_unparseable_conf_is_not_overwritten() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let path = tempdir.path().join("conf.toml");
+        let original = "[sui]\nrpc_url = \"https://rpc.example.com\"\nthis is not toml\n";
+        tokio::fs::write(&path, original).await.unwrap();
+
+        let result = set_nexus_conf(
+            None,
+            Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
+            None,
+            None,
+            None,
+            None,
+            false,
+            path.clone(),
+        )
+        .await;
+
+        assert_matches!(result, Err(NexusCliError::Any(_)));
+        assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), original);
     }
 }

@@ -3,21 +3,27 @@ use super::*;
 pub(crate) async fn handle_agent_command(command: AgentCommand) -> AnyResult<(), NexusCliError> {
     match command {
         AgentCommand::Save { name, agent_id } => {
-            let mut conf = CliConf::load().await.unwrap_or_default();
+            let mut conf = CliConf::load_or_default()
+                .await
+                .map_err(NexusCliError::Any)?;
             conf.agents.insert(name.clone(), agent_id);
             conf.save().await.map_err(NexusCliError::Any)?;
             notify_success!("Saved Talus agent alias {name}");
             json_output(&agent_save_result_json(&name, agent_id))
         }
         AgentCommand::List => {
-            let conf = CliConf::load().await.unwrap_or_default();
+            let conf = CliConf::load_or_default()
+                .await
+                .map_err(NexusCliError::Any)?;
             let mut agents = conf.agents.into_iter().collect::<Vec<_>>();
             agents.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
             human_output(&render_agent_list(&agents));
             json_output(&agent_list_result_json(&agents))
         }
         AgentCommand::Remove { name } => {
-            let mut conf = CliConf::load().await.unwrap_or_default();
+            let mut conf = CliConf::load_or_default()
+                .await
+                .map_err(NexusCliError::Any)?;
             let removed = conf.agents.remove(&name);
             conf.save().await.map_err(NexusCliError::Any)?;
             human_output(&render_agent_remove(&name, removed));
@@ -81,5 +87,36 @@ mod tests {
 
         let conf = CliConf::load().await.expect("updated config");
         assert!(!conf.agents.contains_key("primary"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn agent_alias_save_keeps_an_unparseable_configuration_intact() {
+        let temp_home = tempfile::tempdir().expect("temp home");
+        let _env = EnvGuard::with_home(temp_home.path());
+        let conf_path = temp_home.path().join(".nexus").join("conf.toml");
+        tokio::fs::create_dir_all(conf_path.parent().unwrap())
+            .await
+            .unwrap();
+        let original = "[sui]\nrpc_url = \"https://rpc.example.com\"\nbroken =\n";
+        tokio::fs::write(&conf_path, original).await.unwrap();
+
+        let error = handle_agent_command(AgentCommand::Save {
+            name: "primary".to_string(),
+            agent_id: sui::types::Address::from_static("0xa"),
+        })
+        .await
+        .expect_err("an unparseable config must not be replaced");
+
+        assert!(
+            error
+                .to_string()
+                .contains("Failed to parse Nexus CLI configuration"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(&conf_path).await.unwrap(),
+            original
+        );
     }
 }

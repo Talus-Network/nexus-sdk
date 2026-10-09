@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+### `nexus-cli`
+
+#### Fixed
+
+- `conf set`, `tap agent save`/`remove`, and Tool registration no longer replace an existing configuration with defaults when `conf.toml` cannot be read or parsed. The command now fails and leaves the file untouched; only a missing file starts from the default configuration.
+
 ## [`2.1.1`] - 2026-10-07
 
 ### `nexus-sdk`
