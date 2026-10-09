@@ -992,7 +992,13 @@ async fn inspect_expired_walk_in_execution(
     )
     .await?
     {
-        OnchainToolResultState::Committed { .. } => {
+        OnchainToolResultState::Committed { .. }
+        | OnchainToolResultState::InsufficientSettlement {
+            committed_result: Some(_),
+            ..
+        } => {
+            // The marker records an earlier settlement failure. Refilling does
+            // not clear it; current admission must be established by simulation.
             let invocation_ref = fetch_invocation_for_vertex(
                 client,
                 context,
@@ -3985,6 +3991,108 @@ mod tests {
             7
         )
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn historical_funding_marker_allows_reassessment_of_expired_committed_result() {
+        let context = sui_mocks::mock_nexus_context();
+        let execution_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let execution_id = *execution_ref.object_id();
+        let vertex = RuntimeVertex::plain("tool");
+        let committed = committed_tool_result_bcs(
+            vertex.clone(),
+            sui::types::Address::from_static("0xa1"),
+            sui::types::Address::from_static("0xa2"),
+            None,
+            None,
+        );
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut state = sui_mocks::grpc::MockStateService::new();
+        for _ in 0..2 {
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                &mut ledger,
+                execution_id,
+                &crate::move_bindings::type_tag::<execution_move::CommittedToolResultKey>(&context),
+                execution_move::CommittedToolResultKey { walk_index: 7 },
+                committed.clone(),
+            );
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                &mut ledger,
+                execution_id,
+                &crate::move_bindings::type_tag::<
+                    execution_move::ExecutionPaymentInsufficientSettlementFieldKey,
+                >(&context),
+                insufficient_settlement_field_key(),
+                execution_move::ExecutionPaymentInsufficientSettlement { walks: vec![7] },
+            );
+        }
+        let invocation_ref = mock_exact_invocation_lock(
+            &mut ledger,
+            &mut state,
+            &context,
+            &execution_ref,
+            &dag_ref,
+            &vertex,
+            &fqn!("xyz.taluslabs.fixture@1"),
+        );
+        let packages = mock_package_graph(&mut ledger, &context);
+        let rpc = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            state_service_mock: Some(state),
+            package_service_mock: Some(packages),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&context, &rpc).await;
+        let retained = CommittedToolResultView::from(committed);
+        let resolved = ResolvedExecution {
+            context: Arc::new(context.clone()),
+            object: crate::nexus::crawler::Response {
+                object_id: execution_id,
+                owner: sui::types::Owner::Shared(execution_ref.version()),
+                version: execution_ref.version(),
+                digest: *execution_ref.digest(),
+                balance: None,
+                data: dag_execution_bcs(
+                    &execution_ref,
+                    &dag_ref,
+                    pending_settlement_walks(7, vertex.clone()),
+                ),
+            },
+        };
+        let params = ResolveExpiredWalkParams {
+            dag_execution_id: execution_id,
+            walk_index: 7,
+            invocation_id: None,
+        };
+        let early = inspect_expired_walk_in_execution(&client, params.clone(), 1_000, &resolved)
+            .await
+            .expect("unexpired state is observable");
+        assert!(matches!(
+            early.kind,
+            ExpiredWalkResolutionKind::Skipped { .. }
+        ));
+
+        let expired = inspect_expired_walk_in_execution(&client, params, 61_001, &resolved)
+            .await
+            .expect("historical funding failure must not prevent present assessment");
+        assert_eq!(
+            expired.kind,
+            ExpiredWalkResolutionKind::Settled {
+                expected_vertex: vertex,
+                invocation_ref,
+            }
+        );
+        let observed = fetch_onchain_tool_result_state_for_walk(&client, &context, execution_id, 7)
+            .await
+            .expect("committed result remains readable");
+        match observed {
+            OnchainToolResultState::InsufficientSettlement {
+                committed_result: Some(result),
+                ..
+            } => assert_eq!(result, retained),
+            _ => panic!("expected the unchanged committed result and historical marker"),
+        }
     }
 
     #[tokio::test]
