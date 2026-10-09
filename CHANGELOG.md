@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+### `nexus-sdk`
+
+#### Changed
+
+- **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
+- **Breaking:** `EventIngestor::start` reports a connection failure once and closes the receiver. Callers own reconnection, resume from the last delivered checkpoint inclusively, and deduplicate replayed events.
+- Recovery discovery now returns failed reads, invalid responses, and incomplete coverage as errors. Individual requests and stalled response bodies have deadlines, while healthy pagination can continue as its cursor advances.
+
+#### Fixed
+
+- Expired walk inspection now considers committed Tool results preserved behind an earlier insufficient settlement marker. Current simulation determines whether funding permits settlement after a refill.
+- `NexusError` preserves wrapped error sources so callers can identify typed RPC failures and choose the appropriate recovery policy.
+
+#### Removed
+
+- Removed the recovery module's `ListConfig` and `ListEvent` reexports and the `poller_stream_reconnections` metric. Recovery continuation and event reconnection belong to the caller.
+
 ## [`2.1.1`] - 2026-10-07
 
 ### `nexus-sdk`

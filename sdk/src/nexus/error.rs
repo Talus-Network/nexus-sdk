@@ -233,23 +233,23 @@ pub enum NexusError {
     #[error("a private key is required for this operation")]
     MissingPrivateKey,
     #[error("Sui wallet error: {0}")]
-    Wallet(anyhow::Error),
+    Wallet(#[source] anyhow::Error),
     #[error("Client configuration error: {0}")]
     Configuration(String),
     #[error("a gas source is already configured")]
     GasSourceAlreadyConfigured,
     #[error("Transaction building error: {0}")]
-    TransactionBuilding(anyhow::Error),
+    TransactionBuilding(#[source] anyhow::Error),
     #[error("RPC error: {0}")]
-    Rpc(anyhow::Error),
+    Rpc(#[source] anyhow::Error),
     #[error("Parsing error: {0}")]
-    Parsing(anyhow::Error),
+    Parsing(#[source] anyhow::Error),
     #[error("Timeout error: {0}")]
-    Timeout(anyhow::Error),
+    Timeout(#[source] anyhow::Error),
     #[error("Channel error: {0}")]
-    Channel(anyhow::Error),
+    Channel(#[source] anyhow::Error),
     #[error("Storage error: {0}")]
-    Storage(anyhow::Error),
+    Storage(#[source] anyhow::Error),
     /// The connected Sui chain does not match [`crate::types::NexusObjects`].
     #[error("Connected chain '{actual}' does not match configured chain '{expected}'")]
     ChainMismatch { expected: String, actual: String },
@@ -299,10 +299,24 @@ impl From<TransactionError> for NexusError {
 #[cfg(test)]
 mod tests {
     use {
-        super::{TransactionError, TransactionErrorState},
+        super::{NexusError, TransactionError, TransactionErrorState},
         crate::sui,
         std::time::Duration,
     };
+
+    #[test]
+    fn contextual_rpc_error_retains_its_typed_cause() {
+        let error = anyhow::Error::new(NexusError::from_rpc(
+            anyhow::Error::new(tonic::Status::unavailable("endpoint unavailable"))
+                .context("reading execution state"),
+        ))
+        .context("planning work");
+        let status = error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<tonic::Status>())
+            .expect("callers must be able to classify the transport observation");
+        assert_eq!(status.code(), tonic::Code::Unavailable);
+    }
 
     #[test]
     fn submission_unknown_retains_transaction_identity() {
