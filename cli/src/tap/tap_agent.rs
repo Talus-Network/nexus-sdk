@@ -91,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    async fn agent_alias_save_keeps_an_unparseable_configuration_intact() {
+    async fn agent_alias_save_keeps_an_unparsable_configuration_intact() {
         let temp_home = tempfile::tempdir().expect("temp home");
         let _env = EnvGuard::with_home(temp_home.path());
         let conf_path = temp_home.path().join(".nexus").join("conf.toml");
@@ -106,7 +106,7 @@ mod tests {
             agent_id: sui::types::Address::from_static("0xa"),
         })
         .await
-        .expect_err("an unparseable config must not be replaced");
+        .expect_err("an unparsable config must not be replaced");
 
         assert!(
             error

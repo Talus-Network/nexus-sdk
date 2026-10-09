@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_unparseable_conf_is_not_overwritten() {
+    async fn test_unparsable_conf_is_not_overwritten() {
         let tempdir = tempfile::tempdir().unwrap();
         let path = tempdir.path().join("conf.toml");
         let original = "[sui]\nrpc_url = \"https://rpc.example.com\"\nthis is not toml\n";

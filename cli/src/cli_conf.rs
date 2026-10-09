@@ -36,7 +36,7 @@ impl CliConf {
     /// not exist yet.
     ///
     /// Commands that modify and then save the configuration must use this
-    /// rather than `load().unwrap_or_default()`: an unreadable or unparseable
+    /// rather than `load().unwrap_or_default()`: an unreadable or unparsable
     /// file is an error here, so a typo in `conf.toml` can never be replaced by
     /// a default configuration on the next save.
     pub(crate) async fn load_or_default() -> AnyResult<Self> {
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn load_from_path_or_default_rejects_an_unparseable_file() {
+    async fn load_from_path_or_default_rejects_an_unparsable_file() {
         let tempdir = tempfile::tempdir().unwrap();
         let path = tempdir.path().join("conf.toml");
         tokio::fs::write(&path, "[sui]\nrpc_url = \n")
