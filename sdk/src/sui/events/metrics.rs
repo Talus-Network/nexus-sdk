@@ -1,11 +1,4 @@
 lazy_static::lazy_static! {
-    pub(super) static ref STREAM_RECONNECTIONS: prometheus::Counter =
-        prometheus::register_counter!(
-            "poller_stream_reconnections",
-            "Number of event stream reconnections"
-        )
-        .unwrap();
-
     pub(super) static ref REPLAY_REQUESTS: prometheus::Counter =
         prometheus::register_counter!(
             "poller_event_replay_requests",

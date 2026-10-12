@@ -1,8 +1,5 @@
 use {
-    super::{
-        driver::{MIN_REPLAY_RANGE_CHECKPOINTS, RECONNECT_DELAY},
-        *,
-    },
+    super::{driver::MIN_REPLAY_RANGE_CHECKPOINTS, *},
     crate::{sui, test_utils::sui_mocks},
     futures::StreamExt as _,
     std::sync::{
@@ -48,10 +45,13 @@ async fn partial_replay_is_bounded_and_restarts_the_incomplete_range() {
         move |request| {
             let request = request.into_inner();
             // An emitted page at checkpoint 300 does not complete this range.
-            assert_eq!(request.start_checkpoint, Some(0));
+            let first_attempt = attempts.fetch_add(1, Ordering::SeqCst) == 0;
+            assert_eq!(
+                request.start_checkpoint,
+                Some(if first_attempt { 0 } else { 300 })
+            );
             assert_eq!(request.end_checkpoint, Some(512));
             assert!(request.options().after.is_none());
-            let first_attempt = attempts.fetch_add(1, Ordering::SeqCst) == 0;
             let count = if first_attempt { 64 } else { 193 };
             let events = futures::stream::iter((0..count).map(|index: u32| {
                 let mut frame = sui::grpc::ListEventsResponse::default();
@@ -103,6 +103,16 @@ async fn partial_replay_is_bounded_and_restarts_the_incomplete_range() {
         assert_eq!(first.checkpoint, 300);
         delivered.notify_one();
         assert!(pages.recv().await.unwrap().is_err());
+        assert!(pages.recv().await.is_none());
+        pages = EventIngestor::new(
+            &rpc_url,
+            RawEventQuery::new(
+                sui::grpc::EventFilter::default(),
+                sui::grpc::FieldMask::from_paths(["contents"]),
+            ),
+        )
+        .start(Some(first.checkpoint))
+        .unwrap();
         let mut indices = Vec::new();
         loop {
             let page = pages.recv().await.unwrap().unwrap();
@@ -797,7 +807,7 @@ async fn replay_gap_recovery_reports_the_gap_and_resumes_live() {
 }
 
 #[tokio::test]
-async fn reconnect_replays_from_the_last_inclusive_checkpoint() {
+async fn caller_can_resume_from_the_last_inclusive_checkpoint() {
     let mut first_event = sui::grpc::Event::default();
     first_event.set_checkpoint(10);
     first_event.set_transaction_digest(sui::types::Digest::ZERO);
@@ -879,7 +889,19 @@ async fn reconnect_replays_from_the_last_inclusive_checkpoint() {
                 Ok(page) if !page.events.is_empty() => {
                     checkpoints.push(page.checkpoint);
                 }
-                Ok(_) | Err(_) => {}
+                Ok(_) => {}
+                Err(_) => {
+                    assert!(pages.recv().await.is_none());
+                    pages = EventIngestor::new(
+                        &rpc_url,
+                        RawEventQuery::new(
+                            sui::grpc::EventFilter::default(),
+                            sui::grpc::FieldMask::default(),
+                        ),
+                    )
+                    .start(checkpoints.last().copied())
+                    .unwrap();
+                }
             }
         }
     })
@@ -1002,7 +1024,7 @@ async fn permanent_rpc_failure_is_terminal() {
 }
 
 #[tokio::test]
-async fn cancellation_stops_blocked_error_delivery() {
+async fn transient_failure_is_reported_once_without_reconnecting() {
     let subscription_calls = Arc::new(AtomicUsize::new(0));
     let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
     subscription.expect_subscribe_events().returning({
@@ -1028,29 +1050,14 @@ async fn cancellation_stops_blocked_error_delivery() {
         .start(None)
         .expect("ingestor should start");
 
-    timeout(Duration::from_secs(2), async {
-        while subscription_calls.load(Ordering::SeqCst) < 2 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("ingestor did not attempt to reconnect");
-    tokio::time::sleep(RECONNECT_DELAY * 2).await;
-    cancellation_token.cancel();
-    timeout(Duration::from_secs(2), async {
-        while !pages.is_closed() {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("cancellation did not stop error delivery");
-
     assert!(pages.recv().await.unwrap().is_err());
     assert!(pages.recv().await.is_none());
+    assert_eq!(subscription_calls.load(Ordering::SeqCst), 1);
+    cancellation_token.cancel();
 }
 
 #[tokio::test]
-async fn dropping_the_receiver_stops_reconnection() {
+async fn dropping_the_receiver_stops_ingestion() {
     let subscription_calls = Arc::new(AtomicUsize::new(0));
     let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
     subscription.expect_subscribe_events().returning({
@@ -1078,7 +1085,7 @@ async fn dropping_the_receiver_stops_reconnection() {
 
     assert!(pages.recv().await.unwrap().is_err());
     drop(pages);
-    tokio::time::sleep(RECONNECT_DELAY * 4).await;
+    tokio::task::yield_now().await;
 
     assert_eq!(subscription_calls.load(Ordering::SeqCst), 1);
 }

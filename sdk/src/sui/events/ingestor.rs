@@ -86,23 +86,6 @@ impl EventIngestionError {
     pub(super) fn is_replay_gap(&self) -> bool {
         matches!(self, Self::ReplayGap { .. })
     }
-
-    pub(super) fn is_retryable(&self) -> bool {
-        let Self::Rpc { status, .. } = self else {
-            return false;
-        };
-
-        matches!(
-            status.code(),
-            tonic::Code::Cancelled
-                | tonic::Code::Unknown
-                | tonic::Code::DeadlineExceeded
-                | tonic::Code::ResourceExhausted
-                | tonic::Code::Aborted
-                | tonic::Code::Internal
-                | tonic::Code::Unavailable
-        )
-    }
 }
 
 /// Source phase for one event page.
@@ -267,7 +250,11 @@ impl<Q: EventQuery> EventIngestor<Q> {
         Ok(None)
     }
 
-    /// Starts ingestion from an inclusive checkpoint.
+    /// Starts one connection from an inclusive checkpoint.
+    ///
+    /// Failures are delivered once and close the receiver. The caller decides
+    /// whether to reconnect, using the last delivered checkpoint inclusively
+    /// and deduplicating replayed events.
     ///
     /// Passing [`None`] starts at the current stream position.
     ///

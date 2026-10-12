@@ -80,19 +80,23 @@ admission policy and does not imply that an individual read has already failed.
 
 ## Recovery reads
 
-Create a `nexus::recovery::RecoveryReader` with the RPC URL and a `ListConfig` policy. The reader shares that policy across window selection, transaction discovery, metadata, and application reads. Existing `RecoveryWindow` and `discover_work_objects` entry points use the same reader with the Sui client's defaults.
+Create a `nexus::recovery::RecoveryReader` with the RPC URL. Window selection, transaction discovery, metadata, and application reads return their observations to the caller. The caller owns continuation policy and attempt history.
 
-Transaction discovery uses the Sui client's resumable List API and lets the server choose its request size. Transport deadlines bound individual RPCs and stalled response bodies; recovery has no overall read deadline. Checkpoint searches retain their bounds when a read fails. Completed scan ranges and metadata batches are retained while other reads recover.
+Transaction discovery lets the server choose its request size. A 30 second deadline bounds each RPC and stalled response body. Healthy pagination may continue while the page cursor advances; there is no overall deadline that discards healthy progress. A failure returns an error instead of reconnecting inside the SDK.
 
-Recovery accepts a frame only after validating its full payload, and commits its IDs and resume cursor together. A scan completes only at its requested checkpoint bound. An earlier ledger tip, missing history, invalid response, or failed read leaves recovery pending. `RecoveryReader::read` applies the configured retry delays to application reads; its callback must validate its result and must not perform mutations. Retry delays use the policy's initial delay, maximum exponential delay, and additive jitter. List observers can report transport retries and resumed progress.
+Recovery accepts a frame only after validating its full payload. A scan completes only at its requested checkpoint bound. An earlier ledger tip, missing history, invalid response, or failed read returns an error. `RecoveryReader::read` runs its callback once under a deadline; the callback must validate its result and must not perform mutations. A failed scan does not return partial coverage as success.
 
 Callers can cancel by dropping the recovery future or selecting it against a cancellation signal. Keep readiness disabled until recovery completes. Persistent coverage or response problems need correction before recovery can finish; the reader never reports a partial inventory as success.
+
+`EventIngestor::start` likewise opens one connection and reports its failure once. A caller that decides to reconnect supplies its last delivered checkpoint inclusively and deduplicates replayed events. Opening a connection or receiving duplicate history does not prove restored progress.
 
 ## Execution recovery
 
 `sui::grpc::with_read_retry_until` gives concurrent crawler preparation one observation deadline. Only failed transport reads repeat; completed sibling reads remain available. End the scope before an external effect, or use `without_read_retry` around that effect. Dropping preparation cancels reads and backoff. `set_retry_request_budget` bounds recovery requests across every pooled client for an endpoint. Ordinary requests bypass this budget; `with_retry_budget` applies it to an existing recovery attempt without replaying requests or changing transaction identity.
 
 `OccurrenceHandle::resolve_expired` inspects current chain state, settles available results, refunds eligible invocations by exact identity, and settles a finished occurrence into its Task. It returns confirmed resolutions and the final observed occurrence, including work still awaiting eligibility. Repeating recovery after settlement performs no mutation. Independent executions remain concurrent. `cost().outstanding_invocation_ids()` exposes unresolved locks for inspection. The existing `abort_expired(Some(id))` operation remains available for a specific invocation.
+
+An insufficient settlement marker records an earlier shortfall. It does not erase the committed result, and refilling does not clear that marker. Exact walk inspection therefore still proposes settlement of a preserved result; current simulation establishes whether funding now permits it. Expiry enables permissionless recovery and does not prohibit refilling.
 
 ## Signed HTTP (Leader nodes <-> Tools)
 

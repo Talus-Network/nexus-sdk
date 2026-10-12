@@ -22,7 +22,7 @@ enum ReplayFrame<T> {
 
 const REPLAY_PAGE_EVENTS: usize = 64;
 
-const INDEX_PROGRESS_DELAY: Duration = Duration::from_millis(50);
+const OBSERVATION_TIMEOUT: Duration = Duration::from_secs(30);
 // Sui clamps this request to the endpoint's supported maximum. Asking for the
 // current maximum avoids restarting a stream after every default 50 items.
 const REPLAY_REQUEST_LIMIT: u32 = 1_000;
@@ -32,11 +32,6 @@ const REPLAY_REQUEST_LIMIT: u32 = 1_000;
 pub(super) const MIN_REPLAY_RANGE_CHECKPOINTS: u64 = 512;
 const MAX_REPLAY_RANGE_CHECKPOINTS: u64 = 4_096;
 const REPLAY_RANGE_WAVES: u64 = 2;
-#[cfg(not(test))]
-pub(super) const RECONNECT_DELAY: Duration = Duration::from_secs(2);
-#[cfg(test)]
-pub(super) const RECONNECT_DELAY: Duration = Duration::from_millis(10);
-
 impl<Q: EventQuery> EventIngestor<Q> {
     pub(super) async fn run(
         self,
@@ -46,27 +41,15 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let mut resume_checkpoint = from_checkpoint;
         let mut highest_output_checkpoint = None;
 
-        loop {
-            match self
-                .run_connection(
-                    &mut resume_checkpoint,
-                    &mut highest_output_checkpoint,
-                    &send_page,
-                )
-                .await
-            {
-                Ok(()) => return,
-                Err(error) => {
-                    let should_reconnect = error.is_retryable();
-                    if !self.send_error(error, &send_page).await
-                        || !should_reconnect
-                        || !self.wait(RECONNECT_DELAY, &send_page).await
-                    {
-                        return;
-                    }
-                    STREAM_RECONNECTIONS.inc();
-                }
-            }
+        if let Err(error) = self
+            .run_connection(
+                &mut resume_checkpoint,
+                &mut highest_output_checkpoint,
+                &send_page,
+            )
+            .await
+        {
+            self.send_error(error, &send_page).await;
         }
     }
 
@@ -90,7 +73,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let response = tokio::select! {
             _ = self.cancellation_token.cancelled() => return Ok(()),
             _ = send_page.closed() => return Ok(()),
-            response = subscription_client.subscribe_events(request) => response,
+            response = observe(subscription_client.subscribe_events(request)) => response,
         }
         .map_err(|status| EventIngestionError::rpc("subscribing to events", status))?;
         let mut stream = response.into_inner();
@@ -98,7 +81,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let first = tokio::select! {
             _ = self.cancellation_token.cancelled() => return Ok(()),
             _ = send_page.closed() => return Ok(()),
-            response = stream.try_next() => response,
+            response = observe(stream.try_next()) => response,
         }
         .map_err(|status| EventIngestionError::rpc("establishing the event stream", status))?
         .ok_or_else(|| {
@@ -175,7 +158,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
             let response = tokio::select! {
                 _ = self.cancellation_token.cancelled() => return Ok(()),
                 _ = send_page.closed() => return Ok(()),
-                response = stream.try_next() => response,
+                response = observe(stream.try_next()) => response,
             }
             .map_err(|status| EventIngestionError::rpc("receiving an event stream frame", status))?
             .ok_or_else(|| {
@@ -329,6 +312,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let mut event_count = 0;
 
         loop {
+            let page_start = after_cursor.clone();
             let mut options = sui::grpc::QueryOptions::default()
                 .with_limit(REPLAY_REQUEST_LIMIT)
                 .with_ordering(sui::grpc::Ordering::Ascending);
@@ -346,7 +330,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
             let response = tokio::select! {
                 _ = self.cancellation_token.cancelled() => return Ok(false),
                 _ = send_page.closed() => return Ok(false),
-                response = ledger_client.list_events(request) => response,
+                response = observe(ledger_client.list_events(request)) => response,
             }
             .map_err(|status| {
                 EventIngestionError::replay_rpc(start_checkpoint, "requesting event replay", status)
@@ -357,7 +341,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 let frame = tokio::select! {
                     _ = self.cancellation_token.cancelled() => return Ok(false),
                     _ = send_page.closed() => return Ok(false),
-                    frame = response.try_next() => frame,
+                    frame = observe(response.try_next()) => frame,
                 }
                 .map_err(|status| {
                     EventIngestionError::replay_rpc(
@@ -426,11 +410,18 @@ impl<Q: EventQuery> EventIngestor<Q> {
                         .send_range_frame(ReplayFrame::Complete, output, send_page)
                         .await);
                 }
-                sui::grpc::QueryEndReason::ItemLimit | sui::grpc::QueryEndReason::ScanLimit => {}
-                sui::grpc::QueryEndReason::LedgerTip => {
-                    if !self.wait(INDEX_PROGRESS_DELAY, send_page).await {
-                        return Ok(false);
+                sui::grpc::QueryEndReason::ItemLimit | sui::grpc::QueryEndReason::ScanLimit => {
+                    if after_cursor == page_start {
+                        return Err(EventIngestionError::Protocol(
+                            "event replay cursor did not advance".to_owned(),
+                        ));
                     }
+                }
+                sui::grpc::QueryEndReason::LedgerTip => {
+                    return Err(EventIngestionError::rpc(
+                        "replaying events through the requested bound",
+                        tonic::Status::unavailable("event index has not reached the replay bound"),
+                    ));
                 }
                 reason => {
                     return Err(EventIngestionError::Protocol(format!(
@@ -474,6 +465,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let mut after_cursor: Option<Vec<u8>> = None;
 
         loop {
+            let page_start = after_cursor.clone();
             let mut options = sui::grpc::QueryOptions::default()
                 .with_limit(REPLAY_REQUEST_LIMIT)
                 .with_ordering(sui::grpc::Ordering::Ascending);
@@ -497,7 +489,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
             let response = tokio::select! {
                 _ = self.cancellation_token.cancelled() => return Ok(false),
                 _ = send_page.closed() => return Ok(false),
-                response = ledger_client.list_events(request) => response,
+                response = observe(ledger_client.list_events(request)) => response,
             }
             .map_err(|status| {
                 EventIngestionError::replay_rpc(start_checkpoint, "requesting event replay", status)
@@ -508,7 +500,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 let response = tokio::select! {
                     _ = self.cancellation_token.cancelled() => return Ok(false),
                     _ = send_page.closed() => return Ok(false),
-                    response = stream.try_next() => response,
+                    response = observe(stream.try_next()) => response,
                 }
                 .map_err(|status| {
                     EventIngestionError::replay_rpc(
@@ -552,11 +544,18 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 | sui::grpc::QueryEndReason::CheckpointBound => {
                     return Ok(true);
                 }
-                sui::grpc::QueryEndReason::ItemLimit | sui::grpc::QueryEndReason::ScanLimit => {}
-                sui::grpc::QueryEndReason::LedgerTip => {
-                    if !self.wait(INDEX_PROGRESS_DELAY, send_page).await {
-                        return Ok(false);
+                sui::grpc::QueryEndReason::ItemLimit | sui::grpc::QueryEndReason::ScanLimit => {
+                    if after_cursor == page_start {
+                        return Err(EventIngestionError::Protocol(
+                            "event replay cursor did not advance".to_owned(),
+                        ));
                     }
+                }
+                sui::grpc::QueryEndReason::LedgerTip => {
+                    return Err(EventIngestionError::rpc(
+                        "replaying events through the requested bound",
+                        tonic::Status::unavailable("event index has not reached the replay bound"),
+                    ));
                 }
                 reason => {
                     return Err(EventIngestionError::Protocol(format!(
@@ -701,18 +700,6 @@ impl<Q: EventQuery> EventIngestor<Q> {
         sent
     }
 
-    async fn wait(
-        &self,
-        duration: Duration,
-        send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
-    ) -> bool {
-        tokio::select! {
-            _ = self.cancellation_token.cancelled() => false,
-            _ = send_page.closed() => false,
-            _ = tokio::time::sleep(duration) => true,
-        }
-    }
-
     fn response_cursor(
         watermark: Option<&sui::grpc::Watermark>,
     ) -> Result<&[u8], EventIngestionError> {
@@ -738,4 +725,17 @@ fn replay_range_checkpoints(start: u64, end: u64, concurrency: usize) -> u64 {
     checkpoints
         .div_ceil(target_ranges)
         .clamp(MIN_REPLAY_RANGE_CHECKPOINTS, MAX_REPLAY_RANGE_CHECKPOINTS)
+}
+
+/// A stalled transport is an observation for the caller, not a reconnect policy.
+async fn observe<T>(
+    future: impl std::future::Future<Output = Result<T, tonic::Status>>,
+) -> Result<T, tonic::Status> {
+    tokio::time::timeout(OBSERVATION_TIMEOUT, future)
+        .await
+        .unwrap_or_else(|_| {
+            Err(tonic::Status::deadline_exceeded(
+                "event observation timed out",
+            ))
+        })
 }
