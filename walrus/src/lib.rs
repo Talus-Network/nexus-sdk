@@ -253,7 +253,7 @@ impl WalrusStorage {
             )
             .await?;
         let blob_type = self.blob_type()?;
-        let blob = response.objects().objects().iter().filter_map(|object| decode_blob(object, &blob_type).ok())
+        let blob = response.objects().objects().iter().filter_map(|object| decode_blob(object, &blob_type, self.wallet.owner()).ok())
             .find(|blob| blob.blob_id.to_string() == registration.blob_id)
             .context("registration completed without the expected Blob object; retain the transaction for recovery")?;
         Ok(PendingUpload {
@@ -461,12 +461,7 @@ impl WalrusStorage {
                 .await?
                 .into_inner();
             for object in &response.objects {
-                let decoded = sui::types::Object::try_from(object)?;
-                ensure!(
-                    decoded.owner() == &sui::types::Owner::Address(self.wallet.owner()),
-                    "owned object response has a different owner"
-                );
-                let blob = decode_blob(object, &blob_type)?;
+                let blob = decode_blob(object, &blob_type, self.wallet.owner())?;
                 if include_expired || blob.storage.end_epoch > current_epoch {
                     result.push(BlobStatus {
                         blob_id: blob.blob_id.to_string(),
@@ -517,17 +512,13 @@ impl WalrusStorage {
             .as_ref()
             .clone()
             .ledger_client()
-            .get_object(sui::grpc::GetObjectRequest::new(&id).with_read_mask(
-                sui::grpc::FieldMask::from_paths(["bcs", "owner", "object_type", "contents"]),
-            ))
+            .get_object(
+                sui::grpc::GetObjectRequest::new(&id)
+                    .with_read_mask(sui::grpc::FieldMask::from_paths(["bcs"])),
+            )
             .await?
             .into_inner();
-        let object = sui::types::Object::try_from(response.object())?;
-        ensure!(
-            object.owner() == &sui::types::Owner::Address(self.wallet.owner()),
-            "active wallet does not own this Blob object"
-        );
-        decode_blob(response.object(), &self.blob_type()?)
+        decode_blob(response.object(), &self.blob_type()?, self.wallet.owner())
     }
 
     async fn submit(
@@ -546,8 +537,18 @@ impl WalrusStorage {
 fn decode_blob(
     object: &sui::grpc::Object,
     blob_type: &sui::types::StructTag,
+    owner: sui::types::Address,
 ) -> anyhow::Result<Blob> {
-    let object = sui::types::Object::try_from(object)?;
+    let object: sui::types::Object = object
+        .bcs
+        .as_ref()
+        .context("Sui response omitted object BCS")?
+        .deserialize()
+        .context("Invalid Sui object BCS")?;
+    ensure!(
+        object.owner() == &sui::types::Owner::Address(owner),
+        "active wallet does not own this Blob object"
+    );
     let data = object.as_struct().context("expected a Move object")?;
     ensure!(
         data.object_type() == blob_type,
@@ -608,6 +609,113 @@ async fn finish_ptb(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const OWNER: sui::types::Address = sui::types::Address::TWO;
+
+    fn blob_fixture() -> (sui::grpc::Object, Blob, sui::types::StructTag) {
+        let blob = Blob {
+            id: "0x42".parse().unwrap(),
+            registered_epoch: 2,
+            blob_id: walrus_sdk::core::BlobId([7; 32]),
+            size: 1234,
+            encoding_type: DEFAULT_ENCODING,
+            certified_epoch: Some(2),
+            storage: walrus_sui::types::move_structs::StorageResource {
+                id: "0x43".parse().unwrap(),
+                start_epoch: 2,
+                end_epoch: 5,
+                storage_size: 2048,
+            },
+            deletable: true,
+        };
+        // Blob's serializer renders its ID as text; Move stores the raw bytes.
+        let contents = bcs::to_bytes(&(
+            blob.id,
+            blob.registered_epoch,
+            blob.blob_id,
+            blob.size,
+            blob.encoding_type,
+            blob.certified_epoch,
+            &blob.storage,
+            blob.deletable,
+        ))
+        .unwrap();
+        let blob_type: sui::types::StructTag = "0x42::blob::Blob".parse().unwrap();
+        let object = sui::types::Object::new(
+            sui::types::ObjectData::Struct(
+                sui::types::MoveStruct::new(blob_type.clone(), true, 1, contents).unwrap(),
+            ),
+            sui::types::Owner::Address(OWNER),
+            sui::types::Digest::ZERO,
+            0,
+        );
+        (
+            sui::grpc::Object::default().with_bcs(sui::grpc::Bcs::serialize(&object).unwrap()),
+            blob,
+            blob_type,
+        )
+    }
+
+    #[test]
+    fn decodes_blob_from_bcs_without_projected_fields() {
+        let (object, blob, blob_type) = blob_fixture();
+        assert!(object.owner.is_none());
+        assert!(object.object_type.is_none());
+        assert!(object.contents.is_none());
+        assert_eq!(decode_blob(&object, &blob_type, OWNER).unwrap(), blob);
+    }
+
+    #[test]
+    fn rejects_missing_or_invalid_object_bcs() {
+        let (_, _, blob_type) = blob_fixture();
+        let missing = sui::grpc::Object::default();
+        assert_eq!(
+            decode_blob(&missing, &blob_type, OWNER)
+                .unwrap_err()
+                .to_string(),
+            "Sui response omitted object BCS"
+        );
+        for bcs in [
+            sui::grpc::Bcs::default(),
+            sui::grpc::Bcs::default().with_value(vec![255]),
+        ] {
+            let object = sui::grpc::Object::default().with_bcs(bcs);
+            assert_eq!(
+                decode_blob(&object, &blob_type, OWNER)
+                    .unwrap_err()
+                    .to_string(),
+                "Invalid Sui object BCS"
+            );
+        }
+    }
+
+    #[test]
+    fn validates_owner_from_bcs() {
+        let (mut object, _, blob_type) = blob_fixture();
+        let different_owner = sui::types::Address::ZERO;
+        object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Address(
+            different_owner,
+        )));
+        assert_eq!(
+            decode_blob(&object, &blob_type, different_owner)
+                .unwrap_err()
+                .to_string(),
+            "active wallet does not own this Blob object"
+        );
+    }
+
+    #[test]
+    fn validates_blob_type_from_bcs() {
+        let (mut object, _, _) = blob_fixture();
+        let different_type: sui::types::StructTag = "0x43::blob::Blob".parse().unwrap();
+        object.set_object_type(different_type.to_string());
+        assert_eq!(
+            decode_blob(&object, &different_type, OWNER)
+                .unwrap_err()
+                .to_string(),
+            "expected a Walrus Blob object"
+        );
+    }
 
     #[test]
     fn quotes_round_storage_units_and_reject_overflow() {
