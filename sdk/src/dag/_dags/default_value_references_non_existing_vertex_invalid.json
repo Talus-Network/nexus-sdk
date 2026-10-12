@@ -1,0 +1,20 @@
+{
+  "default_values": [
+    {
+      "vertex": "b",
+      "input_port": "input",
+      "value": { "one": { "kind": "data", "data": 1 } }
+    }
+  ],
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a",
+      "entry_ports": [{ "name": "input" }]
+    }
+  ],
+  "edges": []
+}

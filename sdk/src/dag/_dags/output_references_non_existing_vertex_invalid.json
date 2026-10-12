@@ -1,0 +1,20 @@
+{
+  "outputs": [
+    {
+      "vertex": "b",
+      "output_variant": "ok",
+      "output_port": "output"
+    }
+  ],
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "com.test.test@1"
+      },
+      "name": "a",
+      "entry_ports": [{ "name": "input" }]
+    }
+  ],
+  "edges": []
+}

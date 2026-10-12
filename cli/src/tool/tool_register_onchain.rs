@@ -292,7 +292,13 @@ async fn save_tool_owner_caps(
 ) -> AnyResult<(), NexusCliError> {
     let save_handle = loading!("Saving the owner caps to the CLI configuration...");
 
-    let mut conf = CliConf::load().await.unwrap_or_default();
+    let mut conf = match CliConf::load_or_default().await {
+        Ok(conf) => conf,
+        Err(e) => {
+            save_handle.error();
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
     conf.tools.insert(
         fqn,
