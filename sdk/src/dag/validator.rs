@@ -406,6 +406,18 @@ fn try_into_graph(dag: &DagSpec) -> AnyResult<GraphAndVertexEntryGroups> {
                 vertex_entry_groups.insert(vertex_ident, groups);
             }
         }
+
+        // Entry ports are only published for entry group members, so the
+        // ports of a vertex outside every group would be dropped silently.
+        for vertex in &dag.vertices {
+            let vertex_ident = GraphNode::Vertex {
+                name: vertex.name.clone(),
+            };
+
+            if !vertex.entry_ports.is_empty() && !vertex_entry_groups.contains_key(&vertex_ident) {
+                bail!("'{vertex_ident}' has entry ports but is not a member of any entry group.");
+            }
+        }
     } else {
         // If there are no entry groups, all vertices that have entry ports
         // specified are part of the default entry group.
@@ -830,6 +842,18 @@ mod tests {
         let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
+    }
+
+    #[test]
+    fn test_entry_groups_unlisted_entry_ports_invalid() {
+        let dag = parse(include_str!(
+            "_dags/entry_groups_unlisted_entry_ports_invalid.json"
+        ))
+        .unwrap();
+
+        let res = validate(&dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' has entry ports but is not a member of any entry group."));
     }
 
     #[test]
