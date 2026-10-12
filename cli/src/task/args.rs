@@ -403,18 +403,16 @@ impl FundingArgs {
 
 /// Arguments that form a complete nonempty Schedule.
 #[derive(Args, Clone, Debug)]
-#[group(
-    id = "schedule_source",
-    required = true,
-    multiple = true,
-    args = [
+#[command(group = clap::ArgGroup::new("schedule_source")
+    .required(true)
+    .multiple(true)
+    .args([
         "schedule_file",
         "now",
         "at_ms",
         "after_ms",
         "recurrence_interval_ms"
-    ]
-)]
+    ]))]
 #[command(group = clap::ArgGroup::new("standalone_source")
     .args(["now", "at_ms", "after_ms"])
     .multiple(true))]
@@ -637,12 +635,8 @@ impl ScheduleArgs {
 
 /// Arguments defining one occurrence.
 #[derive(Args, Clone, Debug)]
-#[group(
-    id = "occurrence_start",
-    required = false,
-    multiple = false,
-    args = ["now", "at_ms", "after_ms"]
-)]
+#[command(group = clap::ArgGroup::new("occurrence_start")
+    .args(["now", "at_ms", "after_ms"]))]
 pub(crate) struct OccurrenceArgs {
     #[arg(
         long,
@@ -1131,6 +1125,54 @@ mod tests {
                     .await
                     .is_err()
             );
+        }
+    }
+
+    #[test]
+    fn occurrence_start_accepts_deadlines_and_priority_fees() {
+        let starts: &[&[&str]] = &[
+            &[],
+            &["--now"],
+            &["--at-ms", "1000"],
+            &["--after-ms", "1000"],
+        ];
+        for start in starts {
+            for deadline in ["--deadline-at-ms", "--deadline-after-ms"] {
+                let args = ["task"].into_iter().chain(start.iter().copied()).chain([
+                    deadline,
+                    "2000",
+                    "--priority-fee-percentage",
+                    "30",
+                ]);
+                OccurrenceArgs::augment_args(clap::Command::new("task"))
+                    .try_get_matches_from(args.clone())
+                    .expect("an occurrence should accept a start, deadline, and fee together");
+                RecurrenceArgs::augment_args(clap::Command::new("task"))
+                    .try_get_matches_from(args.chain(["--interval-ms", "60000"]))
+                    .expect("a recurrence should accept a start, deadline, and fee together");
+            }
+        }
+    }
+
+    #[test]
+    fn occurrence_rejects_conflicting_starts_and_deadlines() {
+        let conflicts: &[&[&str]] = &[
+            &["--now", "--at-ms", "1000"],
+            &["--now", "--after-ms", "1000"],
+            &["--at-ms", "1000", "--after-ms", "1000"],
+            &["--deadline-at-ms", "2000", "--deadline-after-ms", "1000"],
+        ];
+        for conflict in conflicts {
+            let args = ["task"].into_iter().chain(conflict.iter().copied());
+            for result in [
+                OccurrenceArgs::augment_args(clap::Command::new("task"))
+                    .try_get_matches_from(args.clone()),
+                RecurrenceArgs::augment_args(clap::Command::new("task"))
+                    .try_get_matches_from(args.chain(["--interval-ms", "60000"])),
+            ] {
+                let error = result.expect_err("conflicting timing options must be rejected");
+                assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+            }
         }
     }
 
