@@ -23,6 +23,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Removed the recovery module's `ListConfig` and `ListEvent` reexports and the `poller_stream_reconnections` metric. Recovery continuation and event reconnection belong to the caller.
 
+### `nexus-cli`
+
+#### Fixed
+
+- Fixed CLI argument validation incorrectly rejecting valid combinations of occurrence start, deadline, and priority fee options.
+
 ## [`2.1.1`] - 2026-10-07
 
 ### `nexus-sdk`
