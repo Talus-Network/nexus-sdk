@@ -1,5 +1,6 @@
 use {
     crate::prelude::*,
+    anyhow::Context as _,
     nexus_sdk::{sui, types::SecretValue},
 };
 
@@ -29,6 +30,38 @@ impl CliConf {
         let conf = tokio::fs::read_to_string(path).await?;
 
         Ok(toml::from_str(&conf)?)
+    }
+
+    /// Loads the configuration, starting from defaults only when the file does
+    /// not exist yet.
+    ///
+    /// Commands that modify and then save the configuration must use this
+    /// rather than `load().unwrap_or_default()`: an unreadable or unparsable
+    /// file is an error here, so a typo in `conf.toml` can never be replaced by
+    /// a default configuration on the next save.
+    pub(crate) async fn load_or_default() -> AnyResult<Self> {
+        let conf_path = cli_conf_path()?;
+
+        Self::load_from_path_or_default(&conf_path).await
+    }
+
+    /// Path-explicit variant of [`CliConf::load_or_default`].
+    pub(crate) async fn load_from_path_or_default(path: &PathBuf) -> AnyResult<Self> {
+        match tokio::fs::read_to_string(path).await {
+            Ok(conf) => toml::from_str(&conf).with_context(|| {
+                format!(
+                    "Failed to parse Nexus CLI configuration at {}.\n\
+                     Fix the file by hand, or move it away to start from a default \
+                     configuration. Run with -v to see the parse error.",
+                    path.display()
+                )
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(AnyError::new(error).context(format!(
+                "Failed to read Nexus CLI configuration at {}",
+                path.display()
+            ))),
+        }
     }
 
     pub(crate) async fn save(&self) -> AnyResult<()> {
@@ -109,4 +142,59 @@ pub(crate) struct DataStorageConf {
     pub(crate) walrus_save_for_epochs: Option<u8>,
     /// What is the preferred remote storage backend?
     pub(crate) preferred_remote_storage: Option<StorageKind>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn load_from_path_or_default_starts_from_defaults_for_a_missing_file() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let path = tempdir.path().join("missing").join("conf.toml");
+
+        let conf = CliConf::load_from_path_or_default(&path)
+            .await
+            .expect("a missing file is not an error");
+
+        assert_eq!(conf, CliConf::default());
+    }
+
+    #[tokio::test]
+    async fn load_from_path_or_default_reads_an_existing_file() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let path = tempdir.path().join("conf.toml");
+        tokio::fs::write(&path, "[sui]\nrpc_url = \"https://rpc.example.com\"\n")
+            .await
+            .unwrap();
+
+        let conf = CliConf::load_from_path_or_default(&path)
+            .await
+            .expect("a valid file loads");
+
+        assert_eq!(
+            conf.sui.rpc_url,
+            Some(reqwest::Url::parse("https://rpc.example.com").unwrap())
+        );
+    }
+
+    #[tokio::test]
+    async fn load_from_path_or_default_rejects_an_unparsable_file() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let path = tempdir.path().join("conf.toml");
+        tokio::fs::write(&path, "[sui]\nrpc_url = \n")
+            .await
+            .unwrap();
+
+        let error = CliConf::load_from_path_or_default(&path)
+            .await
+            .expect_err("invalid TOML must not fall back to defaults");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("Failed to parse Nexus CLI configuration"),
+            "unexpected error: {message}"
+        );
+        assert!(message.contains(&path.display().to_string()));
+    }
 }

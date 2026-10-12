@@ -406,6 +406,18 @@ fn try_into_graph(dag: &DagSpec) -> AnyResult<GraphAndVertexEntryGroups> {
                 vertex_entry_groups.insert(vertex_ident, groups);
             }
         }
+
+        // Entry ports are only published for entry group members, so the
+        // ports of a vertex outside every group would be dropped silently.
+        for vertex in &dag.vertices {
+            let vertex_ident = GraphNode::Vertex {
+                name: vertex.name.clone(),
+            };
+
+            if !vertex.entry_ports.is_empty() && !vertex_entry_groups.contains_key(&vertex_ident) {
+                bail!("'{vertex_ident}' has entry ports but is not a member of any entry group.");
+            }
+        }
     } else {
         // If there are no entry groups, all vertices that have entry ports
         // specified are part of the default entry group.
@@ -560,6 +572,22 @@ fn try_into_graph(dag: &DagSpec) -> AnyResult<GraphAndVertexEntryGroups> {
         }
     }
 
+    // Edges, default values and outputs may only name declared vertices;
+    // publishing aborts on chain for any other name.
+    for edge in &dag.edges {
+        for vertex in [&edge.from.vertex, &edge.to.vertex] {
+            if !all_vertices.contains(&GraphNode::Vertex {
+                name: vertex.clone(),
+            }) {
+                bail!(
+                    "Edge from '{}' to '{}' references a non-existing vertex '{vertex}'.",
+                    edge.from.vertex,
+                    edge.to.vertex
+                );
+            }
+        }
+    }
+
     // Check that entry ports are not defined twice and that they have no edges
     // leading into them.
     for vertex in &dag.vertices {
@@ -584,15 +612,44 @@ fn try_into_graph(dag: &DagSpec) -> AnyResult<GraphAndVertexEntryGroups> {
     }
 
     // Check that none of the default value input ports are in the graph.
+    let mut all_default_values = HashSet::new();
+
     for default_value in &dag.default_values {
+        let vertex = &default_value.vertex;
         let default_value = GraphNode::InputPort {
-            vertex: default_value.vertex.clone(),
+            vertex: vertex.clone(),
             name: default_value.input_port.clone(),
         };
+
+        if !all_vertices.contains(&GraphNode::Vertex {
+            name: vertex.clone(),
+        }) {
+            bail!(
+                "Default value for '{default_value}' references a non-existing vertex '{vertex}'."
+            );
+        }
 
         if graph_nodes.contains_key(&default_value) || all_entry_ports.contains(&default_value) {
             bail!(
                 "'{default_value}' is an entry port or has an edge leading into it and therefore cannot have a default value.",
+            );
+        }
+
+        if !all_default_values.insert(default_value.clone()) {
+            bail!("'{default_value}' has multiple default values.");
+        }
+    }
+
+    for output in &dag.outputs {
+        if !all_vertices.contains(&GraphNode::Vertex {
+            name: output.vertex.clone(),
+        }) {
+            bail!(
+                "Output '{}.{}.{}' references a non-existing vertex '{}'.",
+                output.vertex,
+                output.output_variant,
+                output.output_port,
+                output.vertex
             );
         }
     }
@@ -833,6 +890,18 @@ mod tests {
     }
 
     #[test]
+    fn test_entry_groups_unlisted_entry_ports_invalid() {
+        let dag = parse(include_str!(
+            "_dags/entry_groups_unlisted_entry_ports_invalid.json"
+        ))
+        .unwrap();
+
+        let res = validate(&dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' has entry ports but is not a member of any entry group."));
+    }
+
+    #[test]
     fn both_loops_valid() {
         let dag = parse(include_str!("_dags/both_loops_valid.json")).unwrap();
 
@@ -941,6 +1010,54 @@ mod tests {
         let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: a' is not connected to the DAG."));
+    }
+
+    #[test]
+    fn test_edge_references_non_existing_vertex_invalid() {
+        let dag = parse(include_str!(
+            "_dags/edge_references_non_existing_vertex_invalid.json"
+        ))
+        .unwrap();
+
+        let res = validate(&dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Edge from 'a' to 'b' references a non-existing vertex 'b'."));
+    }
+
+    #[test]
+    fn test_default_value_references_non_existing_vertex_invalid() {
+        let dag = parse(include_str!(
+            "_dags/default_value_references_non_existing_vertex_invalid.json"
+        ))
+        .unwrap();
+
+        let res = validate(&dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Default value for 'Input port: b.input' references a non-existing vertex 'b'."));
+    }
+
+    #[test]
+    fn test_default_value_defined_twice_invalid() {
+        let dag = parse(include_str!(
+            "_dags/default_value_defined_twice_invalid.json"
+        ))
+        .unwrap();
+
+        let res = validate(&dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("'Input port: a.extra' has multiple default values."));
+    }
+
+    #[test]
+    fn test_output_references_non_existing_vertex_invalid() {
+        let dag = parse(include_str!(
+            "_dags/output_references_non_existing_vertex_invalid.json"
+        ))
+        .unwrap();
+
+        let res = validate(&dag);
+
+        assert_matches!(res, Err(e) if e.to_string().contains("Output 'b.ok.output' references a non-existing vertex 'b'."));
     }
 
     #[test]
