@@ -253,7 +253,7 @@ impl WalrusStorage {
             )
             .await?;
         let blob_type = self.blob_type()?;
-        let blob = response.objects().objects().iter().filter_map(|object| decode_blob(object, &blob_type, self.wallet.owner()).ok())
+        let blob = response.objects().objects().iter().filter_map(|object| decode_owned_blob(object, &blob_type, self.wallet.owner()).ok())
             .find(|blob| blob.blob_id.to_string() == registration.blob_id)
             .context("registration completed without the expected Blob object; retain the transaction for recovery")?;
         Ok(PendingUpload {
@@ -461,7 +461,7 @@ impl WalrusStorage {
                 .await?
                 .into_inner();
             for object in &response.objects {
-                let blob = decode_blob(object, &blob_type, self.wallet.owner())?;
+                let blob = decode_owned_blob(object, &blob_type, self.wallet.owner())?;
                 if include_expired || blob.storage.end_epoch > current_epoch {
                     result.push(BlobStatus {
                         blob_id: blob.blob_id.to_string(),
@@ -518,7 +518,7 @@ impl WalrusStorage {
             )
             .await?
             .into_inner();
-        decode_blob(response.object(), &self.blob_type()?, self.wallet.owner())
+        decode_owned_blob(response.object(), &self.blob_type()?, self.wallet.owner())
     }
 
     async fn submit(
@@ -534,7 +534,7 @@ impl WalrusStorage {
     }
 }
 
-fn decode_blob(
+fn decode_owned_blob(
     object: &sui::grpc::Object,
     blob_type: &sui::types::StructTag,
     owner: sui::types::Address,
@@ -662,7 +662,7 @@ mod tests {
         assert!(object.owner.is_none());
         assert!(object.object_type.is_none());
         assert!(object.contents.is_none());
-        assert_eq!(decode_blob(&object, &blob_type, OWNER).unwrap(), blob);
+        assert_eq!(decode_owned_blob(&object, &blob_type, OWNER).unwrap(), blob);
     }
 
     #[test]
@@ -670,7 +670,7 @@ mod tests {
         let (_, _, blob_type) = blob_fixture();
         let missing = sui::grpc::Object::default();
         assert_eq!(
-            decode_blob(&missing, &blob_type, OWNER)
+            decode_owned_blob(&missing, &blob_type, OWNER)
                 .unwrap_err()
                 .to_string(),
             "Sui response omitted object BCS"
@@ -681,7 +681,7 @@ mod tests {
         ] {
             let object = sui::grpc::Object::default().with_bcs(bcs);
             assert_eq!(
-                decode_blob(&object, &blob_type, OWNER)
+                decode_owned_blob(&object, &blob_type, OWNER)
                     .unwrap_err()
                     .to_string(),
                 "Invalid Sui object BCS"
@@ -697,7 +697,7 @@ mod tests {
             different_owner,
         )));
         assert_eq!(
-            decode_blob(&object, &blob_type, different_owner)
+            decode_owned_blob(&object, &blob_type, different_owner)
                 .unwrap_err()
                 .to_string(),
             "active wallet does not own this Blob object"
@@ -710,7 +710,7 @@ mod tests {
         let different_type: sui::types::StructTag = "0x43::blob::Blob".parse().unwrap();
         object.set_object_type(different_type.to_string());
         assert_eq!(
-            decode_blob(&object, &different_type, OWNER)
+            decode_owned_blob(&object, &different_type, OWNER)
                 .unwrap_err()
                 .to_string(),
             "expected a Walrus Blob object"
