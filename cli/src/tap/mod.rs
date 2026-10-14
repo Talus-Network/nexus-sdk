@@ -53,7 +53,6 @@ use {
     tap_bind::bind_agent_skill,
     tap_common::{
         agent_id_from_alias_or_arg,
-        ensure_cli_agent_owner,
         ensure_cli_mutable_agent,
         read_artifact,
         schedule_policy_from_cli,

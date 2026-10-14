@@ -79,13 +79,26 @@ async fn run(command: WalrusCommand) -> AnyResult<()> {
                 read_bounded(&file, MAX_RESOLVED_DATA_BYTES).await?,
                 many,
             )?;
-            let uploader =
-                Uploader::new(settings.wallet(&conf).await?, settings, storage, deletable).await?;
-            let out =
-                out.unwrap_or_else(|| PathBuf::from(format!("{}.walrus.json", file.display())));
             if estimate {
-                print_value(&uploader.estimate(&data).await?)?;
+                let quotes = nexus_walrus::estimate_uploads(
+                    &settings.rpc_url,
+                    settings.network,
+                    data.values(),
+                    &storage.options(settings.epochs, deletable),
+                )
+                .await?;
+                print_value(&json!({
+                    "network": settings.network,
+                    "payer": null,
+                    "quotes": quotes,
+                    "includes_sui_gas": false,
+                }))?;
             } else {
+                let uploader =
+                    Uploader::new(settings.wallet(&conf).await?, settings, storage, deletable)
+                        .await?;
+                let out =
+                    out.unwrap_or_else(|| PathBuf::from(format!("{}.walrus.json", file.display())));
                 let reference = uploader.upload(&data, &out, resume).await?;
                 human_output(&format!("Saved Walrus reference: {}", out.display()));
                 json_output(&json!({"reference": out, "receipt": reference}))?;

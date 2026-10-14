@@ -162,7 +162,214 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        nexus_sdk::{sui, test_utils::sui_mocks},
+        std::ffi::OsString,
+    };
+
+    struct CliEnv(Vec<(&'static str, Option<OsString>)>);
+
+    impl CliEnv {
+        fn new(conf_path: &std::path::Path) -> Self {
+            let guard = Self(
+                [CLI_CONF_PATH_ENV, "SUI_RPC_URL", "SUI_PK"]
+                    .into_iter()
+                    .map(|name| (name, std::env::var_os(name)))
+                    .collect(),
+            );
+            std::env::set_var(CLI_CONF_PATH_ENV, conf_path);
+            std::env::remove_var("SUI_RPC_URL");
+            std::env::remove_var("SUI_PK");
+            guard
+        }
+    }
+
+    impl Drop for CliEnv {
+        fn drop(&mut self) {
+            for (name, value) in &self.0 {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn public_reads_reach_rpc_without_a_wallet() {
+        // Match the CLI main thread stack for the large Tool command future.
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+                        ledger.expect_get_object().returning(|_| {
+                            Err(tonic::Status::permission_denied("public read reached RPC"))
+                        });
+                        ledger.expect_batch_get_objects().returning(|_| {
+                            Err(tonic::Status::permission_denied("public read reached RPC"))
+                        });
+                        let mut state = sui_mocks::grpc::MockStateService::new();
+                        state.expect_list_dynamic_fields().returning(|_| {
+                            Err(tonic::Status::permission_denied("public read reached RPC"))
+                        });
+                        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                            ledger_service_mock: Some(ledger),
+                            state_service_mock: Some(state),
+                            ..Default::default()
+                        });
+                        let directory = tempfile::tempdir().unwrap();
+                        let path = directory.path().join("conf.toml");
+                        let mut conf = CliConf {
+                            sui: SuiConf {
+                                rpc_url: Some(rpc_url.parse().unwrap()),
+                                pk: None,
+                            },
+                            nexus: Some(sui_mocks::mock_nexus_objects()),
+                            ..Default::default()
+                        };
+                        conf.agents.insert(
+                            "someone_else".into(),
+                            sui::types::Address::from_static("0xa"),
+                        );
+                        conf.save_to_path(&path).await.unwrap();
+                        let _env = CliEnv::new(&path);
+                        let commands: &[&[&str]] = &[
+                            &[
+                                "nexus",
+                                "tap",
+                                "requirements",
+                                "--agent-id",
+                                "0xa",
+                                "--skill-id",
+                                "0",
+                            ],
+                            &["nexus", "tap", "vault", "balance", "--agent-id", "0xa"],
+                            &[
+                                "nexus",
+                                "tap",
+                                "vault",
+                                "balance",
+                                "--alias",
+                                "someone_else",
+                            ],
+                            &[
+                                "nexus",
+                                "tool",
+                                "cashier",
+                                "access",
+                                "--tool-fqn",
+                                "com.example.tool@1",
+                                "--beneficiary-user",
+                                "0xa",
+                            ],
+                            &[
+                                "nexus",
+                                "tool",
+                                "cashier",
+                                "access",
+                                "--tool-fqn",
+                                "com.example.tool@1",
+                                "--beneficiary-agent",
+                                "0xa",
+                            ],
+                        ];
+                        for key in [None, Some("invalid key must be ignored by public reads")] {
+                            if let Some(key) = key {
+                                std::env::set_var("SUI_PK", key);
+                            }
+                            for args in commands {
+                                let command = Cli::try_parse_from(*args).unwrap().command;
+                                let result = match command {
+                                    Command::Tap(command) => tap::handle(command).await,
+                                    Command::Tool(command) => tool::handle(command).await,
+                                    _ => unreachable!(),
+                                };
+                                let error = anyhow::Error::new(
+                                    result.expect_err("mock RPC rejects the public read"),
+                                );
+                                assert!(
+                                    format!("{error:#}").contains("public read reached RPC"),
+                                    "{args:?}: {error:#}"
+                                );
+                            }
+                        }
+                        std::env::remove_var("SUI_PK");
+                        let command = Cli::try_parse_from([
+                            "nexus",
+                            "tool",
+                            "cashier",
+                            "access",
+                            "--tool-fqn",
+                            "com.example.tool@1",
+                        ])
+                        .unwrap()
+                        .command;
+                        let Command::Tool(command) = command else {
+                            unreachable!()
+                        };
+                        let error = tool::handle(command)
+                            .await
+                            .expect_err("default beneficiary needs a wallet");
+                        assert!(error
+                            .to_string()
+                            .contains("Sui private key is not configured"));
+                    });
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    #[ignore = "requires public Sui and Walrus network access"]
+    async fn walrus_estimate_needs_no_wallet() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("conf.toml");
+        let conf = CliConf {
+            sui: SuiConf {
+                rpc_url: Some(TESTNET_NEXUS_RPC_URL.parse().unwrap()),
+                pk: None,
+            },
+            ..Default::default()
+        };
+        conf.save_to_path(&path).await.unwrap();
+        let _env = CliEnv::new(&path);
+        std::env::set_var("SUI_PK", "invalid key must be ignored by estimates");
+        let input = directory.path().join("input.json");
+        tokio::fs::write(&input, br#"["first", "second"]"#)
+            .await
+            .unwrap();
+        let command = Cli::try_parse_from([
+            "nexus",
+            "walrus",
+            "upload",
+            input.to_str().unwrap(),
+            "--many",
+            "--estimate",
+        ])
+        .unwrap()
+        .command;
+        let Command::Walrus(command) = command else {
+            unreachable!()
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(45),
+            Box::pin(walrus::handle(command)),
+        )
+        .await
+        .expect("estimate should finish")
+        .expect("public estimate succeeds");
+        assert!(!directory.path().join("input.json.walrus.json").exists());
+        assert!(!directory.path().join("input.json.walrus.uploads").exists());
+    }
 
     #[test]
     fn root_help_describes_diagnostic_output_without_domain_ambiguity() {

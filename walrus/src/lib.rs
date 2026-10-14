@@ -70,6 +70,66 @@ pub struct UploadQuote {
     pub epochs: u32,
 }
 
+/// Quote uploads using public network prices, without a signing wallet.
+pub async fn estimate_uploads(
+    rpc_url: &str,
+    network: WalrusNetwork,
+    values: &[Vec<u8>],
+    options: &UploadOptions,
+) -> anyhow::Result<Vec<UploadQuote>> {
+    let (system, staking) = network.contracts();
+    let contract = ContractConfig::new(system.parse()?, staking.parse()?);
+    let read = SuiReadClient::new_for_rpc_urls(&[rpc_url], &contract, Default::default()).await?;
+    let mut quotes = Vec::with_capacity(values.len());
+    for bytes in values {
+        let (_, _, quote) = encode_upload(&read, bytes.clone(), options).await?;
+        quotes.push(quote);
+    }
+    Ok(quotes)
+}
+
+async fn encode_upload(
+    read: &SuiReadClient,
+    bytes: Vec<u8>,
+    options: &UploadOptions,
+) -> anyhow::Result<(Vec<SliverPair>, VerifiedBlobMetadataWithId, UploadQuote)> {
+    ensure!(
+        bytes.len() <= MAX_RESOLVED_DATA_BYTES,
+        "blob exceeds execution byte limit"
+    );
+    ensure!(
+        options.epochs > 0 && options.epochs <= read.fixed_system_parameters().max_epochs_ahead,
+        "storage duration is outside the network epoch range"
+    );
+    ensure!(
+        options.gas_budget_mist > 0,
+        "Sui gas budget must be positive"
+    );
+    let size = bytes.len();
+    let config = EncodingConfig::new(read.n_shards().await?).get_for_type(DEFAULT_ENCODING);
+    let (slivers, metadata) =
+        tokio::task::spawn_blocking(move || config.encode_with_metadata(bytes)).await??;
+    let encoded_size = metadata
+        .metadata()
+        .encoded_size()
+        .context("invalid encoded blob size")?;
+    let (storage, write) = read.storage_and_write_price_per_unit_size().await?;
+    let cost = storage_cost(encoded_size, storage, write, options.epochs)?;
+    ensure!(
+        options.max_storage_cost_frost.is_none_or(|max| cost <= max),
+        "estimated storage cost exceeds the configured limit"
+    );
+    let quote = UploadQuote {
+        blob_id: metadata.blob_id().to_string(),
+        size,
+        encoded_size,
+        storage_cost_frost: cost,
+        current_epoch: read.current_epoch().await?,
+        epochs: options.epochs,
+    };
+    Ok((slivers, metadata, quote))
+}
+
 /// Prepared data is bound to its digest, encoding and network before payment.
 pub struct PreparedUpload {
     metadata: VerifiedBlobMetadataWithId,
@@ -153,43 +213,8 @@ impl WalrusStorage {
         bytes: Vec<u8>,
         options: UploadOptions,
     ) -> anyhow::Result<PreparedUpload> {
-        ensure!(
-            bytes.len() <= MAX_RESOLVED_DATA_BYTES,
-            "blob exceeds execution byte limit"
-        );
-        ensure!(
-            options.epochs > 0
-                && options.epochs <= self.read.fixed_system_parameters().max_epochs_ahead,
-            "storage duration is outside the network epoch range"
-        );
-        ensure!(
-            options.gas_budget_mist > 0,
-            "Sui gas budget must be positive"
-        );
-        let size = bytes.len();
         let digest = hex::encode(Sha256::digest(&bytes));
-        let config =
-            EncodingConfig::new(self.read.n_shards().await?).get_for_type(DEFAULT_ENCODING);
-        let (slivers, metadata) =
-            tokio::task::spawn_blocking(move || config.encode_with_metadata(bytes)).await??;
-        let encoded_size = metadata
-            .metadata()
-            .encoded_size()
-            .context("invalid encoded blob size")?;
-        let (storage, write) = self.read.storage_and_write_price_per_unit_size().await?;
-        let cost = storage_cost(encoded_size, storage, write, options.epochs)?;
-        ensure!(
-            options.max_storage_cost_frost.is_none_or(|max| cost <= max),
-            "estimated storage cost exceeds the configured limit"
-        );
-        let quote = UploadQuote {
-            blob_id: metadata.blob_id().to_string(),
-            size,
-            encoded_size,
-            storage_cost_frost: cost,
-            current_epoch: self.read.current_epoch().await?,
-            epochs: options.epochs,
-        };
+        let (slivers, metadata, quote) = encode_upload(&self.read, bytes, &options).await?;
         Ok(PreparedUpload {
             metadata,
             slivers: Arc::new(slivers),
