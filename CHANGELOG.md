@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Updated the locked rustls dependency to 0.23.46 to address four TLS security advisories.
 - Expired walk inspection now considers committed Tool results preserved behind an earlier insufficient settlement marker. Current simulation determines whether funding permits settlement after a refill.
 - `NexusError` preserves wrapped error sources so callers can identify typed RPC failures and choose the appropriate recovery policy.
 - DAG validation rejects entry ports on a vertex that is not a member of any entry group. Publishing only records entry ports for group members, so these ports were dropped silently and the published DAG could not supply them at run time.
