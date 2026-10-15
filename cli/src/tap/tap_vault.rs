@@ -7,7 +7,6 @@ pub(crate) async fn handle_vault_command(command: VaultCommand) -> AnyResult<(),
             let agent_id = agent_id_from_alias_or_arg(&conf, alias, agent_id)?;
             command_title!("Reading payment vault for agent '{agent_id}'");
             let nexus_client = get_read_only_nexus_client().await?;
-            ensure_cli_agent_owner(&nexus_client, agent_id).await?;
             let context = nexus_client
                 .context_for_object(agent_id)
                 .await

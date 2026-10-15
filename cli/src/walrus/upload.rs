@@ -39,22 +39,6 @@ impl Uploader {
         })
     }
 
-    pub(super) async fn estimate(&self, data: &WalrusUploadData) -> AnyResult<Value> {
-        let mut quotes = Vec::new();
-        for bytes in data.values() {
-            quotes.push(
-                self.client
-                    .prepare(bytes.clone(), self.options.clone())
-                    .await?
-                    .quote()
-                    .clone(),
-            );
-        }
-        Ok(
-            json!({"network": self.settings.network, "payer": self.client.wallet().owner(), "quotes": quotes, "includes_sui_gas": false}),
-        )
-    }
-
     pub(crate) async fn upload(
         &self,
         data: &WalrusUploadData,

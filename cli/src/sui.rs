@@ -410,19 +410,17 @@ mod tests {
             command: "nexus tap requirements",
             source: include_str!("tap/tap_requirements.rs"),
             function_signature: "pub(crate) async fn fetch_requirements(",
-            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
-            boundary_test_signature:
-                "async fn tap_actions_get_skill_requirements_resolves_active_skill_revision(",
-            boundary_test_marker: "mock_nexus_client_without_coins",
+            boundary_test_source: include_str!("main.rs"),
+            boundary_test_signature: "fn public_reads_reach_rpc_without_a_wallet(",
+            boundary_test_marker: "Cli::try_parse_from",
         },
         CoinFreeClientCallSite {
             command: "nexus tap vault balance",
             source: include_str!("tap/tap_vault.rs"),
             function_signature: "pub(crate) async fn handle_vault_command(",
-            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
-            boundary_test_signature:
-                "async fn fetch_agent_payment_vault_for_agent_succeeds_without_owned_coins(",
-            boundary_test_marker: "mock_nexus_client_without_coins",
+            boundary_test_source: include_str!("main.rs"),
+            boundary_test_signature: "fn public_reads_reach_rpc_without_a_wallet(",
+            boundary_test_marker: "Cli::try_parse_from",
         },
         CoinFreeClientCallSite {
             command: "nexus tool auth list-keys",
@@ -466,6 +464,14 @@ mod tests {
             boundary_test_signature:
                 "async fn cli_client_without_explicit_gas_coin_supports_reads(",
             boundary_test_marker: "assert_coin_free_client_supports_read",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool cashier access with an explicit beneficiary",
+            source: include_str!("tool/cashier.rs"),
+            function_signature: "async fn inspect_access(",
+            boundary_test_source: include_str!("main.rs"),
+            boundary_test_signature: "fn public_reads_reach_rpc_without_a_wallet(",
+            boundary_test_marker: "Cli::try_parse_from",
         },
         CoinFreeClientCallSite {
             command: "nexus tool cashier inbox",

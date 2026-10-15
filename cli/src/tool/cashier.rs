@@ -120,13 +120,18 @@ pub(crate) struct BeneficiaryArgs {
 }
 
 impl BeneficiaryArgs {
-    fn resolve(self, default_user: sui::types::Address) -> PaymentSourceKind {
+    fn explicit(&self) -> Option<PaymentSourceKind> {
         match (self.beneficiary_user, self.beneficiary_agent) {
-            (Some(user), None) => PaymentSourceKind::user_funded(user),
-            (None, Some(agent)) => PaymentSourceKind::agent_funded(agent),
-            (None, None) => PaymentSourceKind::user_funded(default_user),
+            (Some(user), None) => Some(PaymentSourceKind::user_funded(user)),
+            (None, Some(agent)) => Some(PaymentSourceKind::agent_funded(agent)),
+            (None, None) => None,
             (Some(_), Some(_)) => unreachable!("clap rejects multiple beneficiary selectors"),
         }
+    }
+
+    fn resolve(self, default_user: sui::types::Address) -> PaymentSourceKind {
+        self.explicit()
+            .unwrap_or_else(|| PaymentSourceKind::user_funded(default_user))
     }
 }
 
@@ -379,11 +384,16 @@ async fn inspect_access(
     beneficiary: BeneficiaryArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Tool access '{tool_fqn}'");
-    let client = get_owner_nexus_client().await?;
-    let owner = client.owner().map_err(NexusCliError::Nexus)?;
+    let (client, beneficiary) = if let Some(explicit) = beneficiary.explicit() {
+        (get_read_only_nexus_client().await?, explicit)
+    } else {
+        let client = get_owner_nexus_client().await?;
+        let owner = client.owner().map_err(NexusCliError::Nexus)?;
+        (client, beneficiary.resolve(owner))
+    };
     let access = client
         .tool()
-        .inspect_access(&tool_fqn, beneficiary.resolve(owner))
+        .inspect_access(&tool_fqn, beneficiary)
         .await
         .map_err(NexusCliError::Nexus)?;
 
@@ -866,12 +876,56 @@ mod tests {
         ])
         .expect("Tool access should be discoverable without object IDs");
 
-        assert!(matches!(
-            cli.command,
-            crate::Command::Tool(super::super::ToolCommand::Cashier(
-                CashierCommand::Access { .. }
-            ))
-        ));
+        let crate::Command::Tool(super::super::ToolCommand::Cashier(CashierCommand::Access {
+            beneficiary,
+            ..
+        })) = cli.command
+        else {
+            panic!("expected cashier access");
+        };
+        let owner = sui::types::Address::from_static("0xa");
+        assert_eq!(beneficiary.explicit(), None);
+        assert_eq!(
+            beneficiary.resolve(owner),
+            PaymentSourceKind::user_funded(owner)
+        );
+    }
+
+    #[test]
+    fn access_inspection_preserves_explicit_beneficiaries() {
+        let owner = sui::types::Address::from_static("0xa");
+        let selected = sui::types::Address::from_static("0xb");
+        for (selector, expected) in [
+            (
+                "--beneficiary-user",
+                PaymentSourceKind::user_funded(selected),
+            ),
+            (
+                "--beneficiary-agent",
+                PaymentSourceKind::agent_funded(selected),
+            ),
+        ] {
+            let cli = crate::Cli::try_parse_from([
+                "nexus",
+                "tool",
+                "cashier",
+                "access",
+                "--tool-fqn",
+                "com.example.tool@1",
+                selector,
+                "0xb",
+            ])
+            .unwrap();
+            let crate::Command::Tool(super::super::ToolCommand::Cashier(CashierCommand::Access {
+                beneficiary,
+                ..
+            })) = cli.command
+            else {
+                panic!("expected cashier access");
+            };
+            assert_eq!(beneficiary.explicit().as_ref(), Some(&expected));
+            assert_eq!(beneficiary.resolve(owner), expected);
+        }
     }
 
     #[test]

@@ -14,7 +14,7 @@ use {
 pub(crate) struct Settings {
     pub(crate) network: WalrusNetwork,
     pub(crate) chain_id: String,
-    rpc_url: String,
+    pub(super) rpc_url: String,
     pub(super) aggregator: String,
     pub(super) epochs: u32,
 }

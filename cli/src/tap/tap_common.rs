@@ -51,30 +51,9 @@ pub(crate) fn agent_id_from_alias_or_arg(
     )))
 }
 
-pub(crate) async fn ensure_cli_agent_owner(
-    nexus_client: &NexusClient,
-    agent_id: AgentId,
-) -> AnyResult<(), NexusCliError> {
-    ensure_cli_agent_access(nexus_client, agent_id, AgentAccess::Immutable).await
-}
-
 pub(crate) async fn ensure_cli_mutable_agent(
     nexus_client: &NexusClient,
     agent_id: AgentId,
-) -> AnyResult<(), NexusCliError> {
-    ensure_cli_agent_access(nexus_client, agent_id, AgentAccess::Mutable).await
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AgentAccess {
-    Immutable,
-    Mutable,
-}
-
-pub(crate) async fn ensure_cli_agent_access(
-    nexus_client: &NexusClient,
-    agent_id: AgentId,
-    access: AgentAccess,
 ) -> AnyResult<(), NexusCliError> {
     let signer = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let metadata = nexus_client
@@ -82,39 +61,72 @@ pub(crate) async fn ensure_cli_agent_access(
         .get_object_metadata(agent_id)
         .await
         .map_err(NexusCliError::Any)?;
-    ensure_agent_owner_allowed(agent_id, &metadata.owner, signer, access)
+    ensure_agent_owner_allowed(agent_id, &metadata.owner, signer)
 }
 
 pub(crate) fn ensure_agent_owner_allowed(
     agent_id: AgentId,
     owner: &sui::types::Owner,
     signer: sui::types::Address,
-    access: AgentAccess,
 ) -> AnyResult<(), NexusCliError> {
     match owner {
         sui::types::Owner::Address(owner) if *owner == signer => Ok(()),
         sui::types::Owner::Shared(_) => Ok(()),
-        sui::types::Owner::Immutable if access == AgentAccess::Immutable => Ok(()),
         sui::types::Owner::Immutable => Err(NexusCliError::Any(anyhow!(
             "agent '{agent_id}' is immutable; this command requires a mutable agent object"
         ))),
-        _ => {
-            let expected = match access {
-                AgentAccess::Immutable => {
-                    format!("active wallet {signer}, shared, or immutable ownership")
-                }
-                AgentAccess::Mutable => format!("active wallet {signer} or shared ownership"),
-            };
-            Err(NexusCliError::Any(anyhow!(
-                "agent '{agent_id}' is owned by {owner:?}; expected {expected}"
-            )))
-        }
+        _ => Err(NexusCliError::Any(anyhow!(
+            "agent '{agent_id}' is owned by {owner:?}; expected active wallet {signer} or shared ownership"
+        ))),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, nexus_sdk::test_utils::sui_mocks};
+
+    #[tokio::test]
+    async fn mutable_agent_checks_fetched_ownership() {
+        let key = sui::crypto::Ed25519PrivateKey::new([23; 32]);
+        let signer = key.public_key().derive_address();
+        let agent_id = sui::types::Address::from_static("0xb");
+        for (owner, expected_error) in [
+            (sui::types::Owner::Address(signer), None),
+            (sui::types::Owner::Shared(1), None),
+            (
+                sui::types::Owner::Immutable,
+                Some("requires a mutable agent object"),
+            ),
+            (
+                sui::types::Owner::Address(sui::types::Address::from_static("0xc")),
+                Some("expected active wallet"),
+            ),
+        ] {
+            let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+            sui_mocks::grpc::mock_get_object_metadata_exact(
+                &mut ledger,
+                sui_mocks::object_ref_for_id(agent_id),
+                owner,
+                None,
+            );
+            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger),
+                ..Default::default()
+            });
+            let client = NexusClient::builder()
+                .with_private_key(key.clone())
+                .with_rpc_url(&rpc_url)
+                .with_nexus_objects(sui_mocks::mock_nexus_objects())
+                .build()
+                .await
+                .unwrap();
+            let result = ensure_cli_mutable_agent(&client, agent_id).await;
+            match expected_error {
+                Some(message) => assert!(result.unwrap_err().to_string().contains(message)),
+                None => result.unwrap(),
+            }
+        }
+    }
 
     #[test]
     fn schedule_policy_from_cli_accepts_supported_recurrence_values() {
@@ -146,44 +158,22 @@ mod tests {
     }
 
     #[test]
-    fn agent_owner_guard_accepts_sender_shared_and_immutable_for_immutable_access() {
+    fn agent_owner_guard_accepts_sender_and_shared_ownership() {
         let signer = sui::types::Address::from_static("0xa");
         let agent_id = sui::types::Address::from_static("0xb");
 
-        ensure_agent_owner_allowed(
-            agent_id,
-            &sui::types::Owner::Address(signer),
-            signer,
-            AgentAccess::Mutable,
-        )
-        .expect("sender-owned agent is accepted");
-        ensure_agent_owner_allowed(
-            agent_id,
-            &sui::types::Owner::Shared(1),
-            signer,
-            AgentAccess::Mutable,
-        )
-        .expect("shared agent is accepted");
-        ensure_agent_owner_allowed(
-            agent_id,
-            &sui::types::Owner::Immutable,
-            signer,
-            AgentAccess::Immutable,
-        )
-        .expect("immutable agent is accepted");
+        ensure_agent_owner_allowed(agent_id, &sui::types::Owner::Address(signer), signer)
+            .expect("sender-owned agent is accepted");
+        ensure_agent_owner_allowed(agent_id, &sui::types::Owner::Shared(1), signer)
+            .expect("shared agent is accepted");
     }
 
     #[test]
     fn agent_owner_guard_rejects_immutable_for_mutable_access() {
         let signer = sui::types::Address::from_static("0xa");
         let agent_id = sui::types::Address::from_static("0xb");
-        let error = ensure_agent_owner_allowed(
-            agent_id,
-            &sui::types::Owner::Immutable,
-            signer,
-            AgentAccess::Mutable,
-        )
-        .expect_err("immutable agent cannot satisfy mutable access");
+        let error = ensure_agent_owner_allowed(agent_id, &sui::types::Owner::Immutable, signer)
+            .expect_err("immutable agent cannot satisfy mutable access");
 
         assert!(
             error
@@ -201,7 +191,6 @@ mod tests {
             agent_id,
             &sui::types::Owner::Address(sui::types::Address::from_static("0xc")),
             signer,
-            AgentAccess::Immutable,
         )
         .expect_err("other address owner is rejected");
 
