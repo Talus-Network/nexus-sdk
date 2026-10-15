@@ -83,7 +83,50 @@ pub(crate) fn ensure_agent_owner_allowed(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, nexus_sdk::test_utils::sui_mocks};
+
+    #[tokio::test]
+    async fn mutable_agent_checks_fetched_ownership() {
+        let key = sui::crypto::Ed25519PrivateKey::new([23; 32]);
+        let signer = key.public_key().derive_address();
+        let agent_id = sui::types::Address::from_static("0xb");
+        for (owner, expected_error) in [
+            (sui::types::Owner::Address(signer), None),
+            (sui::types::Owner::Shared(1), None),
+            (
+                sui::types::Owner::Immutable,
+                Some("requires a mutable agent object"),
+            ),
+            (
+                sui::types::Owner::Address(sui::types::Address::from_static("0xc")),
+                Some("expected active wallet"),
+            ),
+        ] {
+            let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+            sui_mocks::grpc::mock_get_object_metadata_exact(
+                &mut ledger,
+                sui_mocks::object_ref_for_id(agent_id),
+                owner,
+                None,
+            );
+            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger),
+                ..Default::default()
+            });
+            let client = NexusClient::builder()
+                .with_private_key(key.clone())
+                .with_rpc_url(&rpc_url)
+                .with_nexus_objects(sui_mocks::mock_nexus_objects())
+                .build()
+                .await
+                .unwrap();
+            let result = ensure_cli_mutable_agent(&client, agent_id).await;
+            match expected_error {
+                Some(message) => assert!(result.unwrap_err().to_string().contains(message)),
+                None => result.unwrap(),
+            }
+        }
+    }
 
     #[test]
     fn schedule_policy_from_cli_accepts_supported_recurrence_values() {

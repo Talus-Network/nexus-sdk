@@ -876,12 +876,56 @@ mod tests {
         ])
         .expect("Tool access should be discoverable without object IDs");
 
-        assert!(matches!(
-            cli.command,
-            crate::Command::Tool(super::super::ToolCommand::Cashier(
-                CashierCommand::Access { .. }
-            ))
-        ));
+        let crate::Command::Tool(super::super::ToolCommand::Cashier(CashierCommand::Access {
+            beneficiary,
+            ..
+        })) = cli.command
+        else {
+            panic!("expected cashier access");
+        };
+        let owner = sui::types::Address::from_static("0xa");
+        assert_eq!(beneficiary.explicit(), None);
+        assert_eq!(
+            beneficiary.resolve(owner),
+            PaymentSourceKind::user_funded(owner)
+        );
+    }
+
+    #[test]
+    fn access_inspection_preserves_explicit_beneficiaries() {
+        let owner = sui::types::Address::from_static("0xa");
+        let selected = sui::types::Address::from_static("0xb");
+        for (selector, expected) in [
+            (
+                "--beneficiary-user",
+                PaymentSourceKind::user_funded(selected),
+            ),
+            (
+                "--beneficiary-agent",
+                PaymentSourceKind::agent_funded(selected),
+            ),
+        ] {
+            let cli = crate::Cli::try_parse_from([
+                "nexus",
+                "tool",
+                "cashier",
+                "access",
+                "--tool-fqn",
+                "com.example.tool@1",
+                selector,
+                "0xb",
+            ])
+            .unwrap();
+            let crate::Command::Tool(super::super::ToolCommand::Cashier(CashierCommand::Access {
+                beneficiary,
+                ..
+            })) = cli.command
+            else {
+                panic!("expected cashier access");
+            };
+            assert_eq!(beneficiary.explicit().as_ref(), Some(&expected));
+            assert_eq!(beneficiary.resolve(owner), expected);
+        }
     }
 
     #[test]
