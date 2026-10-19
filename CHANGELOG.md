@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- TAP scaffolds use brace bodies for the extension and test module in the generated test file so `nexus tap test` compiles successfully.
 - `tap requirements` and `tap vault balance` read public state without requiring agent ownership or a private key. `tool cashier access` also works without a key when a beneficiary is supplied explicitly.
 - `walrus upload --estimate` quotes storage without loading a signing wallet. Estimates report `payer` as `null` and use the same encoding and price calculation as uploads.
 - Walrus commands decode Sui objects from their requested BCS bytes, preserving ownership and type checks without requiring omitted response fields.
