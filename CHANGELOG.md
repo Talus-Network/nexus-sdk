@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Walrus commands decode Sui objects from their requested BCS bytes, preserving ownership and type checks without requiring omitted response fields.
 - Fixed CLI argument validation incorrectly rejecting valid combinations of occurrence start, deadline, and priority fee options.
 - `conf set`, `tap agent save`/`remove`, and Tool registration no longer replace an existing configuration with defaults when `conf.toml` cannot be read or parsed. The command now fails and leaves the file untouched; only a missing file starts from the default configuration.
+- `tap scaffold` writes the generated `nexus_primitives::data` test extension to its own file. The extension and the test module shared one file, so `tap test` failed to compile a fresh scaffold with `EC02004`.
 
 ## [`2.1.1`] - 2026-10-07
 
