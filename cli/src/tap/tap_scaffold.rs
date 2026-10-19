@@ -60,6 +60,10 @@ pub(crate) fn scaffold_files(
         "module_tests_move",
         include_str!("templates/tap_package/module_tests.move.jinja"),
     )?;
+    env.add_template(
+        "data_extensions_move",
+        include_str!("templates/tap_package/data_extensions.move.jinja"),
+    )?;
     env.add_template("dag_template", include_str!("templates/dag.json.jinja"))?;
     env.add_template(
         "skill_config",
@@ -69,6 +73,7 @@ pub(crate) fn scaffold_files(
     let move_toml = env.get_template("move_toml")?;
     let module_move = env.get_template("module_move")?;
     let module_tests_move = env.get_template("module_tests_move")?;
+    let data_extensions_move = env.get_template("data_extensions_move")?;
     let dag_template = env.get_template("dag_template")?;
     let skill_config = env.get_template("skill_config")?;
     let witness = name.to_case(Case::Pascal);
@@ -85,6 +90,10 @@ pub(crate) fn scaffold_files(
         (
             PathBuf::from(format!("tap/tests/{module_name}_tests.move")),
             module_tests_move.render(context! { package_name, module_name })?,
+        ),
+        (
+            PathBuf::from("tap/tests/data_extensions.move"),
+            data_extensions_move.render(context! {})?,
         ),
         (
             PathBuf::from("dag.json"),
@@ -109,6 +118,7 @@ mod tests {
         assert!(paths.contains(&&PathBuf::from("tap/Move.toml")));
         assert!(paths.contains(&&PathBuf::from("tap/sources/weather_skill.move")));
         assert!(paths.contains(&&PathBuf::from("tap/tests/weather_skill_tests.move")));
+        assert!(paths.contains(&&PathBuf::from("tap/tests/data_extensions.move")));
         assert!(paths.contains(&&PathBuf::from("dag.json")));
         assert!(paths.contains(&&PathBuf::from("skill.tap.json")));
         assert!(files
@@ -153,17 +163,40 @@ mod tests {
             "tutorial_transfer",
         )
         .unwrap();
-        let test = files
-            .iter()
-            .find_map(|(path, contents)| {
-                (path == &PathBuf::from("tap/tests/tutorial_transfer_tests.move"))
-                    .then_some(contents)
-            })
-            .expect("test template present");
+        let file = |expected: &str| {
+            files
+                .iter()
+                .find_map(|(path, contents)| (path == &PathBuf::from(expected)).then_some(contents))
+                .expect("scaffolded file present")
+        };
+        let test = file("tap/tests/tutorial_transfer_tests.move");
+        let extensions = file("tap/tests/data_extensions.move");
 
         assert!(test.contains("#[test]"));
-        assert!(test.contains("extend module nexus_primitives::data"));
         assert!(test.contains("inline_length_for_testing"));
+        assert!(extensions.contains("extend module nexus_primitives::data;"));
+        assert!(extensions.contains("public fun inline_length_for_testing"));
+    }
+
+    #[test]
+    fn scaffolded_move_files_declare_one_module_each() {
+        let files = scaffold_files(
+            "tutorial transfer",
+            "tutorial_transfer",
+            "tutorial_transfer",
+        )
+        .unwrap();
+
+        for (path, contents) in files.iter().filter(|(path, _)| {
+            path.extension()
+                .is_some_and(|extension| extension == "move")
+        }) {
+            let modules = contents
+                .lines()
+                .filter(|line| line.starts_with("module ") || line.starts_with("extend module "))
+                .count();
+            assert_eq!(modules, 1, "{} declares {modules} modules", path.display());
+        }
     }
 
     #[test]
