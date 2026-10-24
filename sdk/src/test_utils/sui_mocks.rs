@@ -194,7 +194,12 @@ pub fn mock_nexus_packages() -> NexusPackages {
         )),
         scheduler: Some(package(
             "0xa5",
-            &[("era", "V1"), ("task", "Task"), ("task", "TaskInnerV1")],
+            &[
+                ("era", "V1"),
+                ("era", "RuntimeV1"),
+                ("task", "Task"),
+                ("task", "TaskInnerV1"),
+            ],
             &["0xa1", "0xa2", "0xa7", "0xa3", "0xa4"],
         )),
     }
@@ -576,6 +581,14 @@ pub mod grpc {
         paused: bool,
     }
 
+    #[derive(Serialize)]
+    struct SchedulerUpgradeCapFixture {
+        id: crate::move_bindings::sui_framework::object::UID,
+        package: crate::move_bindings::sui_framework::object::ID,
+        version: u64,
+        policy: u8,
+    }
+
     /// Serve the fixed runtime root bound to the Scheduler package in `context`.
     pub fn mock_runtime_authority(
         ledger_service: &mut MockLedgerService,
@@ -583,17 +596,21 @@ pub mod grpc {
         paused: bool,
     ) {
         let root = context.runtime_authority;
-        let runtime_package = context
+        let scheduler = context
             .require_package(PackageRole::Scheduler)
-            .expect("mock context contains Scheduler")
-            .storage_id;
+            .expect("mock context contains Scheduler");
+        let runtime_package = scheduler.storage_id;
+        let runtime_origin = scheduler
+            .type_origin("era", "RuntimeV1")
+            .expect("mock Scheduler defines RuntimeV1");
+        let scheduler_cap_id = sui::types::Address::from_static("0xcafe");
         let state = RuntimeAuthorityFixture {
             id: UID::new(root.object_id()),
-            scheduler_upgrade_cap: MoveOption::from_option(Some(ID::new(runtime_package))),
+            scheduler_upgrade_cap: MoveOption::from_option(Some(ID::new(scheduler_cap_id))),
             current_runtime: MoveOption::from_option(Some(TypeName::new(&format!(
-                "{runtime_package}::era::RuntimeV1"
+                "{runtime_origin}::era::RuntimeV1"
             )))),
-            current_runtime_package: MoveOption::from_option(Some(ID::new(runtime_package))),
+            current_runtime_package: MoveOption::from_option(Some(ID::new(runtime_origin))),
             paused,
         };
         mock_get_object_bcs(
@@ -601,6 +618,26 @@ pub mod grpc {
             object_ref_for_id(root.object_id()),
             sui::types::Owner::Shared(root.initial_shared_version),
             bcs::to_bytes(&state).expect("RuntimeAuthority fixture serializes as BCS"),
+        );
+
+        let cap = SchedulerUpgradeCapFixture {
+            id: crate::move_bindings::sui_framework::object::UID::new(scheduler_cap_id),
+            package: crate::move_bindings::sui_framework::object::ID::new(runtime_package),
+            version: 1,
+            policy: 1,
+        };
+        let cap_type = sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("package"),
+            sui::types::Identifier::from_static("UpgradeCap"),
+            vec![],
+        );
+        mock_get_object_value_bcs_for(
+            ledger_service,
+            object_ref_for_id(scheduler_cap_id),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            &cap,
+            cap_type,
         );
     }
 

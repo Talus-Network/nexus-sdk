@@ -3561,7 +3561,96 @@
       ],
       "functions": [
         {
+          "name": "authenticates_runtime_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "proof_of_uid",
+                        "name": "ProofOfUID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
           "name": "complete",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "proof_of_uid",
+                    "name": "UIDRequirements"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "vec_map",
+                  "name": "VecMap"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  },
+                  {
+                    "Vector": "U8"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "complete_and_remove_runtime_task_stamp",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3708,6 +3797,35 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "has_runtime_task_stamp",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "proof_of_uid",
+                        "name": "ProofOfUID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         },
         {
@@ -4073,6 +4191,25 @@
           ]
         },
         {
+          "name": "runtime_task_stamp_id",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "satisfy",
           "visibility": "Public",
           "is_entry": false,
@@ -4154,6 +4291,73 @@
                         "name": "UID"
                       },
                       "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "stamp_runtime_authenticated_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "proof_of_uid",
+                        "name": "ProofOfUID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
                     }
                   }
                 }

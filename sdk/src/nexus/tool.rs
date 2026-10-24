@@ -29,28 +29,51 @@ use {
             client::NexusClient,
             error::NexusError,
             registry::preflight_external_verifier_registration,
+            state::ObservedState,
         },
         sui,
         transactions::{tool, tool_cashier},
-        types::{NexusContext, PackageRole, ToolState},
+        types::{NexusContext, PackageRole, PackageVersion, ToolState},
         ToolFqn,
     },
     std::{collections::HashSet, sync::Arc, time::Duration},
 };
 
-/// Compatibility of one Tool with this SDK and the current Registry authority.
+/// Compatibility of one Tool with the current Registry authority.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ToolCompatibility {
-    /// The Tool selects the same package graph as the current Registry.
+    /// The current Registry-selected Tool package accepts this stored Tool state.
+    /// A supported V1 state may retain its original package ID after an upgrade.
     Current,
     /// The SDK understands the Tool, and no live Registry mutation is required.
     LegacyUnderstood,
-    /// The SDK understands the Tool, but live Registry use requires migration.
+    /// The SDK understands the Tool, but its state lineage is not accepted by the Registry.
     MigrationRequired,
     /// The observed era and inner pair has no adapter in this SDK.
     Unsupported,
     /// The Tool could not be observed or decoded independently.
     Unavailable,
+}
+
+fn current_tool_package_accepts_state(package: &PackageVersion, observed: &ObservedState) -> bool {
+    if package.initial_id != *observed.witness_type().address() {
+        return false;
+    }
+
+    [
+        (&observed.anchor_type, "tool_registry", "Tool"),
+        (observed.witness_type(), "era", "V1"),
+        (observed.inner_type(), "tool_registry", "ToolInnerV1"),
+    ]
+    .into_iter()
+    .all(|(tag, module, name)| {
+        tag.module().as_str() == module
+            && tag.name().as_str() == name
+            && tag.type_params().is_empty()
+            && package
+                .type_origin(module, name)
+                .is_ok_and(|origin| origin == *tag.address())
+    })
 }
 
 /// Confirmed entitlement purchase with both discoverable object IDs.
@@ -1727,12 +1750,9 @@ impl ToolActions {
         };
 
         let registered = inner.unregistered_at_ms.vec.is_empty();
-        let selected = context.packages().get(PackageRole::Tool);
-        let is_current = current_package
-            .zip(selected)
-            .is_some_and(|(current, selected)| {
-                current.storage_id == selected.storage_id && current.version == selected.version
-            });
+        let is_current = current_package.is_some_and(|package| {
+            current_tool_package_accepts_state(package, snapshot.observed())
+        });
         inspection.compatibility = if is_current {
             ToolCompatibility::Current
         } else if registered {
@@ -2049,6 +2069,62 @@ mod tests {
             ToolRegistry::new(UID::new(registry_id)),
             registry,
         );
+    }
+
+    #[test]
+    fn current_tool_state_accepts_supported_v1_lineage_and_rejects_mismatches() {
+        let context = sui_mocks::mock_nexus_context();
+        let address = |value| sui::types::Address::from_static(value);
+        let observed = ObservedState {
+            object_id: address("0xe1"),
+            owner: sui::types::Owner::Shared(1),
+            anchor_type: crate::move_bindings::struct_tag::<ToolAnchor>(&context),
+            witness: crate::nexus::state::ObservedStateField {
+                field_id: address("0xe2"),
+                value_type: crate::move_bindings::struct_tag::<ToolWitnessV1>(&context),
+            },
+            inner: crate::nexus::state::ObservedStateField {
+                field_id: address("0xe3"),
+                value_type: crate::move_bindings::struct_tag::<ToolInnerV1>(&context),
+            },
+        };
+        let mut upgraded_package = context
+            .packages()
+            .tool
+            .as_ref()
+            .expect("mock Tool package")
+            .clone();
+        upgraded_package.storage_id = address("0xb7");
+        upgraded_package.version = 2;
+
+        assert!(current_tool_package_accepts_state(
+            &upgraded_package,
+            &observed
+        ));
+
+        let mut wrong_lineage = upgraded_package.clone();
+        wrong_lineage.initial_id = address("0xb8");
+        assert!(!current_tool_package_accepts_state(
+            &wrong_lineage,
+            &observed
+        ));
+
+        for (module, name) in [
+            ("tool_registry", "Tool"),
+            ("era", "V1"),
+            ("tool_registry", "ToolInnerV1"),
+        ] {
+            let mut wrong_origin = upgraded_package.clone();
+            wrong_origin
+                .type_origins
+                .get_mut(module)
+                .expect("mock module origin")
+                .insert(name.to_owned(), address("0xb8"));
+            assert!(
+                !current_tool_package_accepts_state(&wrong_origin, &observed),
+                "mismatched {module}::{name} origin must fail closed"
+            );
+        }
     }
 
     #[test]

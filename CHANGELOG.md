@@ -10,11 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- State adapters now decode V2 witnesses for the five canonical roots with retained V1 inner layouts while preserving package-role, storage-address, and type-origin validation.
+- Refreshed generated Move bindings for the candidate Nexus runtime Task authorization and kernel-linked primitive ABI.
+- Current Scheduler committee reads resolve the global LeaderRegistry through the active RuntimeAuthority context, including when callers hold historical Task contexts.
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
 - **Breaking:** `EventIngestor::start` reports a connection failure once and closes the receiver. Callers own reconnection, resume from the last delivered checkpoint inclusively, and deduplicate replayed events.
 - Recovery discovery now returns failed reads, invalid responses, and incomplete coverage as errors. Individual requests and stalled response bodies have deadlines, while healthy pagination can continue as its cursor advances.
 
 #### Fixed
+
+- Tool inspection recognizes persisted V1 Tool state as current only when its exact Tool, witness, and inner type origins belong to the Registry-selected Tool package lineage.
 
 - Updated the locked rustls dependency to 0.23.46 to address four TLS security advisories.
 - Expired walk inspection now considers committed Tool results preserved behind an earlier insufficient settlement marker. Current simulation determines whether funding permits settlement after a refill.
@@ -27,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Removed the recovery module's `ListConfig` and `ListEvent` reexports and the `poller_stream_reconnections` metric. Recovery continuation and event reconnection belong to the caller.
 
 ### `nexus-cli`
+
+#### Changed
+
+- Updated the long-help regression test to use Clap's current renderer while preserving its help-text assertions.
 
 #### Fixed
 
