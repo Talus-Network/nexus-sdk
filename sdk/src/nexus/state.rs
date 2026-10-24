@@ -79,6 +79,14 @@ struct RuntimeAuthorityState {
     paused: bool,
 }
 
+#[derive(Deserialize)]
+struct SchedulerUpgradeCapState {
+    id: UID,
+    package: ID,
+    version: u64,
+    policy: u8,
+}
+
 /// One typed dynamic field selected from an object anchor.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ObservedStateField {
@@ -637,7 +645,7 @@ impl StateResolver {
         let snapshot = self.observe_snapshot(object_id).await?;
         let packages = self.resolve_package_graph(snapshot.observed()).await?;
         let context = NexusContext::new(objects, packages);
-        Self::validate_observation::<A, W, V>(snapshot.observed(), &context)?;
+        Self::validate_typed_observation::<A, W, V>(snapshot.observed(), &context)?;
         let object = self.decode_snapshot::<A, V>(&snapshot)?;
         self.validate_required_roots(context.packages(), object_id, required_roots)
             .await?;
@@ -662,23 +670,9 @@ impl StateResolver {
         let adapter = StateAdapter::for_observed(state)?;
         let witness_package_id = *state.witness_type().address();
         let source = self.resolve_package(witness_package_id).await?;
-        let source_role = package_role(&source).ok_or_else(|| NexusError::IncompatiblePackage {
-            package: witness_package_id,
-            reason: "package does not have a supported Nexus ABI".to_owned(),
-        })?;
-        if source_role != adapter.role {
-            return Err(NexusError::IncompatiblePackage {
-                package: witness_package_id,
-                reason: format!(
-                    "object anchor selects role '{}', but the witness package has role '{}'",
-                    adapter.role.as_str(),
-                    source_role.as_str()
-                ),
-            });
-        }
-        validate_state_type_origins(state, &source)?;
+        validate_state_package(state, adapter, &source)?;
 
-        self.resolve_package_graph_from_source(Some(source_role), source)
+        self.resolve_package_graph_from_source(Some(adapter.role), source)
             .await
     }
 
@@ -858,24 +852,176 @@ impl StateResolver {
                 "RuntimeAuthority has no current runtime type".to_owned(),
             ));
         }
-        let runtime_package = observed
+        let runtime_origin = observed
             .data
             .current_runtime_package
             .as_option()
             .map(ID::address)
             .ok_or_else(|| invalid("RuntimeAuthority has no current runtime package".to_owned()))?;
+        let scheduler_cap_id = observed
+            .data
+            .scheduler_upgrade_cap
+            .as_option()
+            .map(ID::address)
+            .ok_or_else(|| {
+                invalid("RuntimeAuthority has no bound Scheduler UpgradeCap".to_owned())
+            })?;
+        let scheduler_package_id = self
+            .resolve_scheduler_upgrade_cap_package(root.object_id(), scheduler_cap_id)
+            .await?;
+        let runtime_type = observed
+            .data
+            .current_runtime
+            .as_option()
+            .expect("checked above");
+        let runtime_tag = parse_runtime_type(root.object_id(), runtime_type, runtime_origin)?;
         if require_active && observed.data.paused {
             return Err(invalid(format!(
-                "runtime package '{runtime_package}' is paused"
+                "runtime package '{runtime_origin}' is paused"
             )));
         }
 
         let packages = self
-            .resolve_explicit_package_graph(runtime_package, PackageRole::Scheduler)
+            .resolve_explicit_package_graph(scheduler_package_id, PackageRole::Scheduler)
             .await?;
-        self.validate_required_roots(&packages, runtime_package, required_roots)
+        let scheduler = packages.get(PackageRole::Scheduler).ok_or_else(|| {
+            NexusError::IncompatiblePackage {
+                package: scheduler_package_id,
+                reason: "cap-selected package graph has no Scheduler package".to_owned(),
+            }
+        })?;
+        validate_runtime_type_origin(
+            scheduler_package_id,
+            scheduler,
+            &runtime_tag,
+            runtime_origin,
+        )?;
+        self.validate_required_roots(&packages, scheduler_package_id, required_roots)
             .await?;
         Ok(NexusContext::new(objects, packages))
+    }
+
+    async fn resolve_scheduler_upgrade_cap_package(
+        &self,
+        authority_id: sui::types::Address,
+        cap_id: sui::types::Address,
+    ) -> Result<sui::types::Address, NexusError> {
+        let invalid = |reason: String| NexusError::InvalidObjectState {
+            object: authority_id,
+            reason,
+        };
+        if cap_id == sui::types::Address::ZERO {
+            return Err(invalid(
+                "RuntimeAuthority binds a zero Scheduler UpgradeCap ID".to_owned(),
+            ));
+        }
+
+        let request = sui::grpc::GetObjectRequest::default()
+            .with_object_id(cap_id)
+            .with_read_mask(sui::grpc::FieldMask::from_paths([
+                "object_id",
+                "object_type",
+                "owner",
+                "version",
+                "contents",
+            ]));
+        let mut client = self.crawler.clone_grpc_client();
+        let response = client
+            .ledger_client()
+            .get_object(request)
+            .await
+            .map_err(|error| NexusError::from_rpc(anyhow::Error::new(error)))?
+            .into_inner();
+        let object = response.object.ok_or_else(|| {
+            invalid(format!(
+                "bound Scheduler UpgradeCap '{cap_id}' is unavailable"
+            ))
+        })?;
+        Self::decode_scheduler_upgrade_cap(authority_id, cap_id, object)
+    }
+
+    fn decode_scheduler_upgrade_cap(
+        authority_id: sui::types::Address,
+        cap_id: sui::types::Address,
+        object: sui::grpc::Object,
+    ) -> Result<sui::types::Address, NexusError> {
+        let invalid = |reason: String| NexusError::InvalidObjectState {
+            object: authority_id,
+            reason,
+        };
+        let returned_id = object
+            .object_id_opt()
+            .and_then(|value| value.parse::<sui::types::Address>().ok());
+        if returned_id != Some(cap_id) {
+            return Err(invalid(format!(
+                "bound Scheduler UpgradeCap request for '{cap_id}' returned a different object ID"
+            )));
+        }
+
+        let expected_type = sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("package"),
+            sui::types::Identifier::from_static("UpgradeCap"),
+            vec![],
+        );
+        let observed_type = object
+            .object_type_opt()
+            .and_then(|value| value.parse::<sui::types::StructTag>().ok());
+        if observed_type.as_ref() != Some(&expected_type) {
+            return Err(invalid(format!(
+                "bound Scheduler UpgradeCap '{cap_id}' has an unexpected object type"
+            )));
+        }
+
+        let owner: sui::types::Owner = object
+            .owner_opt()
+            .ok_or_else(|| {
+                invalid(format!(
+                    "bound Scheduler UpgradeCap '{cap_id}' has no owner"
+                ))
+            })?
+            .try_into()
+            .map_err(|_| {
+                invalid(format!(
+                    "bound Scheduler UpgradeCap '{cap_id}' has malformed ownership"
+                ))
+            })?;
+        if matches!(owner, sui::types::Owner::Object(_)) {
+            return Err(invalid(format!(
+                "bound Scheduler UpgradeCap '{cap_id}' is wrapped"
+            )));
+        }
+        if object.version_opt().is_none() {
+            return Err(invalid(format!(
+                "bound Scheduler UpgradeCap '{cap_id}' has no version"
+            )));
+        }
+        let contents = object
+            .contents_opt()
+            .and_then(|value| value.value_opt())
+            .ok_or_else(|| {
+                invalid(format!(
+                    "bound Scheduler UpgradeCap '{cap_id}' has no BCS contents"
+                ))
+            })?;
+        let cap: SchedulerUpgradeCapState = bcs::from_bytes(contents).map_err(|error| {
+            invalid(format!(
+                "bound Scheduler UpgradeCap '{cap_id}' has malformed BCS contents: {error}"
+            ))
+        })?;
+        if cap.id.id.bytes != cap_id {
+            return Err(invalid(format!(
+                "bound Scheduler UpgradeCap object '{cap_id}' contains a different UID"
+            )));
+        }
+        let package_id = cap.package.bytes;
+        if package_id == sui::types::Address::ZERO {
+            return Err(invalid(format!(
+                "bound Scheduler UpgradeCap '{cap_id}' points to the zero package ID"
+            )));
+        }
+        let _ = (cap.version, cap.policy);
+        Ok(package_id)
     }
 
     async fn validate_required_roots(
@@ -908,18 +1054,15 @@ impl StateResolver {
                     ),
                 });
             };
-            if linked.storage_id != accepted.storage_id || linked.version != accepted.version {
+            if linked.initial_id != accepted.initial_id {
                 return Err(NexusError::IncompatiblePackage {
                     package: source,
                     reason: format!(
-                        "source graph selects the '{}' role as '{}' at version {}, but root '{}' \
-                         accepts '{}' at version {}",
+                        "source graph selects the '{}' lineage '{}' but root '{}' accepts lineage '{}'",
                         adapter.role.as_str(),
-                        linked.storage_id,
-                        linked.version,
+                        linked.initial_id,
                         root.object_id(),
-                        accepted.storage_id,
-                        accepted.version
+                        accepted.initial_id
                     ),
                 });
             }
@@ -1028,7 +1171,7 @@ impl StateResolver {
         V: DeserializeOwned + MoveStruct,
     {
         let snapshot = self.observe_snapshot(object_id).await?;
-        Self::validate_observation::<A, W, V>(snapshot.observed(), context)?;
+        Self::validate_typed_observation::<A, W, V>(snapshot.observed(), context)?;
         self.decode_snapshot::<A, V>(&snapshot)
     }
 
@@ -1051,7 +1194,7 @@ impl StateResolver {
         W: MoveStruct,
         V: DeserializeOwned + MoveStruct,
     {
-        Self::validate_observation::<A, W, V>(snapshot.observed(), context)?;
+        Self::validate_typed_observation::<A, W, V>(snapshot.observed(), context)?;
         self.decode_snapshot::<A, V>(snapshot)
     }
 
@@ -1142,7 +1285,7 @@ impl StateResolver {
         W: MoveStruct,
         V: DeserializeOwned + MoveStruct,
     {
-        Self::validate_observation::<A, W, V>(observed, context)?;
+        Self::validate_typed_observation::<A, W, V>(observed, context)?;
         self.decode_inner::<A, V>(observed).await
     }
 
@@ -1200,27 +1343,7 @@ impl StateResolver {
                 reason: error.to_string(),
             }
         })?;
-        if package.storage_id != *observed.witness_type().address() {
-            return Err(NexusError::IncompatiblePackage {
-                package: package.storage_id,
-                reason: format!(
-                    "context selects package '{}', but object '{}' accepts '{}'",
-                    package.storage_id,
-                    observed.object_id,
-                    observed.witness_type().address()
-                ),
-            });
-        }
-        let expected_anchor = state_struct_tag::<A>(package)?;
-        let expected_inner = state_struct_tag::<V>(package)?;
-        if observed.anchor_type != expected_anchor || observed.inner.value_type != expected_inner {
-            return Err(ClientUpgradeRequired::new(
-                observed.object_id,
-                observed.witness.value_type.clone(),
-                Some(observed.inner.value_type.clone()),
-            )
-            .into());
-        }
+        validate_supported_state_pair::<A, V>(observed, adapter, package)?;
 
         self.decode_snapshot::<A, V>(snapshot)
     }
@@ -1249,6 +1372,18 @@ impl StateResolver {
         let observed = self.observe(object_id).await?;
         Self::validate_observation::<A, W, V>(&observed, context)?;
         Ok(observed)
+    }
+
+    fn validate_typed_observation<A, W, V>(
+        observed: &ObservedState,
+        context: &NexusContext,
+    ) -> Result<(), NexusError>
+    where
+        A: MoveStruct,
+        W: MoveStruct,
+        V: MoveStruct,
+    {
+        Self::validate_observation::<A, W, V>(observed, context)
     }
 
     fn validate_observation<A, W, V>(
@@ -1318,12 +1453,7 @@ impl StateResolver {
             || observed.witness.value_type != expected_witness
             || observed.inner.value_type != expected_inner
         {
-            return Err(ClientUpgradeRequired::new(
-                object_id,
-                observed.witness.value_type.clone(),
-                Some(observed.inner.value_type.clone()),
-            )
-            .into());
+            return Err(state_upgrade_required(observed));
         }
 
         self.decode_snapshot::<A, V>(&snapshot)
@@ -1447,13 +1577,6 @@ impl StateAdapter {
         let version_one_witness = witness.module().as_str() == "era"
             && witness.name().as_str() == "V1"
             && witness.type_params().is_empty();
-        #[cfg(feature = "upgrade_test")]
-        let supported_witness = version_one_witness
-            || (witness.module().as_str() == "era"
-                && witness.name().as_str() == "V2"
-                && witness.type_params().is_empty());
-        #[cfg(not(feature = "upgrade_test"))]
-        let supported_witness = version_one_witness;
 
         let version_one_inner = inner.module().as_str() == adapter.inner_module
             && inner.name().as_str() == adapter.inner_name
@@ -1468,7 +1591,7 @@ impl StateAdapter {
         #[cfg(not(feature = "upgrade_test"))]
         let supported_inner = version_one_inner;
 
-        if !supported_witness || !supported_inner || !witness.type_params().is_empty() {
+        if !version_one_witness || !supported_inner || !witness.type_params().is_empty() {
             return Err(ClientUpgradeRequired::new(
                 state.object_id,
                 witness.clone(),
@@ -1675,6 +1798,114 @@ fn validate_state_type_origins(
                 ),
             });
         }
+    }
+    Ok(())
+}
+
+fn validate_state_package(
+    state: &ObservedState,
+    adapter: StateAdapter,
+    package: &PackageVersion,
+) -> Result<(), NexusError> {
+    let witness_package_id = *state.witness_type().address();
+    if package.initial_id != witness_package_id && package.storage_id != witness_package_id {
+        return Err(NexusError::IncompatiblePackage {
+            package: package.storage_id,
+            reason: format!(
+                "selected package lineage '{}' (storage '{}') does not match witness package '{}'",
+                package.initial_id, package.storage_id, witness_package_id
+            ),
+        });
+    }
+    let source_role = package_role(package).ok_or_else(|| NexusError::IncompatiblePackage {
+        package: witness_package_id,
+        reason: "package does not have a supported Nexus ABI".to_owned(),
+    })?;
+    if source_role != adapter.role {
+        return Err(NexusError::IncompatiblePackage {
+            package: witness_package_id,
+            reason: format!(
+                "object anchor selects role '{}', but the witness package has role '{}'",
+                adapter.role.as_str(),
+                source_role.as_str()
+            ),
+        });
+    }
+    validate_state_type_origins(state, package)
+}
+
+fn state_upgrade_required(observed: &ObservedState) -> NexusError {
+    ClientUpgradeRequired::new(
+        observed.object_id,
+        observed.witness_type().clone(),
+        Some(observed.inner_type().clone()),
+    )
+    .into()
+}
+
+fn parse_runtime_type(
+    authority_id: sui::types::Address,
+    runtime_type: &TypeName,
+    runtime_origin: sui::types::Address,
+) -> Result<sui::types::StructTag, NexusError> {
+    let invalid = |reason: String| NexusError::InvalidObjectState {
+        object: authority_id,
+        reason,
+    };
+    let tag = runtime_type
+        .as_str()
+        .parse::<sui::types::StructTag>()
+        .map_err(|error| {
+            invalid(format!(
+                "RuntimeAuthority runtime type is malformed: {error}"
+            ))
+        })?;
+    if !tag.type_params().is_empty() || *tag.address() != runtime_origin {
+        return Err(invalid(format!(
+            "RuntimeAuthority runtime type '{}' does not match defining package '{runtime_origin}'",
+            runtime_type.as_str()
+        )));
+    }
+    Ok(tag)
+}
+
+fn validate_runtime_type_origin(
+    scheduler_package_id: sui::types::Address,
+    scheduler: &PackageVersion,
+    runtime_tag: &sui::types::StructTag,
+    runtime_origin: sui::types::Address,
+) -> Result<(), NexusError> {
+    let observed_origin = scheduler
+        .type_origin(runtime_tag.module().as_str(), runtime_tag.name().as_str())
+        .map_err(|error| NexusError::IncompatiblePackage {
+            package: scheduler_package_id,
+            reason: format!("RuntimeAuthority runtime type is absent from Scheduler ABI: {error}"),
+        })?;
+    if observed_origin != runtime_origin {
+        return Err(NexusError::IncompatiblePackage {
+            package: scheduler_package_id,
+            reason: format!(
+                "Scheduler package defines runtime type '{runtime_tag}' at '{observed_origin}', but RuntimeAuthority records '{runtime_origin}'"
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn validate_supported_state_pair<A, V>(
+    observed: &ObservedState,
+    adapter: StateAdapter,
+    package: &PackageVersion,
+) -> Result<(), NexusError>
+where
+    A: MoveStruct,
+    V: MoveStruct,
+{
+    validate_state_package(observed, adapter, package)?;
+    let expected_anchor = state_struct_tag::<A>(package)?;
+    let expected_inner = state_struct_tag::<V>(package)?;
+    if observed.anchor_type != expected_anchor || observed.inner_type() != &expected_inner {
+        return Err(state_upgrade_required(observed));
     }
     Ok(())
 }
@@ -2056,7 +2287,6 @@ mod tests {
             inner.max_transaction_budget()
         );
     }
-
     #[tokio::test]
     async fn finalized_snapshot_reuses_unchanged_structure_and_rejects_removal() {
         use crate::{
@@ -2672,28 +2902,130 @@ mod tests {
 
         assert_eq!(adapter.role, PackageRole::Registry);
     }
-
-    #[cfg(feature = "upgrade_test")]
     #[test]
-    fn upgrade_fixture_accepts_new_witness_with_retained_inner_origin() {
-        let state = ObservedState {
-            object_id: address("0x10"),
-            owner: sui::types::Owner::Shared(3),
-            anchor_type: struct_tag("0xa1", "tool_registry", "ToolRegistry"),
-            witness: ObservedStateField {
-                field_id: address("0x11"),
-                value_type: struct_tag("0xa2", "era", "V2"),
-            },
-            inner: ObservedStateField {
-                field_id: address("0x12"),
-                value_type: struct_tag("0xa1", "tool_registry", "ToolRegistryInnerV1"),
-            },
-        };
-
-        let adapter = StateAdapter::for_observed(&state).expect("fixture pair is supported");
-        assert_eq!(adapter.role, PackageRole::Tool);
+    fn v2_witness_is_rejected_for_all_preserved_roots() {
+        for (anchor_module, anchor_name, inner_module, inner_name) in [
+            (
+                "agent_registry",
+                "AgentRegistry",
+                "agent_registry",
+                "AgentRegistryInnerV1",
+            ),
+            (
+                "leader",
+                "LeaderRegistry",
+                "leader",
+                "LeaderRegistryInnerV1",
+            ),
+            (
+                "priority_fee_vault",
+                "PriorityFeeVault",
+                "priority_fee_vault",
+                "PriorityFeeVaultInnerV1",
+            ),
+            (
+                "network_auth",
+                "NetworkAuth",
+                "network_auth",
+                "NetworkAuthInnerV1",
+            ),
+            (
+                "tool_registry",
+                "ToolRegistry",
+                "tool_registry",
+                "ToolRegistryInnerV1",
+            ),
+        ] {
+            let mut state =
+                observed_root_state(anchor_module, anchor_name, inner_module, inner_name);
+            state.witness.value_type = struct_tag("0xb2", "era", "V2");
+            assert!(
+                StateAdapter::for_observed(&state).is_err(),
+                "{anchor_module}::{anchor_name} must reject a V2 witness"
+            );
+        }
     }
 
+    #[test]
+    fn v1_root_state_accepts_exact_origins_from_an_upgraded_package_lineage() {
+        let state = observed_root_state(
+            "leader",
+            "LeaderRegistry",
+            "leader",
+            "LeaderRegistryInnerV1",
+        );
+        let adapter = StateAdapter::for_observed(&state).expect("V1 root layout is supported");
+        let upgraded = registry_package("0xa1", "0xb2", "0xa1", "0xa1", "0xa1");
+        assert!(validate_state_package(&state, adapter, &upgraded).is_ok());
+
+        let foreign_lineage = registry_package("0xc2", "0xb3", "0xa1", "0xa1", "0xa1");
+        assert!(matches!(
+            validate_state_package(&state, adapter, &foreign_lineage),
+            Err(NexusError::IncompatiblePackage { .. })
+        ));
+
+        let wrong_origin = registry_package("0xa1", "0xb2", "0xc2", "0xa1", "0xa1");
+        assert!(matches!(
+            validate_state_package(&state, adapter, &wrong_origin),
+            Err(NexusError::IncompatiblePackage { .. })
+        ));
+    }
+
+    #[test]
+    fn runtime_type_and_type_origin_must_match_scheduler_metadata() {
+        let mut type_origins = TypeOrigins::new();
+        type_origins.entry("era".to_owned()).or_default().extend([
+            ("RuntimeV1".to_owned(), address("0xa5")),
+            ("RuntimeV2".to_owned(), address("0xb5")),
+        ]);
+        let scheduler = PackageVersion::new(
+            address("0xa5"),
+            address("0xb5"),
+            2,
+            type_origins,
+            PackageLinkage::new(),
+        );
+
+        for (runtime_name, origin) in [
+            ("RuntimeV1", address("0xa5")),
+            ("RuntimeV2", address("0xb5")),
+        ] {
+            let runtime_type = TypeName::new(&format!("{origin}::era::{runtime_name}"));
+            let tag = parse_runtime_type(address("0xd0"), &runtime_type, origin)
+                .expect("recorded runtime identity parses");
+            assert!(
+                validate_runtime_type_origin(address("0xb5"), &scheduler, &tag, origin).is_ok()
+            );
+        }
+
+        let mismatched_type = TypeName::new("0xa5::era::RuntimeV2");
+        assert!(matches!(
+            parse_runtime_type(address("0xd0"), &mismatched_type, address("0xb5")),
+            Err(NexusError::InvalidObjectState { .. })
+        ));
+
+        let unknown_type = TypeName::new("0xb5::era::RuntimeV3");
+        let tag = parse_runtime_type(address("0xd0"), &unknown_type, address("0xb5"))
+            .expect("the tag itself is valid");
+        assert!(matches!(
+            validate_runtime_type_origin(address("0xb5"), &scheduler, &tag, address("0xb5")),
+            Err(NexusError::IncompatiblePackage { .. })
+        ));
+    }
+
+    #[test]
+    fn state_adapter_rejects_unknown_anchor_and_inner_layout() {
+        let unknown_anchor = observed_root_state("unknown", "UnknownRoot", "unknown", "InnerV1");
+        assert!(StateAdapter::for_observed(&unknown_anchor).is_err());
+
+        let unknown_inner = observed_root_state(
+            "leader",
+            "LeaderRegistry",
+            "leader",
+            "LeaderRegistryInnerV2",
+        );
+        assert!(StateAdapter::for_observed(&unknown_inner).is_err());
+    }
     #[cfg(feature = "upgrade_test")]
     #[test]
     fn upgrade_fixture_accepts_declared_agent_registry_layout_change() {
@@ -2703,7 +3035,7 @@ mod tests {
             anchor_type: struct_tag("0xb1", "agent_registry", "AgentRegistry"),
             witness: ObservedStateField {
                 field_id: address("0x21"),
-                value_type: struct_tag("0xb2", "era", "V2"),
+                value_type: struct_tag("0xb1", "era", "V1"),
             },
             inner: ObservedStateField {
                 field_id: address("0x22"),
@@ -2713,6 +3045,57 @@ mod tests {
 
         let adapter = StateAdapter::for_observed(&state).expect("fixture pair is supported");
         assert_eq!(adapter.role, PackageRole::Registry);
+    }
+
+    fn registry_package(
+        initial_id: &'static str,
+        storage_id: &'static str,
+        witness_origin: &'static str,
+        anchor_origin: &'static str,
+        inner_origin: &'static str,
+    ) -> PackageVersion {
+        let mut type_origins = TypeOrigins::new();
+        for (module, datatype, origin) in [
+            ("agent_registry", "AgentRegistry", initial_id),
+            ("leader", "LeaderRegistry", anchor_origin),
+            ("leader", "LeaderRegistryInnerV1", inner_origin),
+            ("network_auth", "NetworkAuth", initial_id),
+            ("priority_fee_vault", "PriorityFeeVault", initial_id),
+            ("era", "V1", witness_origin),
+        ] {
+            type_origins
+                .entry(module.to_owned())
+                .or_default()
+                .insert(datatype.to_owned(), address(origin));
+        }
+        PackageVersion::new(
+            address(initial_id),
+            address(storage_id),
+            2,
+            type_origins,
+            PackageLinkage::new(),
+        )
+    }
+
+    fn observed_root_state(
+        anchor_module: &'static str,
+        anchor_name: &'static str,
+        inner_module: &'static str,
+        inner_name: &'static str,
+    ) -> ObservedState {
+        ObservedState {
+            object_id: address("0x10"),
+            owner: sui::types::Owner::Shared(3),
+            anchor_type: struct_tag("0xa1", anchor_module, anchor_name),
+            witness: ObservedStateField {
+                field_id: address("0x11"),
+                value_type: struct_tag("0xa1", "era", "V1"),
+            },
+            inner: ObservedStateField {
+                field_id: address("0x12"),
+                value_type: struct_tag("0xa1", inner_module, inner_name),
+            },
+        }
     }
 
     fn state_field(
@@ -2749,6 +3132,221 @@ mod tests {
         field.set_field_object(object);
         field.set_value_type(value_type.to_string());
         field
+    }
+
+    #[derive(serde::Serialize)]
+    struct UpgradeCapFixture {
+        id: UID,
+        package: ID,
+        version: u64,
+        policy: u8,
+    }
+
+    fn upgrade_cap_contents(uid: sui::types::Address, package: sui::types::Address) -> Vec<u8> {
+        bcs::to_bytes(&UpgradeCapFixture {
+            id: UID::new(uid),
+            package: ID::new(package),
+            version: 1,
+            policy: 1,
+        })
+        .expect("UpgradeCap fixture serializes")
+    }
+
+    fn upgrade_cap_object(
+        object_id: sui::types::Address,
+        object_type: sui::types::StructTag,
+        owner: sui::types::Owner,
+        version: Option<u64>,
+        contents: Option<Vec<u8>>,
+    ) -> sui::grpc::Object {
+        let mut object = sui::grpc::Object::default();
+        object.set_object_id(object_id);
+        object.set_object_type(object_type.to_string());
+        object.set_owner(sui::grpc::Owner::from(owner));
+        if let Some(version) = version {
+            object.set_version(version);
+        }
+        if let Some(contents) = contents {
+            let mut bcs = sui::grpc::Bcs::default();
+            bcs.set_name(object_type.to_string());
+            bcs.set_value(contents);
+            object.contents = Some(bcs);
+        }
+        object
+    }
+
+    fn upgrade_cap_type() -> sui::types::StructTag {
+        struct_tag("0x2", "package", "UpgradeCap")
+    }
+
+    #[test]
+    fn scheduler_upgrade_cap_decoder_fails_closed_on_malformed_or_foreign_objects() {
+        let authority_id = address("0xd0");
+        let cap_id = address("0xcafe");
+        let package_id = address("0xb5");
+        let owner = sui::types::Owner::Address(address("0x1"));
+        let contents = upgrade_cap_contents(cap_id, package_id);
+
+        let valid = upgrade_cap_object(
+            cap_id,
+            upgrade_cap_type(),
+            owner,
+            Some(1),
+            Some(contents.clone()),
+        );
+        assert_eq!(
+            StateResolver::decode_scheduler_upgrade_cap(authority_id, cap_id, valid)
+                .expect("typed owned UpgradeCap decodes"),
+            package_id
+        );
+
+        for object in [
+            upgrade_cap_object(
+                address("0xcaff"),
+                upgrade_cap_type(),
+                sui::types::Owner::Address(address("0x1")),
+                Some(1),
+                Some(contents.clone()),
+            ),
+            upgrade_cap_object(
+                cap_id,
+                struct_tag("0x2", "package", "OtherCap"),
+                sui::types::Owner::Address(address("0x1")),
+                Some(1),
+                Some(contents.clone()),
+            ),
+            upgrade_cap_object(
+                cap_id,
+                upgrade_cap_type(),
+                sui::types::Owner::Object(address("0xd1")),
+                Some(1),
+                Some(contents.clone()),
+            ),
+            upgrade_cap_object(
+                cap_id,
+                upgrade_cap_type(),
+                sui::types::Owner::Address(address("0x1")),
+                None,
+                Some(contents.clone()),
+            ),
+            upgrade_cap_object(
+                cap_id,
+                upgrade_cap_type(),
+                sui::types::Owner::Address(address("0x1")),
+                Some(1),
+                None,
+            ),
+            upgrade_cap_object(
+                cap_id,
+                upgrade_cap_type(),
+                sui::types::Owner::Address(address("0x1")),
+                Some(1),
+                Some(vec![0xff]),
+            ),
+            upgrade_cap_object(
+                cap_id,
+                upgrade_cap_type(),
+                sui::types::Owner::Address(address("0x1")),
+                Some(1),
+                Some(upgrade_cap_contents(address("0xcaff"), package_id)),
+            ),
+            upgrade_cap_object(
+                cap_id,
+                upgrade_cap_type(),
+                sui::types::Owner::Address(address("0x1")),
+                Some(1),
+                Some(upgrade_cap_contents(cap_id, sui::types::Address::ZERO)),
+            ),
+        ] {
+            assert!(matches!(
+                StateResolver::decode_scheduler_upgrade_cap(authority_id, cap_id, object),
+                Err(NexusError::InvalidObjectState { .. })
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn scheduler_upgrade_cap_is_fetched_again_after_its_package_pointer_changes() {
+        let authority_id = address("0xd0");
+        let cap_id = address("0xcafe");
+        let package_ids = [address("0xb5"), address("0xb6")];
+        let seen = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut ledger = crate::test_utils::sui_mocks::grpc::MockLedgerService::new();
+        let seen_for_mock = std::sync::Arc::clone(&seen);
+        ledger
+            .expect_get_object()
+            .times(2)
+            .returning(move |_request| {
+                let index = seen_for_mock.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let package_id = package_ids[index];
+                let object = upgrade_cap_object(
+                    cap_id,
+                    upgrade_cap_type(),
+                    sui::types::Owner::Address(address("0x1")),
+                    Some(index as u64 + 1),
+                    Some(upgrade_cap_contents(cap_id, package_id)),
+                );
+                let mut response = sui::grpc::GetObjectResponse::default();
+                response.set_object(object);
+                Ok(tonic::Response::new(response))
+            });
+        let rpc_url = crate::test_utils::sui_mocks::grpc::mock_server(
+            crate::test_utils::sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger),
+                ..Default::default()
+            },
+        );
+        let crawler = Crawler::new(std::sync::Arc::new(
+            sui::grpc::client(&rpc_url).expect("mock Sui client builds"),
+        ));
+        let resolver = StateResolver::new(std::sync::Arc::new(crawler));
+
+        assert_eq!(
+            resolver
+                .resolve_scheduler_upgrade_cap_package(authority_id, cap_id)
+                .await
+                .expect("first cap package resolves"),
+            package_ids[0]
+        );
+        assert_eq!(
+            resolver
+                .resolve_scheduler_upgrade_cap_package(authority_id, cap_id)
+                .await
+                .expect("updated cap package resolves"),
+            package_ids[1]
+        );
+        assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn missing_scheduler_upgrade_cap_fails_closed() {
+        let authority_id = address("0xd0");
+        let cap_id = address("0xcafe");
+        let mut ledger = crate::test_utils::sui_mocks::grpc::MockLedgerService::new();
+        crate::test_utils::sui_mocks::grpc::mock_get_object_not_found(&mut ledger, cap_id);
+        let rpc_url = crate::test_utils::sui_mocks::grpc::mock_server(
+            crate::test_utils::sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger),
+                ..Default::default()
+            },
+        );
+        let crawler = Crawler::new(std::sync::Arc::new(
+            sui::grpc::client(&rpc_url).expect("mock Sui client builds"),
+        ));
+        let resolver = StateResolver::new(std::sync::Arc::new(crawler));
+
+        assert!(matches!(
+            resolver
+                .resolve_scheduler_upgrade_cap_package(authority_id, sui::types::Address::ZERO)
+                .await,
+            Err(NexusError::InvalidObjectState { .. })
+        ));
+        assert!(matches!(
+            resolver
+                .resolve_scheduler_upgrade_cap_package(authority_id, cap_id)
+                .await,
+            Err(NexusError::Rpc(_))
+        ));
     }
 
     fn struct_tag(

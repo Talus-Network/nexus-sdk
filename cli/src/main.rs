@@ -431,9 +431,7 @@ mod tests {
     #[test]
     fn root_help_describes_diagnostic_output_without_domain_ambiguity() {
         let mut command = Cli::command();
-        let mut help = Vec::new();
-        command.write_long_help(&mut help).unwrap();
-        let help = String::from_utf8(help).unwrap();
+        let help = command.render_long_help().to_string();
 
         assert!(help.contains("Increase diagnostic detail"));
         assert!(help.contains("Show errors only"));
