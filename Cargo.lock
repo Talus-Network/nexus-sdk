@@ -6327,6 +6327,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-stream",
+ "tower-service",
  "tracing",
  "warp",
 ]

@@ -37,6 +37,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed CLI argument validation incorrectly rejecting valid combinations of occurrence start, deadline, and priority fee options.
 - `conf set`, `tap agent save`/`remove`, and Tool registration no longer replace an existing configuration with defaults when `conf.toml` cannot be read or parsed. The command now fails and leaves the file untouched; only a missing file starts from the default configuration.
 
+### `nexus-toolkit`
+
+#### Changed
+
+- Signed HTTP mode now requires direct TLS termination and authorizes `/invoke` only when the TLS client key matches the current registered Leader key.
+- TLS client certificates remain optional for public health and metadata routes; v3 request and response signing bytes are unchanged.
+
 ## [`2.1.1`] - 2026-10-07
 
 ### `nexus-sdk`

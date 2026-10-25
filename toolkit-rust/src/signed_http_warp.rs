@@ -40,30 +40,33 @@ impl RefreshingAllowedLeadersResolver {
         }
     }
 
-    fn refresh_from_source_path(&self) {
-        let Some(path) = self
-            .allowed_leaders
-            .read()
-            .unwrap()
-            .source_path()
-            .map(ToOwned::to_owned)
-        else {
-            return;
-        };
-        let Ok(updated) = AllowedLeaders::from_path(path) else {
-            return;
-        };
-        *self.allowed_leaders.write().unwrap() = updated;
+    fn snapshot(&self) -> Result<AllowedLeaders, SignedHttpError> {
+        let mut allowed_leaders = self.allowed_leaders.write().unwrap();
+        if let Some(path) = allowed_leaders.source_path().map(ToOwned::to_owned) {
+            *allowed_leaders = AllowedLeaders::from_path(path)?;
+        }
+        Ok(allowed_leaders.clone())
     }
 }
 
 impl LeaderKeyResolver for RefreshingAllowedLeadersResolver {
     fn leader_public_key(&self, leader_id: &str, leader_key_id: u64) -> Option<[u8; 32]> {
-        self.refresh_from_source_path();
-        self.allowed_leaders
-            .read()
-            .unwrap()
+        self.snapshot()
+            .ok()?
             .leader_public_key(leader_id, leader_key_id)
+    }
+}
+
+struct PeerBoundResolver<'a> {
+    allowed_leaders: &'a AllowedLeaders,
+    peer_key: [u8; 32],
+}
+
+impl LeaderKeyResolver for PeerBoundResolver<'_> {
+    fn leader_public_key(&self, leader_id: &str, leader_key_id: u64) -> Option<[u8; 32]> {
+        self.allowed_leaders
+            .leader_public_key(leader_id, leader_key_id)
+            .filter(|key| *key == self.peer_key)
     }
 }
 
@@ -181,6 +184,7 @@ pub(crate) async fn handle_invoke<F, Fut>(
     replay: &ReplayCache,
     headers: HeaderMap,
     body_bytes: Vec<u8>,
+    tls_peer_key: Option<[u8; 32]>,
     run: F,
 ) -> warp::reply::Response
 where
@@ -193,12 +197,28 @@ where
             response(status, body, is_result, None)
         }
         InvokeAuthRuntime::Signed(runtime) => {
+            let Some(peer_key) = tls_peer_key else {
+                return json_response(
+                    StatusCode::UNAUTHORIZED,
+                    json!({
+                        "error": "tls_peer_identity_required",
+                        "details": "signed invoke requires a registered Leader TLS identity",
+                    }),
+                );
+            };
+            let allowlist = match runtime.allowed_leaders.snapshot() {
+                Ok(allowlist) => allowlist,
+                Err(error) => return auth_failed(error),
+            };
+            let bound_resolver = PeerBoundResolver {
+                allowed_leaders: &allowlist,
+                peer_key,
+            };
             let request_headers = RequestHeadersRef::from_getter(|name| header_str(&headers, name));
-            let authenticated =
-                match authenticate_request(request_headers, runtime.allowed_leaders.as_ref()) {
-                    Ok(authenticated) => authenticated,
-                    Err(error) => return auth_failed(error),
-                };
+            let authenticated = match authenticate_request(request_headers, &bound_resolver) {
+                Ok(authenticated) => authenticated,
+                Err(error) => return auth_failed(error),
+            };
             match replay.begin(authenticated.nonce, authenticated.input_hash, now_ms()) {
                 ReplayDecision::Return(cached) => cached.into_response(
                     &authenticated.leader_signature,
@@ -626,6 +646,26 @@ mod tests {
     }
 
     #[test]
+    fn file_backed_allowlist_refresh_failure_is_not_authorized() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("allowed-leaders.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&allowed_leaders_file("leader", 0, &leader)).unwrap(),
+        )
+        .unwrap();
+        let resolver = RefreshingAllowedLeadersResolver::new(
+            AllowedLeaders::from_path(&path).expect("file allowlist"),
+        );
+
+        std::fs::write(&path, b"not an allowlist").unwrap();
+
+        assert!(resolver.snapshot().is_err());
+        assert_eq!(resolver.leader_public_key("leader", 0), None);
+    }
+
+    #[test]
     fn replay_cache_rejects_duplicate_while_in_flight() {
         let cache = ReplayCache::new(10);
         let nonce = [9; 32];
@@ -722,11 +762,95 @@ mod tests {
             &replay,
             HeaderMap::new(),
             Vec::new(),
+            Some(leader.verifying_key().to_bytes()),
             |_ctx, _body| async { (StatusCode::OK, vec![1], true) },
         )
         .await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert!(response.headers().get(HEADER_TOOL_SIGNATURE).is_none());
+    }
+
+    #[tokio::test]
+    async fn tls_peer_binding_precedes_cache_miss_and_cache_hit() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let other_leader = SigningKey::from_bytes(&[8; 32]);
+        let allowed_leaders = AllowedLeaders::try_from(AllowedLeadersFileV1 {
+            version: 1,
+            leaders: vec![
+                allowed_leader("leader", 0, &leader),
+                allowed_leader("other", 1, &other_leader),
+            ],
+        })
+        .unwrap();
+        let runtime = InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
+            response_signing_key: None,
+            allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(allowed_leaders)),
+            replay_cache_ttl_ms: 10_000,
+        }));
+        let replay = ReplayCache::new(1_000);
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let response = handle_invoke(
+            &runtime,
+            &replay,
+            request_headers(&leader, input_hash, nonce),
+            Vec::new(),
+            None,
+            |_ctx, _body| async { panic!("missing peer must not invoke Tool") },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let response = handle_invoke(
+            &runtime,
+            &replay,
+            request_headers(&leader, input_hash, nonce),
+            Vec::new(),
+            Some(other_leader.verifying_key().to_bytes()),
+            |_ctx, _body| async { panic!("mismatched peer must not reserve or invoke") },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let calls_on_miss = Arc::clone(&calls);
+        let response = handle_invoke(
+            &runtime,
+            &replay,
+            request_headers(&leader, input_hash, nonce),
+            Vec::new(),
+            Some(leader.verifying_key().to_bytes()),
+            move |_ctx, _body| async move {
+                calls_on_miss.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![4], true)
+            },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = handle_invoke(
+            &runtime,
+            &replay,
+            request_headers(&leader, input_hash, nonce),
+            Vec::new(),
+            Some(other_leader.verifying_key().to_bytes()),
+            |_ctx, _body| async { panic!("mismatched peer must not read cached result") },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let response = handle_invoke(
+            &runtime,
+            &replay,
+            request_headers(&leader, input_hash, nonce),
+            Vec::new(),
+            Some(leader.verifying_key().to_bytes()),
+            |_ctx, _body| async { panic!("registered exact retry must use the cache") },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -744,6 +868,7 @@ mod tests {
                 &replay,
                 request_headers(&leader, input_hash, nonce),
                 Vec::new(),
+                Some(leader.verifying_key().to_bytes()),
                 move |context, _body| async move {
                     let context = context.expect("signed mode authenticates the Leader");
                     assert_eq!(context.input_hash, input_hash);
@@ -784,6 +909,7 @@ mod tests {
                 &replay,
                 request_headers(&leader, input_hash, nonce),
                 Vec::new(),
+                Some(leader.verifying_key().to_bytes()),
                 move |_ctx, _body| async move {
                     callback_calls.fetch_add(1, Ordering::SeqCst);
                     (StatusCode::OK, vec![1], true)
@@ -812,6 +938,7 @@ mod tests {
             &replay,
             HeaderMap::new(),
             Vec::new(),
+            None,
             |_ctx, _body| async { (StatusCode::OK, body.clone(), true) },
         )
         .await;
@@ -855,6 +982,7 @@ mod tests {
             &replay,
             request_headers(&leader, input_hash, nonce),
             Vec::new(),
+            Some(leader.verifying_key().to_bytes()),
             |ctx, _body| async move {
                 assert_eq!(ctx.unwrap().input_hash, input_hash);
                 (StatusCode::OK, result.clone(), true)
@@ -894,6 +1022,7 @@ mod tests {
                 &replay,
                 request_headers(&leader, [1; 32], [1; 32]),
                 Vec::new(),
+                Some(leader.verifying_key().to_bytes()),
                 move |_ctx, _body| async move {
                     calls.fetch_add(1, Ordering::SeqCst);
                     (StatusCode::OK, vec![8], true)
@@ -910,6 +1039,7 @@ mod tests {
             &replay,
             request_headers(&leader, [2; 32], [1; 32]),
             Vec::new(),
+            Some(leader.verifying_key().to_bytes()),
             move |_ctx, _body| async move {
                 changed_calls.fetch_add(1, Ordering::SeqCst);
                 (StatusCode::OK, vec![9], true)
@@ -936,6 +1066,7 @@ mod tests {
                 &replay,
                 request_headers(&leader, [1; 32], [5; 32]),
                 Vec::new(),
+                Some(leader.verifying_key().to_bytes()),
                 move |_ctx, _body| async move {
                     calls.fetch_add(1, Ordering::SeqCst);
                     (
@@ -1001,6 +1132,7 @@ mod tests {
             &replay,
             headers_from_encoded(request_a),
             Vec::new(),
+            Some(leader_a.verifying_key().to_bytes()),
             {
                 let calls = Arc::clone(&calls);
                 move |_ctx, _body| async move {
@@ -1044,6 +1176,7 @@ mod tests {
             &replay,
             headers_from_encoded(request_b),
             Vec::new(),
+            Some(leader_b.verifying_key().to_bytes()),
             |_ctx, _body| async { panic!("a completed replay entry must not rerun the Tool") },
         )
         .await;

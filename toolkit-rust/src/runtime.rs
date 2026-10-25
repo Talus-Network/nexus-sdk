@@ -249,9 +249,11 @@ macro_rules! bootstrap {
             .or(default_tools_route)
             .boxed();
         // Terminate TLS directly when both credential paths are configured.
-        match $crate::runtime::tls::Config::from_env()
-            .expect("Invalid Nexus Tool TLS configuration")
-        {
+        let tls_config = $crate::runtime::tls::Config::from_env()
+            .expect("Invalid Nexus Tool TLS configuration");
+        $crate::runtime::validate_signed_http_transport_(&toolkit_cfg, &tls_config)
+            .expect("Signed HTTP requires TLS on the Toolkit listener");
+        match tls_config {
             $crate::runtime::tls::Config::Disabled => {
                 $crate::warp::serve(routes).run($addr).await
             }
@@ -330,6 +332,7 @@ pub fn routes_for_with_config_<T: NexusTool>(
     let invoke_route = warp::post()
         .and(base_path)
         .and(warp::path("invoke"))
+        .and(warp::filters::ext::optional::<tls::TlsPeerIdentity>())
         .and(warp::header::headers_cloned())
         .and(warp::body::content_length_limit(invoke_max_body_bytes))
         .and(warp::body::bytes())
@@ -337,6 +340,18 @@ pub fn routes_for_with_config_<T: NexusTool>(
         .and_then(invoke_handler::<T>);
 
     health_route.or(meta_route).or(invoke_route)
+}
+
+/// Rejects a signed-required runtime that would otherwise serve plaintext HTTP.
+#[doc(hidden)]
+pub fn validate_signed_http_transport_(
+    toolkit_cfg: &ToolkitRuntimeConfig,
+    tls_config: &tls::Config,
+) -> anyhow::Result<()> {
+    if toolkit_cfg.signed_http_is_required() && matches!(tls_config, tls::Config::Disabled) {
+        anyhow::bail!("signed_http requires TLS; configure both Toolkit TLS credential paths");
+    }
+    Ok(())
 }
 
 async fn health_handler<T: NexusTool>() -> Result<impl Reply, Rejection> {
@@ -595,6 +610,7 @@ fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8
 }
 
 async fn invoke_handler<T: NexusTool>(
+    tls_peer: Option<tls::TlsPeerIdentity>,
     headers: HeaderMap,
     body: bytes::Bytes,
     auth: InvokeAuth,
@@ -607,6 +623,7 @@ async fn invoke_handler<T: NexusTool>(
         auth.replay(),
         headers,
         body_bytes,
+        tls_peer.and_then(|peer| peer.public_key()),
         |auth_ctx, body_bytes| async move {
             let pipeline = InvokePipeline::run::<T>(&body_bytes, auth_ctx).await;
             (pipeline.status, pipeline.body, pipeline.is_result)
@@ -629,6 +646,38 @@ mod tests {
         serde::{Deserialize, Serialize},
         serde_json::json,
     };
+
+    #[test]
+    fn signed_http_requires_tls_but_unsigned_mode_keeps_plaintext_compatibility() {
+        let required = ToolkitRuntimeConfig::from_json_str(
+            r#"{
+                "signed_http": {
+                    "mode": "required",
+                    "allowed_leaders": {
+                        "version": 1,
+                        "leaders": [{
+                            "leader_id": "leader",
+                            "keys": [{"kid": 0, "public_key": "0000000000000000000000000000000000000000000000000000000000000000"}]
+                        }]
+                    },
+                    "tools": {"xyz.test@1": {}}
+                }
+            }"#,
+        )
+        .unwrap();
+        assert!(validate_signed_http_transport_(&required, &tls::Config::Disabled).is_err());
+        assert!(validate_signed_http_transport_(
+            &required,
+            &tls::Config::Enabled {
+                cert_path: "cert.pem".into(),
+                key_path: "key.pem".into(),
+            },
+        )
+        .is_ok());
+
+        let unsigned = ToolkitRuntimeConfig::from_json_str("{}").unwrap();
+        assert!(validate_signed_http_transport_(&unsigned, &tls::Config::Disabled).is_ok());
+    }
 
     fn resolved_input(port_name: &str, value: serde_json::Value) -> serde_json::Value {
         let value = NexusData::inline_data(serde_json::to_vec(&value).unwrap()).unwrap();

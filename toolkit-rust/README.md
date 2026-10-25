@@ -34,12 +34,12 @@ nexus-toolkit = "2.1.1"
 
 Nexus Tools are HTTP servers. Nexus expects Tools to be reachable over **HTTPS** (TLS certificate validated by Leader nodes via system roots) and to require **signed HTTP** (Ed25519 signatures in `X-Nexus-Sig-*` headers) for `POST /invoke`.
 
-- The toolkit runtime can terminate TLS directly when `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` are both set. Otherwise, deploy it behind a TLS terminator (reverse proxy / load balancer).
-- To enforce signed HTTP in the runtime, set `signed_http.mode = "required"` in the toolkit config.
-- Signed HTTP is application-layer authentication for `/invoke`: the Tool verifies which Leader node signed the request, and the Leader node verifies which Tool signed the response (with request/response binding and replay resistance).
-- Signed HTTP is enabled via a JSON config file loaded from `NEXUS_TOOLKIT_CONFIG_PATH`.
-- Signed HTTP verification happens after the TLS handshake. If you want to reduce unwanted TLS handshakes/traffic, apply edge policy at your TLS terminator (rate limiting, firewall/WAF, mTLS, or private ingress such as Cloudflare Tunnel).
-- Nexus Leader nodes do not currently present client certificates when calling Tools (no mTLS client authentication today). In a future update, Nexus will support self-signed certificates and TLS client authentication (mTLS) for Tool communication.
+- The Toolkit can terminate TLS directly when `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` are both set. When `signed_http.mode = "required"`, both paths are required and startup rejects a plaintext listener.
+- The Leader automatically presents an in-memory self-signed client certificate derived from its configured signed-HTTP Ed25519 key. The Tool accepts signed `/invoke` only when the TLS peer key exactly matches the current allowlist entry selected by the request's Leader ID and key ID.
+- Client certificates are requested but optional during the TLS handshake, so health and metadata routes remain public. Signed invokes without a client certificate or with a different registered Leader's certificate are rejected before replay-cache access.
+- Keep TLS end to end between the Leader and Toolkit, or use a TCP/TLS-passthrough load balancer. A TLS-terminating reverse proxy removes the Leader identity and cannot forward it through HTTP headers.
+- The Leader continues validating the Tool server certificate and hostname, requires HTTPS, and applies its existing proxy, redirect, timeout, and destination restrictions.
+- Signed HTTP is enabled through a JSON config file loaded from `NEXUS_TOOLKIT_CONFIG_PATH`; its v3 input and result signature bytes are unchanged.
 
 ## Large outputs through Walrus
 
