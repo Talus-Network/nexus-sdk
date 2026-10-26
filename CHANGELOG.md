@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Updated the advisory policy for upstream-constrained zstd/zstd-safe versions and upgraded locked zstd-sys to 2.1.2; exception reasons record scope, review date, and removal criteria.
+
 - Signed HTTP v3 requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing input and result signature bytes.
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
 - **Breaking:** `EventIngestor::start` reports a connection failure once and closes the receiver. Callers own reconnection, resume from the last delivered checkpoint inclusively, and deduplicate replayed events.
