@@ -1,5 +1,5 @@
 use {
-    ed25519_dalek::{pkcs8::EncodePrivateKey, Signer as _, SigningKey},
+    ed25519_dalek::{Signer as _, SigningKey},
     nexus_sdk::{
         fqn,
         move_bindings::interface::meta_schema::MetaSchema,
@@ -24,14 +24,13 @@ use {
         NexusTool,
         ToolkitRuntimeConfig,
     },
-    rcgen::{CertificateParams, ExtendedKeyUsagePurpose, KeyPair, KeyUsagePurpose, PKCS_ED25519},
-    reqwest::{header::HeaderMap, Certificate, Client, Identity, StatusCode},
+    reqwest::{header::HeaderMap, Certificate, Client, StatusCode},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
         sync::{Arc, Mutex, OnceLock},
-        time::Duration,
+        time::{Duration, SystemTime, UNIX_EPOCH},
     },
     tempfile::TempDir,
     tokio::task::JoinHandle,
@@ -217,14 +216,18 @@ impl NexusTool for UploadingTool {
 
 struct ToolServer {
     url: String,
+    tool_fqn: String,
     client: Client,
-    anonymous_client: Client,
-    other_client: Client,
-    unknown_client: Client,
     leader: SigningKey,
     schema: MetaSchema,
     task: JoinHandle<()>,
     _temp_dir: TempDir,
+}
+
+impl Drop for ToolServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
 }
 
 impl ToolServer {
@@ -235,10 +238,10 @@ impl ToolServer {
     fn routes<T: NexusTool<Input = Input>>(
         limit: Option<u64>,
     ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-        Self::routes_with_peers::<T>(limit, &[])
+        Self::routes_with_leaders::<T>(limit, &[])
     }
 
-    fn routes_with_peers<T: NexusTool<Input = Input>>(
+    fn routes_with_leaders<T: NexusTool<Input = Input>>(
         limit: Option<u64>,
         other_leaders: &[SigningKey],
     ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -284,14 +287,14 @@ impl ToolServer {
     async fn with_body_limit<T: NexusTool<Input = Input>>(limit: Option<u64>) -> Self {
         // Use the same routes as bootstrap!, with isolated configuration and
         // an ephemeral listener so tests need no shared environment or port.
-        Self::with_allowed_peers::<T>(limit, &[]).await
+        Self::with_allowed_leaders::<T>(limit, &[]).await
     }
 
-    async fn with_allowed_peers<T: NexusTool<Input = Input>>(
+    async fn with_allowed_leaders<T: NexusTool<Input = Input>>(
         limit: Option<u64>,
         other_leaders: &[SigningKey],
     ) -> Self {
-        let routes = Self::routes_with_peers::<T>(limit, other_leaders);
+        let routes = Self::routes_with_leaders::<T>(limit, other_leaders);
         let temp_dir = tempfile::tempdir().unwrap();
         let rcgen::CertifiedKey { cert, key_pair } =
             rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
@@ -307,13 +310,8 @@ impl ToolServer {
         let task = tokio::spawn(tls::serve(routes, incoming));
         let root = Certificate::from_pem(cert_pem.as_bytes()).unwrap();
         let leader = SigningKey::from_bytes(&LEADER_KEY);
-        let other = SigningKey::from_bytes(&[8; 32]);
-        let unknown = SigningKey::from_bytes(&[10; 32]);
-        let anonymous_client = http_client(&root, None);
-        let client = http_client(&root, Some(client_identity(&leader)));
-        let other_client = http_client(&root, Some(client_identity(&other)));
-        let unknown_client = http_client(&root, Some(client_identity(&unknown)));
-        let metadata: serde_json::Value = anonymous_client
+        let client = http_client(&root);
+        let metadata: serde_json::Value = client
             .get(format!("{url}/meta"))
             .send()
             .await
@@ -330,10 +328,8 @@ impl ToolServer {
         .unwrap();
         Self {
             url,
+            tool_fqn: T::fqn().to_string(),
             client,
-            anonymous_client,
-            other_client,
-            unknown_client,
             leader,
             schema,
             task,
@@ -342,22 +338,19 @@ impl ToolServer {
     }
 
     async fn invoke(&self, case: &str) -> ToolResponse {
-        self.invoke_with(&self.client, case).await
+        self.invoke_with_signers(case, &self.leader, &self.leader)
+            .await
     }
 
-    async fn invoke_with(&self, client: &Client, case: &str) -> ToolResponse {
-        let input = NexusData::inline_data(serde_json::to_vec(case).unwrap()).unwrap();
-        let body = json!({"ports": [{
-            "port_name": "case",
-            "value": input.to_json_value().unwrap(),
-        }]});
-        let inputs = self.schema.resolved_inputs_from_json(&body).unwrap();
-        let input_hash = self.schema.resolved_inputs_sha256(&inputs).unwrap();
-        let mut request = client.post(format!("{}/invoke", self.url)).json(&body);
-        for (name, value) in sign_request("leader", 0, input_hash, NONCE, &self.leader).to_pairs() {
-            request = request.header(name, value);
-        }
-        let response = request.send().await.unwrap();
+    async fn invoke_unsigned(&self, case: &str) -> ToolResponse {
+        let (body, input_hash) = self.request_body(case);
+        let response = self
+            .client
+            .post(format!("{}/invoke", self.url))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
         ToolResponse {
             status: response.status(),
             headers: response.headers().clone(),
@@ -365,38 +358,78 @@ impl ToolServer {
             leader_signature: self.leader.sign(&input_hash).to_bytes(),
         }
     }
+
+    async fn invoke_with_signers(
+        &self,
+        case: &str,
+        leader_signer: &SigningKey,
+        context_signer: &SigningKey,
+    ) -> ToolResponse {
+        let (body, input_hash) = self.request_body(case);
+        let timestamp_ms = now_ms();
+        let mut signed = sign_request(
+            "leader",
+            0,
+            input_hash,
+            NONCE,
+            &self.tool_fqn,
+            timestamp_ms,
+            leader_signer,
+        );
+        let context = sign_request(
+            "leader",
+            0,
+            input_hash,
+            NONCE,
+            &self.tool_fqn,
+            timestamp_ms,
+            context_signer,
+        );
+        signed.context_signature = context.context_signature;
+        signed.context_timestamp = context.context_timestamp;
+
+        let mut request = self.client.post(format!("{}/invoke", self.url)).json(&body);
+        for (name, value) in signed.to_pairs() {
+            request = request.header(name, value);
+        }
+        let response = request.send().await.unwrap();
+        ToolResponse {
+            status: response.status(),
+            headers: response.headers().clone(),
+            body: response.bytes().await.unwrap().to_vec(),
+            leader_signature: leader_signer.sign(&input_hash).to_bytes(),
+        }
+    }
+
+    fn request_body(&self, case: &str) -> (serde_json::Value, [u8; 32]) {
+        let input = NexusData::inline_data(serde_json::to_vec(case).unwrap()).unwrap();
+        let body = json!({"ports": [{
+            "port_name": "case",
+            "value": input.to_json_value().unwrap(),
+        }]});
+        let inputs = self.schema.resolved_inputs_from_json(&body).unwrap();
+        let input_hash = self.schema.resolved_inputs_sha256(&inputs).unwrap();
+        (body, input_hash)
+    }
 }
 
-fn http_client(root: &Certificate, identity: Option<Identity>) -> Client {
-    let builder = Client::builder()
+fn http_client(root: &Certificate) -> Client {
+    Client::builder()
         .timeout(Duration::from_secs(10))
         .no_proxy()
-        .add_root_certificate(root.clone());
-    match identity {
-        Some(identity) => builder.identity(identity).build().unwrap(),
-        None => builder.build().unwrap(),
-    }
+        .add_root_certificate(root.clone())
+        .build()
+        .unwrap()
 }
 
-fn client_identity(signing_key: &SigningKey) -> Identity {
-    let private_key = signing_key.to_pkcs8_der().unwrap();
-    let private_key_der =
-        tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer::from(private_key.as_bytes());
-    let key_pair = KeyPair::from_pkcs8_der_and_sign_algo(&private_key_der, &PKCS_ED25519).unwrap();
-    let mut params = CertificateParams::new(vec!["nexus-leader".to_owned()]).unwrap();
-    params
-        .extended_key_usages
-        .push(ExtendedKeyUsagePurpose::ClientAuth);
-    params.key_usages.push(KeyUsagePurpose::DigitalSignature);
-    let certificate = params.self_signed(&key_pair).unwrap();
-    let pem = format!("{}{}", certificate.pem(), key_pair.serialize_pem());
-    Identity::from_pem(pem.as_bytes()).unwrap()
-}
-
-impl Drop for ToolServer {
-    fn drop(&mut self) {
-        self.task.abort();
-    }
+fn now_ms() -> u64 {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock is after the Unix epoch")
+            .as_millis(),
+    )
+    .expect("Unix milliseconds fit in u64")
 }
 
 struct ToolResponse {
@@ -419,27 +452,47 @@ impl ToolResponse {
 }
 
 #[tokio::test]
-async fn tls_public_routes_allow_anonymous_requests_but_signed_invoke_requires_peer_identity() {
+async fn anonymous_routes_and_signed_context_work_without_client_certificates() {
     let server = ToolServer::new::<TypedOutputTool>().await;
     let health = server
-        .anonymous_client
+        .client
         .get(format!("{}/health", server.url))
         .send()
         .await
         .unwrap();
     assert_eq!(health.status(), StatusCode::OK);
 
-    let metadata = server
-        .anonymous_client
+    let metadata: serde_json::Value = server
+        .client
         .get(format!("{}/meta", server.url))
         .send()
         .await
+        .unwrap()
+        .json()
+        .await
         .unwrap();
-    assert_eq!(metadata.status(), StatusCode::OK);
+    assert_eq!(metadata["url"], format!("{}/", server.url));
 
-    let anonymous = server.invoke_with(&server.anonymous_client, "valid").await;
-    assert_eq!(anonymous.status, StatusCode::UNAUTHORIZED);
-    assert!(!anonymous.headers.contains_key(HEADER_TOOL_SIGNATURE));
+    let forwarded_host = "tools.example:8443";
+    let forwarded_metadata: serde_json::Value = server
+        .client
+        .get(format!("{}/meta", server.url))
+        .header("X-Forwarded-Proto", "http")
+        .header("X-Forwarded-Host", forwarded_host)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        forwarded_metadata["url"],
+        format!("https://{forwarded_host}/")
+    );
+
+    let unsigned = server.invoke_unsigned("valid").await;
+    assert_eq!(unsigned.status, StatusCode::UNAUTHORIZED);
+    assert!(!unsigned.headers.contains_key(HEADER_TOOL_SIGNATURE));
 
     let registered = server.invoke("valid").await;
     assert_eq!(registered.status, StatusCode::OK);
@@ -447,25 +500,26 @@ async fn tls_public_routes_allow_anonymous_requests_but_signed_invoke_requires_p
 }
 
 #[tokio::test]
-async fn tls_peer_key_binding_rejects_unknown_and_other_allowed_leaders_before_replay_cache() {
-    let other_leader = SigningKey::from_bytes(&[8; 32]);
-    let server = ToolServer::with_allowed_peers::<TypedOutputTool>(None, &[other_leader]).await;
+async fn context_signature_is_verified_before_replay_lookup() {
+    let wrong_context_key = SigningKey::from_bytes(&[8; 32]);
+    let other_leaders = [wrong_context_key.clone()];
+    let server = ToolServer::with_allowed_leaders::<TypedOutputTool>(None, &other_leaders).await;
 
-    let unknown = server.invoke_with(&server.unknown_client, "valid").await;
-    assert_eq!(unknown.status, StatusCode::UNAUTHORIZED);
-    assert!(!unknown.headers.contains_key(HEADER_TOOL_SIGNATURE));
-
-    let mismatched_miss = server.invoke_with(&server.other_client, "valid").await;
-    assert_eq!(mismatched_miss.status, StatusCode::UNAUTHORIZED);
-    assert!(!mismatched_miss.headers.contains_key(HEADER_TOOL_SIGNATURE));
+    let invalid_miss = server
+        .invoke_with_signers("valid", &server.leader, &wrong_context_key)
+        .await;
+    assert_eq!(invalid_miss.status, StatusCode::UNAUTHORIZED);
+    assert!(!invalid_miss.headers.contains_key(HEADER_TOOL_SIGNATURE));
 
     let registered = server.invoke("valid").await;
     assert_eq!(registered.status, StatusCode::OK);
     registered.verify(&registered.body).unwrap();
 
-    let mismatched_hit = server.invoke_with(&server.other_client, "valid").await;
-    assert_eq!(mismatched_hit.status, StatusCode::UNAUTHORIZED);
-    assert!(!mismatched_hit.headers.contains_key(HEADER_TOOL_SIGNATURE));
+    let invalid_hit = server
+        .invoke_with_signers("valid", &server.leader, &wrong_context_key)
+        .await;
+    assert_eq!(invalid_hit.status, StatusCode::UNAUTHORIZED);
+    assert!(!invalid_hit.headers.contains_key(HEADER_TOOL_SIGNATURE));
 
     let registered_hit = server.invoke("valid").await;
     assert_eq!(registered_hit.status, StatusCode::OK);

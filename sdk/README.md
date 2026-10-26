@@ -102,9 +102,11 @@ An insufficient settlement marker records an earlier shortfall. It does not eras
 
 This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:
 
-- the Leader signs `SHA-256(BCS(canonical_tool_inputs))`
-- the Tool signs the Leader signature followed by `SHA-256(result_bytes)`
-- Leader identity, active key selection, and the Tool's replay/cache nonce remain transport headers rather than signed claims
+- the Leader's existing input signature remains over `SHA-256(BCS(canonical_tool_inputs))`
+- a separate context signature covers `SHA-256(BCS((String tool_fqn, [u8; 32] nonce, u64 unix_ms_timestamp)))`; requests carry it as base64url `nexus-context-sig` plus decimal `nexus-context-timestamp`
+- the Toolkit resolves the current allowed Leader key and receiving Tool FQN, checks the inclusive timestamp window, and verifies context before replay-cache access
+- the Tool's existing result signature remains over the Leader signature, invocation nonce, and exact canonical result bytes
+- Leader ID and key ID select the current allowlist entry; each retry keeps its invocation nonce and receives a fresh timestamp
 
 It is feature-gated under `signed_http` and is used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses.
 

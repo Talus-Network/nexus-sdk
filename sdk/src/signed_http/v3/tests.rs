@@ -1,9 +1,44 @@
 use {
     super::{error::SignedHttpError, wire::*},
     base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _},
-    ed25519_dalek::SigningKey,
+    ed25519_dalek::{Signer as _, SigningKey},
     std::collections::HashMap,
 };
+
+const TEST_TOOL_FQN: &str = "xyz.talus.demo@1";
+const TEST_CONTEXT_TIMESTAMP_MS: u64 = 1_700_000_000_123;
+const TEST_CONTEXT_WINDOW_MS: u64 = 30_000;
+
+fn sign_request_for_test(
+    leader_id: impl Into<String>,
+    leader_key_id: u64,
+    input_hash: [u8; 32],
+    nonce: [u8; 32],
+    signing_key: &SigningKey,
+) -> EncodedRequestHeaders {
+    super::wire::sign_request(
+        leader_id,
+        leader_key_id,
+        input_hash,
+        nonce,
+        TEST_TOOL_FQN,
+        TEST_CONTEXT_TIMESTAMP_MS,
+        signing_key,
+    )
+}
+
+fn authenticate_request_for_test(
+    headers: RequestHeadersRef<'_>,
+    keys: &dyn LeaderKeyResolver,
+) -> Result<AuthenticatedRequest, SignedHttpError> {
+    super::wire::authenticate_request(
+        headers,
+        keys,
+        TEST_TOOL_FQN,
+        TEST_CONTEXT_TIMESTAMP_MS,
+        TEST_CONTEXT_WINDOW_MS,
+    )
+}
 
 fn allowed(leader_id: &str, key_id: u64, public_key: [u8; 32]) -> AllowedLeaders {
     AllowedLeaders::try_from(AllowedLeadersFileV1 {
@@ -27,13 +62,15 @@ fn request_ref(headers: &EncodedRequestHeaders) -> RequestHeadersRef<'_> {
         input_hash: Some(&headers.input_hash),
         leader_signature: Some(&headers.leader_signature),
         nonce: Some(&headers.nonce),
+        context_signature: Some(&headers.context_signature),
+        context_timestamp: Some(&headers.context_timestamp),
     }
 }
 
 #[test]
 fn direct_header_pairs_have_no_commitment_version() {
     let leader = SigningKey::from_bytes(&[7; 32]);
-    let request = sign_request("leader", 7, [3; 32], [4; 32], &leader);
+    let request = sign_request_for_test("leader", 7, [3; 32], [4; 32], &leader);
     assert_eq!(
         request
             .to_pairs()
@@ -47,6 +84,8 @@ fn direct_header_pairs_have_no_commitment_version() {
             HEADER_INPUT_HASH,
             HEADER_LEADER_SIGNATURE,
             HEADER_NONCE,
+            HEADER_CONTEXT_SIGNATURE,
+            HEADER_CONTEXT_TIMESTAMP,
         ]
     );
 
@@ -71,12 +110,38 @@ fn direct_header_pairs_have_no_commitment_version() {
 }
 
 #[test]
-fn request_signs_only_the_input_hash() {
+fn context_signature_matches_independent_bcs_and_ed25519_vector() {
+    let tool_fqn = "xyz.talus.demo@1";
+    let nonce: [u8; 32] = std::array::from_fn(|index| index as u8);
+    let timestamp_ms = 1_700_000_000_123;
+    let digest = context_digest(tool_fqn, nonce, timestamp_ms);
+    assert_eq!(
+        hex::encode(digest),
+        "b5f1a014838ec4d2e4cedefba2f14e5f2805be6da742a8d2d78f819cf1757b63"
+    );
+
+    let leader = SigningKey::from_bytes(&[7; 32]);
+    let headers =
+        super::wire::sign_request("leader", 7, [3; 32], nonce, tool_fqn, timestamp_ms, &leader);
+    assert_eq!(headers.context_timestamp, timestamp_ms.to_string());
+    assert_eq!(
+        hex::encode(URL_SAFE_NO_PAD.decode(headers.context_signature).unwrap()),
+        "50096ac812e29304fe65b35cd2d98dbcf93c6e2652db38ee77682e7dc274c51b3fd548a4a1b73003b41248488b8149c79ca52230e775a0114cfd06c9dcc14404"
+    );
+    assert_eq!(headers.input_hash, URL_SAFE_NO_PAD.encode([3; 32]));
+    assert_eq!(
+        headers.leader_signature,
+        URL_SAFE_NO_PAD.encode(leader.sign(&[3; 32]).to_bytes())
+    );
+}
+
+#[test]
+fn request_input_signature_remains_over_only_the_input_hash() {
     let leader = SigningKey::from_bytes(&[7; 32]);
     let input_hash = sha256(b"canonical inputs");
     let nonce = [1; 32];
-    let headers = sign_request("leader", 7, input_hash, nonce, &leader);
-    let authenticated = authenticate_request(
+    let headers = sign_request_for_test("leader", 7, input_hash, nonce, &leader);
+    let authenticated = authenticate_request_for_test(
         request_ref(&headers),
         &allowed("leader", 7, leader.verifying_key().to_bytes()),
     )
@@ -84,9 +149,101 @@ fn request_signs_only_the_input_hash() {
 
     assert_eq!(authenticated.input_hash, input_hash);
     assert_eq!(authenticated.nonce, nonce);
+    assert_eq!(
+        authenticated.context_timestamp_ms,
+        TEST_CONTEXT_TIMESTAMP_MS
+    );
 
-    let same_signature = sign_request("other", 99, input_hash, [2; 32], &leader);
+    let same_signature = sign_request_for_test("other", 99, input_hash, [2; 32], &leader);
     assert_eq!(same_signature.leader_signature, headers.leader_signature);
+}
+
+#[test]
+fn context_signature_binds_receiver_nonce_timestamp_and_allowed_key() {
+    let leader = SigningKey::from_bytes(&[7; 32]);
+    let keys = allowed("leader", 7, leader.verifying_key().to_bytes());
+    let headers = sign_request_for_test("leader", 7, [3; 32], [1; 32], &leader);
+    assert!(authenticate_request_for_test(request_ref(&headers), &keys).is_ok());
+
+    assert!(matches!(
+        super::wire::authenticate_request(
+            request_ref(&headers),
+            &keys,
+            "xyz.talus.other@1",
+            TEST_CONTEXT_TIMESTAMP_MS,
+            TEST_CONTEXT_WINDOW_MS,
+        ),
+        Err(SignedHttpError::InvalidSignature)
+    ));
+
+    let mut changed_nonce = headers.clone();
+    changed_nonce.nonce = URL_SAFE_NO_PAD.encode([2; 32]);
+    assert!(matches!(
+        authenticate_request_for_test(request_ref(&changed_nonce), &keys),
+        Err(SignedHttpError::InvalidSignature)
+    ));
+
+    let mut changed_timestamp = headers.clone();
+    changed_timestamp.context_timestamp = (TEST_CONTEXT_TIMESTAMP_MS + 1).to_string();
+    assert!(matches!(
+        authenticate_request_for_test(request_ref(&changed_timestamp), &keys),
+        Err(SignedHttpError::InvalidSignature)
+    ));
+
+    let other = SigningKey::from_bytes(&[8; 32]);
+    let other_keys = allowed("leader", 7, other.verifying_key().to_bytes());
+    assert!(matches!(
+        authenticate_request_for_test(request_ref(&headers), &other_keys),
+        Err(SignedHttpError::InvalidSignature)
+    ));
+}
+
+#[test]
+fn context_timestamp_window_is_symmetric_and_inclusive() {
+    let leader = SigningKey::from_bytes(&[7; 32]);
+    let keys = allowed("leader", 7, leader.verifying_key().to_bytes());
+    let now_ms = 100_000;
+    let window_ms = 30_000;
+    for timestamp_ms in [now_ms - window_ms, now_ms + window_ms] {
+        let headers = super::wire::sign_request(
+            "leader",
+            7,
+            [3; 32],
+            [1; 32],
+            TEST_TOOL_FQN,
+            timestamp_ms,
+            &leader,
+        );
+        assert!(super::wire::authenticate_request(
+            request_ref(&headers),
+            &keys,
+            TEST_TOOL_FQN,
+            now_ms,
+            window_ms,
+        )
+        .is_ok());
+    }
+    for timestamp_ms in [now_ms - window_ms - 1, now_ms + window_ms + 1] {
+        let headers = super::wire::sign_request(
+            "leader",
+            7,
+            [3; 32],
+            [1; 32],
+            TEST_TOOL_FQN,
+            timestamp_ms,
+            &leader,
+        );
+        assert!(matches!(
+            super::wire::authenticate_request(
+                request_ref(&headers),
+                &keys,
+                TEST_TOOL_FQN,
+                now_ms,
+                window_ms,
+            ),
+            Err(SignedHttpError::TimestampOutsideWindow { .. })
+        ));
+    }
 }
 
 #[cfg(feature = "types")]
@@ -183,12 +340,13 @@ fn port_rename_and_same_typed_reorder_change_authenticated_response_bytes() {
 #[test]
 fn invalid_request_signature_is_rejected() {
     let leader = SigningKey::from_bytes(&[7; 32]);
-    let headers = sign_request("leader", 7, sha256(b"one"), [1; 32], &leader);
+    let headers = sign_request_for_test("leader", 7, sha256(b"one"), [1; 32], &leader);
     let mut tampered = headers.clone();
-    tampered.input_hash = sign_request("leader", 7, sha256(b"two"), [1; 32], &leader).input_hash;
+    tampered.input_hash =
+        sign_request_for_test("leader", 7, sha256(b"two"), [1; 32], &leader).input_hash;
 
     assert!(matches!(
-        authenticate_request(
+        authenticate_request_for_test(
             request_ref(&tampered),
             &allowed("leader", 7, leader.verifying_key().to_bytes()),
         ),
@@ -200,8 +358,8 @@ fn invalid_request_signature_is_rejected() {
 fn response_uses_the_registered_key_direct_message() {
     let leader = SigningKey::from_bytes(&[7; 32]);
     let tool = SigningKey::from_bytes(&[9; 32]);
-    let request = sign_request("leader", 7, sha256(b"inputs"), [1; 32], &leader);
-    let authenticated = authenticate_request(
+    let request = sign_request_for_test("leader", 7, sha256(b"inputs"), [1; 32], &leader);
+    let authenticated = authenticate_request_for_test(
         request_ref(&request),
         &allowed("leader", 7, leader.verifying_key().to_bytes()),
     )
@@ -266,6 +424,8 @@ fn header_getters_read_the_complete_direct_contract() {
         (HEADER_INPUT_HASH, "input"),
         (HEADER_LEADER_SIGNATURE, "signature"),
         (HEADER_NONCE, "nonce"),
+        (HEADER_CONTEXT_SIGNATURE, "context-signature"),
+        (HEADER_CONTEXT_TIMESTAMP, "1700000000123"),
     ]);
     let request = RequestHeadersRef::from_getter(|name| request_values.get(name).copied());
     assert_eq!(request.signature_version, Some(SIGNATURE_VERSION_V3));
@@ -274,6 +434,8 @@ fn header_getters_read_the_complete_direct_contract() {
     assert_eq!(request.input_hash, Some("input"));
     assert_eq!(request.leader_signature, Some("signature"));
     assert_eq!(request.nonce, Some("nonce"));
+    assert_eq!(request.context_signature, Some("context-signature"));
+    assert_eq!(request.context_timestamp, Some("1700000000123"));
 
     let response_values = HashMap::from([
         (HEADER_SIGNATURE_VERSION, SIGNATURE_VERSION_V3),
@@ -287,20 +449,20 @@ fn header_getters_read_the_complete_direct_contract() {
 #[test]
 fn request_authentication_reports_malformed_headers_and_unknown_keys() {
     let leader = SigningKey::from_bytes(&[7; 32]);
-    let encoded = sign_request("leader", 7, sha256(b"inputs"), [1; 32], &leader);
+    let encoded = sign_request_for_test("leader", 7, sha256(b"inputs"), [1; 32], &leader);
     let keys = allowed("leader", 7, leader.verifying_key().to_bytes());
 
     let mut headers = request_ref(&encoded);
     headers.leader_id = None;
     assert!(matches!(
-        authenticate_request(headers, &keys),
+        authenticate_request_for_test(headers, &keys),
         Err(SignedHttpError::MissingHeader(HEADER_LEADER_ID))
     ));
 
     let mut headers = request_ref(&encoded);
     headers.leader_key_id = Some("not-an-integer");
     assert!(matches!(
-        authenticate_request(headers, &keys),
+        authenticate_request_for_test(headers, &keys),
         Err(SignedHttpError::InvalidInteger {
             header: HEADER_LEADER_KEY_ID,
             ..
@@ -310,7 +472,7 @@ fn request_authentication_reports_malformed_headers_and_unknown_keys() {
     let mut headers = request_ref(&encoded);
     headers.input_hash = Some("***");
     assert!(matches!(
-        authenticate_request(headers, &keys),
+        authenticate_request_for_test(headers, &keys),
         Err(SignedHttpError::InvalidBase64 {
             header: HEADER_INPUT_HASH,
             ..
@@ -321,7 +483,7 @@ fn request_authentication_reports_malformed_headers_and_unknown_keys() {
     let mut headers = request_ref(&encoded);
     headers.input_hash = Some(&short_hash);
     assert!(matches!(
-        authenticate_request(headers, &keys),
+        authenticate_request_for_test(headers, &keys),
         Err(SignedHttpError::InvalidLength {
             header: HEADER_INPUT_HASH,
             actual: 31,
@@ -333,7 +495,7 @@ fn request_authentication_reports_malformed_headers_and_unknown_keys() {
     let mut headers = request_ref(&encoded);
     headers.nonce = Some(&short_nonce);
     assert!(matches!(
-        authenticate_request(headers, &keys),
+        authenticate_request_for_test(headers, &keys),
         Err(SignedHttpError::InvalidLength {
             header: HEADER_NONCE,
             actual: 31,
@@ -341,9 +503,36 @@ fn request_authentication_reports_malformed_headers_and_unknown_keys() {
         })
     ));
 
+    let mut headers = request_ref(&encoded);
+    headers.context_signature = None;
+    assert!(matches!(
+        authenticate_request_for_test(headers, &keys),
+        Err(SignedHttpError::MissingHeader(HEADER_CONTEXT_SIGNATURE))
+    ));
+
+    let mut headers = request_ref(&encoded);
+    headers.context_signature = Some("***");
+    assert!(matches!(
+        authenticate_request_for_test(headers, &keys),
+        Err(SignedHttpError::InvalidBase64 {
+            header: HEADER_CONTEXT_SIGNATURE,
+            ..
+        })
+    ));
+
+    let mut headers = request_ref(&encoded);
+    headers.context_timestamp = Some("not-decimal");
+    assert!(matches!(
+        authenticate_request_for_test(headers, &keys),
+        Err(SignedHttpError::InvalidInteger {
+            header: HEADER_CONTEXT_TIMESTAMP,
+            ..
+        })
+    ));
+
     let unknown = allowed("other", 7, leader.verifying_key().to_bytes());
     assert!(matches!(
-        authenticate_request(request_ref(&encoded), &unknown),
+        authenticate_request_for_test(request_ref(&encoded), &unknown),
         Err(SignedHttpError::UnknownLeaderKey { .. })
     ));
 }
@@ -351,13 +540,13 @@ fn request_authentication_reports_malformed_headers_and_unknown_keys() {
 #[test]
 fn request_authentication_rejects_invalid_public_key_and_signature() {
     let leader = SigningKey::from_bytes(&[7; 32]);
-    let encoded = sign_request("leader", 7, sha256(b"inputs"), [1; 32], &leader);
+    let encoded = sign_request_for_test("leader", 7, sha256(b"inputs"), [1; 32], &leader);
     let invalid_public_key = (0..=u8::MAX)
         .map(|byte| [byte; 32])
         .find(|bytes| ed25519_dalek::VerifyingKey::from_bytes(bytes).is_err())
         .expect("at least one repeated-byte encoding is not an Ed25519 point");
     assert!(matches!(
-        authenticate_request(
+        authenticate_request_for_test(
             request_ref(&encoded),
             &allowed("leader", 7, invalid_public_key)
         ),
@@ -366,7 +555,7 @@ fn request_authentication_rejects_invalid_public_key_and_signature() {
 
     let other = SigningKey::from_bytes(&[8; 32]);
     assert!(matches!(
-        authenticate_request(
+        authenticate_request_for_test(
             request_ref(&encoded),
             &allowed("leader", 7, other.verifying_key().to_bytes()),
         ),
@@ -471,7 +660,7 @@ fn allowed_leader_files_reject_bad_versions_duplicates_and_keys() {
 fn v3_rejects_v2_signature_headers() {
     let keys = allowed("leader", 7, [1; 32]);
     assert!(matches!(
-        authenticate_request(
+        authenticate_request_for_test(
             RequestHeadersRef {
                 signature_version: Some(crate::signed_http::v2::wire::SIGNATURE_VERSION_V2),
                 ..Default::default()

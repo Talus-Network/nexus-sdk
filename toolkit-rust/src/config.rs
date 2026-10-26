@@ -155,10 +155,12 @@ pub(crate) struct SignedHttpToolRuntimeConfig {
     /// the runtime still requires a valid signature from an allowed Leader and
     /// returns the successful result without a Tool signature.
     pub(crate) response_signing_key: Option<SigningKey>,
+    pub(crate) context_timestamp_window_ms: u64,
     pub(crate) replay_cache_ttl_ms: u64,
 }
 
 pub(crate) const DEFAULT_REPLAY_CACHE_TTL_MS: u64 = 300_000;
+pub(crate) const DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS: u64 = 30_000;
 
 impl ToolkitRuntimeConfig {
     /// Load config from [`ENV_TOOLKIT_CONFIG_PATH`] if set, otherwise return defaults.
@@ -267,6 +269,9 @@ struct SignedHttpToolConfigFile {
     /// This also accepts Sui keytool encoding: base64 of `0x00 || sk32`.
     #[serde(default)]
     pub response_signing_key: Option<String>,
+    /// Symmetric context timestamp freshness window in milliseconds. Defaults to 30 seconds.
+    #[serde(default)]
+    pub context_timestamp_window_ms: Option<u64>,
 
     /// Completed replay-entry lifetime in milliseconds. Defaults to five minutes.
     #[serde(default)]
@@ -307,6 +312,9 @@ fn load_signed_http_config(file: SignedHttpConfigFile) -> anyhow::Result<SignedH
 
     let mut tools: BTreeMap<String, SignedHttpToolRuntimeConfig> = BTreeMap::new();
     for (tool_id, tool) in file.tools {
+        let context_timestamp_window_ms = tool
+            .context_timestamp_window_ms
+            .unwrap_or(DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS);
         let replay_cache_ttl_ms = tool
             .replay_cache_ttl_ms
             .unwrap_or(DEFAULT_REPLAY_CACHE_TTL_MS);
@@ -329,6 +337,7 @@ fn load_signed_http_config(file: SignedHttpConfigFile) -> anyhow::Result<SignedH
             tool_id,
             SignedHttpToolRuntimeConfig {
                 response_signing_key,
+                context_timestamp_window_ms,
                 replay_cache_ttl_ms,
             },
         );
@@ -576,6 +585,10 @@ mod tests {
         assert_eq!(cfg.invoke_max_body_bytes(), MAX_INVOKE_BODY_BYTES);
         assert!(cfg.signed_http_is_required());
         assert!(cfg.has_tool(tool_id));
+        assert_eq!(
+            cfg.signed_http().unwrap().tools[tool_id].context_timestamp_window_ms,
+            DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS
+        );
         assert!(cfg.signed_http().unwrap().tools[tool_id]
             .response_signing_key
             .is_some());
@@ -608,7 +621,8 @@ mod tests {
                 },
                 "tools": {
                     tool_id: {
-                        "replay_cache_ttl_ms": 60_000,
+                "context_timestamp_window_ms": 9_000,
+                "replay_cache_ttl_ms": 60_000,
                     },
                 },
             },
@@ -619,6 +633,7 @@ mod tests {
         let tool = &cfg.signed_http().unwrap().tools[tool_id];
 
         assert!(tool.response_signing_key.is_none());
+        assert_eq!(tool.context_timestamp_window_ms, 9_000);
         assert_eq!(tool.replay_cache_ttl_ms, 60_000);
     }
 

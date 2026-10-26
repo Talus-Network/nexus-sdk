@@ -131,7 +131,7 @@ mod tests {
         let meta_json = meta.json::<serde_json::Value>().await.unwrap();
 
         assert_eq!(meta_json["fqn"], "xyz.dummy.tool@1");
-        assert_eq!(meta_json["url"], "http://localhost:8043/");
+        assert_eq!(meta_json["url"], "https://localhost:8043/");
         assert_eq!(
             meta_json["input_schema"]["properties"]["prompt"]["type"],
             "string"
@@ -246,7 +246,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_meta_invalid_schema() {
+    async fn test_meta_ignores_forwarded_proto() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8047), DummyTool) });
 
         // Give the webserver some time to start.
@@ -259,14 +259,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(meta.status(), 400);
+        assert_eq!(meta.status(), 200);
 
         let meta_json = meta.json::<serde_json::Value>().await.unwrap();
 
-        assert_eq!(meta_json["error"], "invalid_scheme");
-        assert_eq!(
-            meta_json["details"],
-            "Scheme must be either 'http' or 'https'."
-        );
+        assert_eq!(meta_json["url"], "https://localhost:8047/");
     }
 }

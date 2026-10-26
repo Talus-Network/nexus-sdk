@@ -32,12 +32,13 @@ nexus-toolkit = "2.1.1"
 
 ## HTTPS + signed HTTP
 
-Nexus Tools are HTTP servers. Nexus expects Tools to be reachable over **HTTPS** (TLS certificate validated by Leader nodes via system roots) and to require **signed HTTP** (Ed25519 signatures in `X-Nexus-Sig-*` headers) for `POST /invoke`.
+Nexus Tools are HTTP servers. Registered production endpoints are expected to use **HTTPS**, which Leader nodes validate using the server certificate and hostname, and **signed HTTP** authenticates `POST /invoke`.
 
-- The Toolkit can terminate TLS directly when `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` are both set. When `signed_http.mode = "required"`, both paths are required and startup rejects a plaintext listener.
-- The Leader automatically presents an in-memory self-signed client certificate derived from its configured signed-HTTP Ed25519 key. The Tool accepts signed `/invoke` only when the TLS peer key exactly matches the current allowlist entry selected by the request's Leader ID and key ID.
-- Client certificates are requested but optional during the TLS handshake, so health and metadata routes remain public. Signed invokes without a client certificate or with a different registered Leader's certificate are rejected before replay-cache access.
-- Keep TLS end to end between the Leader and Toolkit, or use a TCP/TLS-passthrough load balancer. A TLS-terminating reverse proxy removes the Leader identity and cannot forward it through HTTP headers.
+- The Toolkit serves HTTP when both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` are absent; set both to terminate ordinary server TLS locally, and startup rejects a partial pair. Required signed HTTP does not require listener TLS.
+- The Leader sends no client certificate. Signed requests retain the existing input signature and add `nexus-context-sig` plus `nexus-context-timestamp`; the context signature covers the receiving Tool FQN, stable invocation nonce, and timestamp using `SHA-256(BCS((String, [u8; 32], u64)))`.
+- Required mode checks the current allowed Leader key and context freshness before replay-cache access. The per-Tool `context_timestamp_window_ms` setting defaults to a symmetric, inclusive 30,000 ms window; retries keep their nonce and use a fresh timestamp.
+- `/meta` always advertises `https`, and retains the existing forwarded-host and request-path behavior. Gateways must preserve the context headers and existing signature headers.
+- A reverse proxy may terminate TLS if it preserves those signed HTTP headers and provides the trust boundary for any internal plaintext hop.
 - The Leader continues validating the Tool server certificate and hostname, requires HTTPS, and applies its existing proxy, redirect, timeout, and destination restrictions.
 - Signed HTTP is enabled through a JSON config file loaded from `NEXUS_TOOLKIT_CONFIG_PATH`; its v3 input and result signature bytes are unchanged.
 

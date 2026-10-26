@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Signed HTTP v3 requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing input and result signature bytes.
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
 - **Breaking:** `EventIngestor::start` reports a connection failure once and closes the receiver. Callers own reconnection, resume from the last delivered checkpoint inclusively, and deduplicate replayed events.
 - Recovery discovery now returns failed reads, invalid responses, and incomplete coverage as errors. Individual requests and stalled response bodies have deadlines, while healthy pagination can continue as its cursor advances.
@@ -41,8 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- Signed HTTP mode now requires direct TLS termination and authorizes `/invoke` only when the TLS client key matches the current registered Leader key.
-- TLS client certificates remain optional for public health and metadata routes; v3 request and response signing bytes are unchanged.
+- Required signed HTTP verifies the allowlisted Leader Tool-context signature and freshness before replay-cache access, with a configurable inclusive timestamp window defaulting to 30,000 ms.
+- Toolkit metadata always advertises HTTPS and ignores `X-Forwarded-Proto`; the listener retains ordinary server TLS behavior and no longer requests Leader client certificates.
 
 ## [`2.1.1`] - 2026-10-07
 
