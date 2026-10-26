@@ -80,6 +80,7 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// When enabled (`signed_http.mode = "required"`), the runtime:
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
+/// - Optionally requires each Tool's directly observed TLS peer key to match the allowlisted Leader key.
 /// - Caches completed responses by deterministic nonce and canonical input hash; in-flight nonce reuse is rejected.
 /// - Returns exact ordered BCS Tool output bytes and signs the nonce-bound v3 Tool response message.
 /// - Keeps nonce replay and cached-response handling entirely offchain.
@@ -87,8 +88,10 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
 /// The request body, nonce, and unsigned identity headers require authenticated HTTPS transport.
 /// Set both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` to terminate TLS directly in
-/// the Toolkit server. If TLS terminates at a gateway, the gateway-to-Tool hop must provide an
-/// equivalently protected transport; signed HTTP does not make a plaintext hop safe.
+/// the Toolkit server. If a Tool enables `require_client_certificate`, TLS must terminate in
+/// Toolkit or pass through the gateway; forwarded certificate headers do not establish identity.
+/// With that option disabled, a gateway may terminate TLS if its gateway-to-Tool hop remains
+/// equivalently protected; signed HTTP does not make a plaintext hop safe.
 ///
 /// ## Example config
 /// ```json
@@ -329,6 +332,7 @@ pub fn routes_for_with_config_<T: NexusTool>(
     let invoke_route = warp::post()
         .and(base_path)
         .and(warp::path("invoke"))
+        .and(warp::filters::ext::optional::<tls::TlsPeerIdentity>())
         .and(warp::header::headers_cloned())
         .and(warp::body::content_length_limit(invoke_max_body_bytes))
         .and(warp::body::bytes())
@@ -572,6 +576,7 @@ fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8
 }
 
 async fn invoke_handler<T: NexusTool>(
+    tls_peer: Option<tls::TlsPeerIdentity>,
     headers: HeaderMap,
     body: bytes::Bytes,
     auth: InvokeAuth,
@@ -585,6 +590,7 @@ async fn invoke_handler<T: NexusTool>(
         &T::fqn().to_string(),
         headers,
         body_bytes,
+        tls_peer.and_then(|peer| peer.public_key()),
         |auth_ctx, body_bytes| async move {
             let pipeline = InvokePipeline::run::<T>(&body_bytes, auth_ctx).await;
             (pipeline.status, pipeline.body, pipeline.is_result)

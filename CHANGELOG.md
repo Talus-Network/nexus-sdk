@@ -412,6 +412,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added optional signed-HTTP v2 enforcement with inline or file-backed leader allowlists, per-Tool signing keys, live allowlist reload, exact-retry response caching, conflicting nonce rejection, and in-flight request protection.
 - Added direct TLS termination through `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH`, which must be configured together.
+- Added optional per-Tool TLS client-certificate verification bound to the allowlisted Leader key, disabled by default and supported through direct Toolkit TLS or TLS passthrough.
 
 #### Changed
 

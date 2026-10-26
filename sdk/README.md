@@ -107,6 +107,7 @@ This crate includes the signed HTTP protocol used for Leader node <=> Tool commu
 - the Toolkit resolves the current allowed Leader key and receiving Tool FQN, checks the inclusive timestamp window, and verifies context before replay-cache access
 - the Tool's existing result signature remains over the Leader signature, invocation nonce, and exact canonical result bytes
 - Leader ID and key ID select the current allowlist entry; each retry keeps its invocation nonce and receives a fresh timestamp
+- Toolkit may separately require the direct TLS peer key to match the allowlisted Leader key for a Tool, without changing the v3 request-context or result-signature transcript
 
 It is feature-gated under `signed_http` and is used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses.
 

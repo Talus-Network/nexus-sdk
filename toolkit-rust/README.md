@@ -35,10 +35,11 @@ nexus-toolkit = "2.1.1"
 Nexus Tools are HTTP servers. Registered production endpoints are expected to use **HTTPS**, which Leader nodes validate using the server certificate and hostname, and **signed HTTP** authenticates `POST /invoke`.
 
 - The Toolkit serves HTTP when both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` are absent; set both to terminate ordinary server TLS locally, and startup rejects a partial pair. Required signed HTTP does not require listener TLS.
-- The Leader sends no client certificate. Signed requests retain the existing input signature and add `nexus-context-sig` plus `nexus-context-timestamp`; the context signature covers the receiving Tool FQN, stable invocation nonce, and timestamp using `SHA-256(BCS((String, [u8; 32], u64)))`.
+- The Leader presents a self-signed client certificate derived from its existing signed-HTTP Ed25519 key when Toolkit requests one. Signed requests retain the existing input signature and add `nexus-context-sig` plus `nexus-context-timestamp`; the context signature covers the receiving Tool FQN, stable invocation nonce, and timestamp using `SHA-256(BCS((String, [u8; 32], u64)))`.
+- Set `signed_http.tools.<tool_id>.require_client_certificate` to `true` to require the TLS peer key to match the allowlisted Leader key authenticating that Tool's signed invocation. It defaults to `false`; missing or mismatched peer identity rejects `/invoke` before replay-cache access or execution.
 - Required mode checks the current allowed Leader key and context freshness before replay-cache access. The per-Tool `context_timestamp_window_ms` setting defaults to a symmetric, inclusive 30,000 ms window; retries keep their nonce and use a fresh timestamp.
 - `/meta` always advertises `https`, and retains the existing forwarded-host and request-path behavior. Gateways must preserve the context headers and existing signature headers.
-- A reverse proxy may terminate TLS if it preserves those signed HTTP headers and provides the trust boundary for any internal plaintext hop.
+- A reverse proxy may terminate TLS while client-certificate verification is disabled. When it is enabled, terminate TLS in Toolkit or use TLS passthrough; forwarded client-certificate headers never establish peer identity.
 - The Leader continues validating the Tool server certificate and hostname, requires HTTPS, and applies its existing proxy, redirect, timeout, and destination restrictions.
 - Signed HTTP is enabled through a JSON config file loaded from `NEXUS_TOOLKIT_CONFIG_PATH`; its v3 input and result signature bytes are unchanged.
 
