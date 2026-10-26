@@ -199,7 +199,7 @@ fn ed25519_public_key(certificate: &CertificateDer<'_>) -> Result<[u8; 32], TlsE
         .map_err(|_| TlsError::InvalidCertificate(CertificateError::BadEncoding))
 }
 
-/// Peer identity attached only to requests accepted on a TLS connection.
+/// TLS client's Ed25519 public key attached to the channel
 #[derive(Clone, Debug)]
 pub struct TlsPeerIdentity(Option<[u8; 32]>);
 
