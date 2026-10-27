@@ -579,43 +579,32 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_oks_valid_off_chain_tools() {
-        tokio::spawn(
-            async move { bootstrap!(([127, 0, 0, 1], 8042), [DummyTool, DummyToolWithPath]) },
-        );
+        let rcgen::CertifiedKey { cert, key_pair } =
+            rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let cert_path = directory.path().join("cert.pem");
+        let key_path = directory.path().join("key.pem");
+        std::fs::write(&cert_path, cert.pem()).unwrap();
+        std::fs::write(&key_path, key_pair.serialize_pem()).unwrap();
+        std::env::set_var("NEXUS_TOOL_TLS_CERT_PATH", &cert_path);
+        std::env::set_var("NEXUS_TOOL_TLS_KEY_PATH", &key_path);
+        let client = build_tool_http_client_with_root(Some(&cert_path)).unwrap();
+        let server = tokio::spawn(async move {
+            bootstrap!(([127, 0, 0, 1], 8042), [DummyTool, DummyToolWithPath])
+        });
 
         // Give the webserver some time to start.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // No path with slash
-        let meta =
-            validate_off_chain_tool(reqwest::Url::parse("http://localhost:8042/").unwrap()).await;
-        assert!(meta.is_ok());
-        let meta = meta.unwrap();
-        assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
-
-        // No path no slash
-        let meta =
-            validate_off_chain_tool(reqwest::Url::parse("http://localhost:8042").unwrap()).await;
-        assert!(meta.is_ok());
-        let meta = meta.unwrap();
-        assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
-
-        // Path with slash
-        let meta = validate_off_chain_tool(
-            reqwest::Url::parse("http://localhost:8042/dummy/tool/").unwrap(),
-        )
-        .await;
-        assert!(meta.is_ok());
-        let meta = meta.unwrap();
-        assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
-
-        // Path no slash
-        let meta = validate_off_chain_tool(
-            reqwest::Url::parse("http://localhost:8042/dummy/tool").unwrap(),
-        )
-        .await;
-        assert!(meta.is_ok());
-        let meta = meta.unwrap();
-        assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
+        for path in ["/", "", "/dummy/tool/", "/dummy/tool"] {
+            let meta = validate_off_chain_tool_with_client(
+                reqwest::Url::parse(&format!("https://localhost:8042{path}")).unwrap(),
+                &client,
+            )
+            .await
+            .unwrap();
+            assert_eq!(meta.fqn, fqn!("xyz.dummy.tool@1"));
+        }
+        server.abort();
     }
 }

@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Updated the advisory policy for upstream-constrained zstd/zstd-safe versions and upgraded locked zstd-sys to 2.1.2; exception reasons record scope, review date, and removal criteria.
+- **Signed HTTP v3.1:** Requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing v3 input and result signature bytes. This protocol revision retains the `signed_http::v3` API module and `X-Nexus-Sig-V: 3` wire header; package versions are unchanged. See the [v3.1 migration guide](sdk/README.md#migrating-from-signed-http-v3-to-v31).
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
 - **Breaking:** `EventIngestor::start` reports a connection failure once and closes the receiver. Callers own reconnection, resume from the last delivered checkpoint inclusively, and deduplicate replayed events.
 - Recovery discovery now returns failed reads, invalid responses, and incomplete coverage as errors. Individual requests and stalled response bodies have deadlines, while healthy pagination can continue as its cursor advances.
@@ -25,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Removed
 
 - Removed the recovery module's `ListConfig` and `ListEvent` reexports and the `poller_stream_reconnections` metric. Recovery continuation and event reconnection belong to the caller.
+- **Breaking:** Removed the unused public signed HTTP v2 SDK module.
 
 ### `nexus-cli`
 
@@ -36,6 +39,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Walrus commands decode Sui objects from their requested BCS bytes, preserving ownership and type checks without requiring omitted response fields.
 - Fixed CLI argument validation incorrectly rejecting valid combinations of occurrence start, deadline, and priority fee options.
 - `conf set`, `tap agent save`/`remove`, and Tool registration no longer replace an existing configuration with defaults when `conf.toml` cannot be read or parsed. The command now fails and leaves the file untouched; only a missing file starts from the default configuration.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- **Signed HTTP v3.1:** Required mode verifies the allowlisted Leader Tool-context signature and freshness before replay-cache access, with a configurable inclusive timestamp window defaulting to 30,000 ms. Older v3 requests without context headers are rejected even though the wire version remains `3`.
+- Toolkit metadata always advertises HTTPS and ignores `X-Forwarded-Proto`; the listener requires server TLS and supports optional Leader client certificates. Per-Tool `require_client_certificate` defaults to `false`; enabling it requires the TLS peer key to match the allowlisted Leader key before replay-cache access or execution.
+
+#### Fixed
+
+- Unsigned `/invoke` requests now decode the Leader's `ports` envelope into Tool inputs, matching signed mode; plain input objects remain unsupported.
 
 ## [`2.1.1`] - 2026-10-07
 
@@ -404,6 +418,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added optional signed-HTTP v2 enforcement with inline or file-backed leader allowlists, per-Tool signing keys, live allowlist reload, exact-retry response caching, conflicting nonce rejection, and in-flight request protection.
 - Added direct TLS termination through `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH`, which must be configured together.
+- Added optional per-Tool TLS client-certificate verification bound to the allowlisted Leader key, disabled by default and supported through direct Toolkit TLS or TLS passthrough.
 
 #### Changed
 

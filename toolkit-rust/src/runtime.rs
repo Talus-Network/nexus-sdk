@@ -80,15 +80,18 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// When enabled (`signed_http.mode = "required"`), the runtime:
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
+/// - Optionally requires each Tool's directly observed TLS peer key to match the allowlisted Leader key.
 /// - Caches completed responses by deterministic nonce and canonical input hash; in-flight nonce reuse is rejected.
 /// - Returns exact ordered BCS Tool output bytes and signs the nonce-bound v3 Tool response message.
 /// - Keeps nonce replay and cached-response handling entirely offchain.
 ///
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
 /// The request body, nonce, and unsigned identity headers require authenticated HTTPS transport.
-/// Set both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` to terminate TLS directly in
-/// the Toolkit server. If TLS terminates at a gateway, the gateway-to-Tool hop must provide an
-/// equivalently protected transport; signed HTTP does not make a plaintext hop safe.
+/// Serving requires both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH`; missing or
+/// empty paths and invalid TLS credentials prevent startup, regardless of signed HTTP mode.
+/// If a Tool enables `require_client_certificate`, TLS must terminate in Toolkit or pass through
+/// the gateway; forwarded certificate headers do not establish identity. With that option disabled,
+/// a gateway may terminate the Leader's TLS connection and use HTTPS to connect to the Toolkit.
 ///
 /// ## Example config
 /// ```json
@@ -248,21 +251,13 @@ macro_rules! bootstrap {
             .or(default_health_route)
             .or(default_tools_route)
             .boxed();
-        // Terminate TLS directly when both credential paths are configured.
-        match $crate::runtime::tls::Config::from_env()
-            .expect("Invalid Nexus Tool TLS configuration")
-        {
-            $crate::runtime::tls::Config::Disabled => {
-                $crate::warp::serve(routes).run($addr).await
-            }
-            $crate::runtime::tls::Config::Enabled { cert_path, key_path } => {
-                let (_, incoming) =
-                    $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
-                        .await
-                        .expect("Failed to start Nexus Tool TLS server");
-                $crate::runtime::tls::serve(routes, incoming).await
-            }
-        }
+            let $crate::runtime::tls::Config { cert_path, key_path } =
+                $crate::runtime::tls::Config::from_env()
+                    .expect("Invalid Nexus Tool TLS configuration");
+            let (_, incoming) = $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
+                .await
+                .expect("Failed to start Nexus Tool TLS server");
+            $crate::runtime::tls::serve(routes, incoming).await
     }};
     // Default address.
     ([$($tool:ty),+ $(,)?]) => {{
@@ -315,7 +310,6 @@ pub fn routes_for_with_config_<T: NexusTool>(
         .and(base_path.clone())
         .and(warp::path("meta"))
         .and(warp::header::optional::<Authority>("X-Forwarded-Host"))
-        .and(warp::header::optional::<String>("X-Forwarded-Proto"))
         .and(warp::filters::host::optional())
         .and(warp::path::full())
         .and_then(meta_handler::<T>);
@@ -330,6 +324,7 @@ pub fn routes_for_with_config_<T: NexusTool>(
     let invoke_route = warp::post()
         .and(base_path)
         .and(warp::path("invoke"))
+        .and(warp::filters::ext::optional::<tls::TlsPeerIdentity>())
         .and(warp::header::headers_cloned())
         .and(warp::body::content_length_limit(invoke_max_body_bytes))
         .and(warp::body::bytes())
@@ -352,7 +347,6 @@ async fn health_handler<T: NexusTool>() -> Result<impl Reply, Rejection> {
 
 async fn meta_handler<T: NexusTool>(
     x_forwarded_host: Option<Authority>,
-    x_forwarded_proto: Option<String>,
     host: Option<Authority>,
     path: FullPath,
 ) -> Result<impl Reply, Rejection> {
@@ -393,29 +387,8 @@ async fn meta_handler<T: NexusTool>(
         }
     };
 
-    // As in the case of the host, we need to use the most "external" scheme,
-    // which is basically the scheme used by the client to access the tool.
-    // If the scheme is not present, we check the environment variable, which
-    // might have been set for operational purposes.
-    // As a last resort, we use http as the default scheme.
-    //
-    // Ref: https://github.com/Talus-Network/nexus-sdk/issues/77
-    let scheme = x_forwarded_proto.unwrap_or_else(|| "http".to_string());
-
-    // Validate scheme to prevent URL injection attacks
-    if scheme != "http" && scheme != "https" {
-        let reply = json!({
-            "error": "invalid_scheme",
-            "details": "Scheme must be either 'http' or 'https'.",
-        });
-
-        return Ok(warp::reply::with_status(
-            warp::reply::json(&reply),
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-
-    let url = match Url::parse(&format!("{scheme}://{host}{base_path}")) {
+    // Metadata always advertises the external HTTPS endpoint.
+    let url = match Url::parse(&format!("https://{host}{base_path}")) {
         Ok(url) => url,
         Err(e) => {
             let reply = json!({
@@ -555,34 +528,31 @@ fn decode_tool_input<T: NexusTool>(
     body_bytes: &[u8],
     auth_ctx: Option<&crate::AuthContext>,
 ) -> Result<T::Input, ToolInputDecodeError> {
-    if let Some(auth_ctx) = auth_ctx {
-        let schema = MetaSchema::from_offchain_json_schemas(
-            &serde_json::to_vec(&schemars::schema_for!(T::Input))
-                .map_err(anyhow::Error::from)
-                .map_err(ToolInputDecodeError::Deserialization)?,
-            &serde_json::to_vec(&schemars::schema_for!(T::Output))
-                .map_err(anyhow::Error::from)
-                .map_err(ToolInputDecodeError::Deserialization)?,
-        )
-        .map_err(ToolInputDecodeError::Deserialization)?;
-        let resolved_inputs = serde_json::from_slice::<serde_json::Value>(body_bytes)
+    let schema = MetaSchema::from_offchain_json_schemas(
+        &serde_json::to_vec(&schemars::schema_for!(T::Input))
             .map_err(anyhow::Error::from)
-            .and_then(|value| schema.resolved_inputs_from_json(&value))
-            .map_err(ToolInputDecodeError::Deserialization)?;
+            .map_err(ToolInputDecodeError::Deserialization)?,
+        &serde_json::to_vec(&schemars::schema_for!(T::Output))
+            .map_err(anyhow::Error::from)
+            .map_err(ToolInputDecodeError::Deserialization)?,
+    )
+    .map_err(ToolInputDecodeError::Deserialization)?;
+    let resolved_inputs = serde_json::from_slice::<serde_json::Value>(body_bytes)
+        .map_err(anyhow::Error::from)
+        .and_then(|value| schema.resolved_inputs_from_json(&value))
+        .map_err(ToolInputDecodeError::Deserialization)?;
+    if let Some(auth_ctx) = auth_ctx {
         if schema.resolved_inputs_sha256(&resolved_inputs).ok() != Some(auth_ctx.input_hash) {
             return Err(ToolInputDecodeError::Integrity);
         }
-        return serde_json::from_value::<crate::WithSerdeErrorPath<T::Input>>(
-            schema
-                .resolved_inputs_to_semantic_json(&resolved_inputs)
-                .map_err(ToolInputDecodeError::Deserialization)?,
-        )
-        .map(|value| value.0)
-        .map_err(|error| ToolInputDecodeError::Deserialization(error.into()));
     }
-    serde_json::from_slice::<crate::WithSerdeErrorPath<T::Input>>(body_bytes)
-        .map(|value| value.0)
-        .map_err(|error| ToolInputDecodeError::Deserialization(error.into()))
+    serde_json::from_value::<crate::WithSerdeErrorPath<T::Input>>(
+        schema
+            .resolved_inputs_to_semantic_json(&resolved_inputs)
+            .map_err(ToolInputDecodeError::Deserialization)?,
+    )
+    .map(|value| value.0)
+    .map_err(|error| ToolInputDecodeError::Deserialization(error.into()))
 }
 
 #[cfg(test)]
@@ -595,6 +565,7 @@ fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8
 }
 
 async fn invoke_handler<T: NexusTool>(
+    tls_peer: Option<tls::TlsPeerIdentity>,
     headers: HeaderMap,
     body: bytes::Bytes,
     auth: InvokeAuth,
@@ -605,8 +576,10 @@ async fn invoke_handler<T: NexusTool>(
     Ok(handle_invoke(
         &auth_runtime,
         auth.replay(),
+        &T::fqn().to_string(),
         headers,
         body_bytes,
+        tls_peer.and_then(|peer| peer.public_key()),
         |auth_ctx, body_bytes| async move {
             let pipeline = InvokePipeline::run::<T>(&body_bytes, auth_ctx).await;
             (pipeline.status, pipeline.body, pipeline.is_result)
@@ -629,6 +602,30 @@ mod tests {
         serde::{Deserialize, Serialize},
         serde_json::json,
     };
+
+    #[test]
+    fn signed_http_configuration_is_independent_of_listener_tls_configuration() {
+        let required = ToolkitRuntimeConfig::from_json_str(
+            r#"{
+                "signed_http": {
+                    "mode": "required",
+                    "allowed_leaders": {
+                        "version": 1,
+                        "leaders": [{
+                            "leader_id": "leader",
+                            "keys": [{"kid": 0, "public_key": "0000000000000000000000000000000000000000000000000000000000000000"}]
+                        }]
+                    },
+                    "tools": {"xyz.test@1": {}}
+                }
+            }"#,
+        )
+        .unwrap();
+        assert!(required.signed_http_is_required());
+
+        let unsigned = ToolkitRuntimeConfig::from_json_str("{}").unwrap();
+        assert!(!unsigned.signed_http_is_required());
+    }
 
     fn resolved_input(port_name: &str, value: serde_json::Value) -> serde_json::Value {
         let value = NexusData::inline_data(serde_json::to_vec(&value).unwrap()).unwrap();
@@ -813,12 +810,51 @@ mod tests {
 
     #[tokio::test]
     async fn invoke_pipeline_returns_exact_canonical_response_bytes() {
-        let body = serde_json::to_vec(&json!({"message": "hello"})).unwrap();
+        let body = serde_json::to_vec(&resolved_input("message", json!("hello"))).unwrap();
         let response = InvokePipeline::run::<TestTool>(&body, None).await;
         assert_eq!(response.status, StatusCode::OK);
         assert!(response.is_result);
         let output: OffchainToolOutput = bcs::from_bytes(&response.body).unwrap();
         assert_eq!(bcs::to_bytes(&output).unwrap(), response.body);
+    }
+
+    #[tokio::test]
+    async fn unsigned_routes_decode_leader_inputs_without_an_allowlist() {
+        for config in ["{}", r#"{"signed_http":{"mode":"disabled"}}"#] {
+            let routes = routes_for_with_config_::<TestTool>(std::sync::Arc::new(
+                ToolkitRuntimeConfig::from_json_str(config).unwrap(),
+            ));
+            let response = warp::test::request()
+                .method("POST")
+                .path("/invoke")
+                .json(&resolved_input("message", json!("hello")))
+                .reply(&routes)
+                .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(response.headers().get("X-Nexus-Tool-Signature").is_none());
+            let output: OffchainToolOutput = bcs::from_bytes(response.body()).unwrap();
+            let message = output
+                .ports
+                .iter()
+                .find(|port| port.port_name == b"message")
+                .unwrap();
+            assert_eq!(
+                NexusData::from_values(message.values.clone(), false)
+                    .unwrap()
+                    .inline_data_bytes(),
+                Some(br#""hello""#.to_vec())
+            );
+
+            for invalid in [json!({"message":"hello"}), json!({"ports": []})] {
+                let response = warp::test::request()
+                    .method("POST")
+                    .path("/invoke")
+                    .json(&invalid)
+                    .reply(&routes)
+                    .await;
+                assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            }
+        }
     }
 
     #[tokio::test]
@@ -887,11 +923,11 @@ mod tests {
 
     #[tokio::test]
     async fn panics_are_local_errors_and_later_requests_succeed() {
-        let body = br#"{"message":"hello"}"#;
+        let body = serde_json::to_vec(&resolved_input("message", json!("hello"))).unwrap();
         let responses = [
-            InvokePipeline::run::<FailingTool<0>>(body, None).await,
-            InvokePipeline::run::<FailingTool<2>>(body, None).await,
-            InvokePipeline::run::<FailingTool<3>>(body, None).await,
+            InvokePipeline::run::<FailingTool<0>>(&body, None).await,
+            InvokePipeline::run::<FailingTool<2>>(&body, None).await,
+            InvokePipeline::run::<FailingTool<3>>(&body, None).await,
         ];
         for response in responses {
             assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
@@ -902,7 +938,7 @@ mod tests {
             );
         }
         assert_eq!(
-            InvokePipeline::run::<TestTool>(body, None).await.status,
+            InvokePipeline::run::<TestTool>(&body, None).await.status,
             StatusCode::OK
         );
     }
@@ -922,6 +958,7 @@ mod tests {
             input_hash: schema.resolved_inputs_sha256(&resolved).unwrap(),
             leader_signature: [2; 64],
             nonce: [3; 32],
+            context_timestamp_ms: 0,
         };
         let response = InvokePipeline::run::<FailingTool<1>>(
             &serde_json::to_vec(&transport).unwrap(),
@@ -937,7 +974,8 @@ mod tests {
 
     #[tokio::test]
     async fn asynchronous_work_obeys_the_tool_deadline() {
-        let response = InvokePipeline::run::<FailingTool<4>>(br#"{"message":"hello"}"#, None).await;
+        let body = serde_json::to_vec(&resolved_input("message", json!("hello"))).unwrap();
+        let response = InvokePipeline::run::<FailingTool<4>>(&body, None).await;
         assert_eq!(response.status, StatusCode::GATEWAY_TIMEOUT);
         assert!(!response.is_result);
         assert_eq!(
@@ -963,6 +1001,7 @@ mod tests {
             input_hash,
             leader_signature: [2; 64],
             nonce: [3; 32],
+            context_timestamp_ms: 0,
         };
 
         let mismatch = InvokePipeline::run::<TestTool>(&body, Some(auth([9; 32]))).await;
@@ -1058,8 +1097,8 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_references_remain_canonical_and_invalid_outputs_are_unsigned() {
-        let input = br#"{"message":"input"}"#;
-        let response = InvokePipeline::run::<ExplicitTool<false>>(input, None).await;
+        let input = serde_json::to_vec(&resolved_input("message", json!("input"))).unwrap();
+        let response = InvokePipeline::run::<ExplicitTool<false>>(&input, None).await;
         assert_eq!(response.status, StatusCode::OK);
         assert!(response.is_result);
         let output: OffchainToolOutput = bcs::from_bytes(&response.body).unwrap();
@@ -1067,7 +1106,7 @@ mod tests {
             output.ports[0].values[0],
             nexus_sdk::types::NexusValue::WalrusData { .. }
         ));
-        let response = InvokePipeline::run::<ExplicitTool<true>>(input, None).await;
+        let response = InvokePipeline::run::<ExplicitTool<true>>(&input, None).await;
         assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
         assert!(!response.is_result);
     }

@@ -17,6 +17,8 @@ pub const HEADER_LEADER_KEY_ID: &str = "X-Nexus-Leader-Key-Id";
 pub const HEADER_INPUT_HASH: &str = "X-Nexus-Input-Hash";
 pub const HEADER_LEADER_SIGNATURE: &str = "X-Nexus-Leader-Signature";
 pub const HEADER_NONCE: &str = "X-Nexus-Nonce";
+pub const HEADER_CONTEXT_SIGNATURE: &str = "nexus-context-sig";
+pub const HEADER_CONTEXT_TIMESTAMP: &str = "nexus-context-timestamp";
 pub const HEADER_TOOL_SIGNATURE: &str = "X-Nexus-Tool-Signature";
 pub const SIGNATURE_VERSION_V3: &str = "3";
 pub const CANONICAL_TOOL_RESPONSE_CONTENT_TYPE: &str =
@@ -32,6 +34,8 @@ pub struct EncodedRequestHeaders {
     pub input_hash: String,
     pub leader_signature: String,
     pub nonce: String,
+    pub context_signature: String,
+    pub context_timestamp: String,
 }
 
 impl EncodedRequestHeaders {
@@ -43,6 +47,8 @@ impl EncodedRequestHeaders {
             (HEADER_INPUT_HASH, self.input_hash.clone()),
             (HEADER_LEADER_SIGNATURE, self.leader_signature.clone()),
             (HEADER_NONCE, self.nonce.clone()),
+            (HEADER_CONTEXT_SIGNATURE, self.context_signature.clone()),
+            (HEADER_CONTEXT_TIMESTAMP, self.context_timestamp.clone()),
         ]
     }
 }
@@ -69,6 +75,8 @@ pub struct RequestHeadersRef<'a> {
     pub input_hash: Option<&'a str>,
     pub leader_signature: Option<&'a str>,
     pub nonce: Option<&'a str>,
+    pub context_signature: Option<&'a str>,
+    pub context_timestamp: Option<&'a str>,
 }
 
 impl<'a> RequestHeadersRef<'a> {
@@ -80,6 +88,8 @@ impl<'a> RequestHeadersRef<'a> {
             input_hash: get(HEADER_INPUT_HASH),
             leader_signature: get(HEADER_LEADER_SIGNATURE),
             nonce: get(HEADER_NONCE),
+            context_signature: get(HEADER_CONTEXT_SIGNATURE),
+            context_timestamp: get(HEADER_CONTEXT_TIMESTAMP),
         }
     }
 }
@@ -106,6 +116,7 @@ pub struct AuthenticatedRequest {
     pub input_hash: [u8; SHA256_LEN],
     pub leader_signature: [u8; ED25519_SIGNATURE_LEN],
     pub nonce: [u8; SHA256_LEN],
+    pub context_timestamp_ms: u64,
 }
 
 pub trait LeaderKeyResolver: Send + Sync {
@@ -117,21 +128,31 @@ pub fn sign_request(
     leader_key_id: u64,
     input_hash: [u8; SHA256_LEN],
     nonce: [u8; SHA256_LEN],
+    tool_fqn: &str,
+    context_timestamp_ms: u64,
     signing_key: &SigningKey,
 ) -> EncodedRequestHeaders {
     let signature = signing_key.sign(&input_hash).to_bytes();
+    let context_signature = signing_key
+        .sign(&context_digest(tool_fqn, nonce, context_timestamp_ms))
+        .to_bytes();
     EncodedRequestHeaders {
         leader_id: leader_id.into(),
         leader_key_id,
         input_hash: URL_SAFE_NO_PAD.encode(input_hash),
         leader_signature: URL_SAFE_NO_PAD.encode(signature),
         nonce: URL_SAFE_NO_PAD.encode(nonce),
+        context_signature: URL_SAFE_NO_PAD.encode(context_signature),
+        context_timestamp: context_timestamp_ms.to_string(),
     }
 }
 
 pub fn authenticate_request(
     headers: RequestHeadersRef<'_>,
     keys: &dyn LeaderKeyResolver,
+    tool_fqn: &str,
+    now_ms: u64,
+    context_timestamp_window_ms: u64,
 ) -> Result<AuthenticatedRequest, SignedHttpError> {
     require_version(headers.signature_version)?;
     let leader_id = required(headers.leader_id, HEADER_LEADER_ID)?.to_string();
@@ -146,6 +167,26 @@ pub fn authenticate_request(
     let leader_signature =
         decode_array::<ED25519_SIGNATURE_LEN>(headers.leader_signature, HEADER_LEADER_SIGNATURE)?;
     let nonce = decode_array::<SHA256_LEN>(headers.nonce, HEADER_NONCE)?;
+    let context_timestamp_raw = required(headers.context_timestamp, HEADER_CONTEXT_TIMESTAMP)?;
+    if context_timestamp_raw.is_empty()
+        || !context_timestamp_raw
+            .bytes()
+            .all(|byte| byte.is_ascii_digit())
+    {
+        return Err(SignedHttpError::InvalidInteger {
+            header: HEADER_CONTEXT_TIMESTAMP,
+            value: context_timestamp_raw.to_string(),
+        });
+    }
+    let context_timestamp_ms: u64 =
+        context_timestamp_raw
+            .parse()
+            .map_err(|_| SignedHttpError::InvalidInteger {
+                header: HEADER_CONTEXT_TIMESTAMP,
+                value: context_timestamp_raw.to_string(),
+            })?;
+    let context_signature =
+        decode_array::<ED25519_SIGNATURE_LEN>(headers.context_signature, HEADER_CONTEXT_SIGNATURE)?;
     let public_key = keys
         .leader_public_key(&leader_id, leader_key_id)
         .ok_or_else(|| SignedHttpError::UnknownLeaderKey {
@@ -159,12 +200,27 @@ pub fn authenticate_request(
         format!("leader {leader_id} key {leader_key_id}"),
     )?;
 
+    if context_timestamp_ms.abs_diff(now_ms) > context_timestamp_window_ms {
+        return Err(SignedHttpError::TimestampOutsideWindow {
+            timestamp_ms: context_timestamp_ms,
+            now_ms,
+            window_ms: context_timestamp_window_ms,
+        });
+    }
+    verify_signature(
+        public_key,
+        &context_digest(tool_fqn, nonce, context_timestamp_ms),
+        context_signature,
+        format!("leader {leader_id} key {leader_key_id} Tool context"),
+    )?;
+
     Ok(AuthenticatedRequest {
         leader_id,
         leader_key_id,
         input_hash,
         leader_signature,
         nonce,
+        context_timestamp_ms,
     })
 }
 
@@ -209,6 +265,17 @@ pub fn tool_signature_message(
 
 pub fn sha256(bytes: &[u8]) -> [u8; SHA256_LEN] {
     Sha256::digest(bytes).into()
+}
+
+/// Hashes the BCS encoding of the receiver's FQN, nonce, and Unix-ms timestamp.
+pub fn context_digest(
+    tool_fqn: &str,
+    nonce: [u8; SHA256_LEN],
+    timestamp_ms: u64,
+) -> [u8; SHA256_LEN] {
+    let bytes = bcs::to_bytes(&(tool_fqn.to_owned(), nonce, timestamp_ms))
+        .expect("BCS encoding a String, fixed byte array, and u64 cannot fail");
+    sha256(&bytes)
 }
 
 fn required<'a>(value: Option<&'a str>, header: &'static str) -> Result<&'a str, SignedHttpError> {

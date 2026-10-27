@@ -93,6 +93,34 @@ mod tests {
         serde_json::json,
     };
 
+    fn leader_input(prompt: &str) -> serde_json::Value {
+        let value =
+            nexus_sdk::types::NexusData::inline_data(serde_json::to_vec(prompt).unwrap()).unwrap();
+        json!({"ports": [{"port_name": "prompt", "value": value.to_json_value().unwrap()}]})
+    }
+
+    fn tls_client() -> Client {
+        static TLS: std::sync::OnceLock<(tempfile::TempDir, String)> = std::sync::OnceLock::new();
+        let (_, cert_pem) = TLS.get_or_init(|| {
+            let rcgen::CertifiedKey { cert, key_pair } =
+                rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+            let cert_pem = cert.pem();
+            let directory = tempfile::tempdir().unwrap();
+            let cert_path = directory.path().join("cert.pem");
+            let key_path = directory.path().join("key.pem");
+            std::fs::write(&cert_path, &cert_pem).unwrap();
+            std::fs::write(&key_path, key_pair.serialize_pem()).unwrap();
+            // Every bootstrap test initializes these paths before starting its server.
+            std::env::set_var("NEXUS_TOOL_TLS_CERT_PATH", cert_path);
+            std::env::set_var("NEXUS_TOOL_TLS_KEY_PATH", key_path);
+            (directory, cert_pem)
+        });
+        Client::builder()
+            .add_root_certificate(reqwest::Certificate::from_pem(cert_pem.as_bytes()).unwrap())
+            .build()
+            .unwrap()
+    }
+
     async fn assert_canonical_output(
         response: reqwest::Response,
         expected_tag: &[u8],
@@ -115,13 +143,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_endpoints_generated_correctly() {
+        let client = tls_client();
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8043), DummyTool) });
 
         // Give the webserver some time to start.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        let meta = Client::new()
-            .get("http://localhost:8043/meta")
+        let meta = client
+            .get("https://localhost:8043/meta")
             .send()
             .await
             .unwrap();
@@ -131,7 +160,7 @@ mod tests {
         let meta_json = meta.json::<serde_json::Value>().await.unwrap();
 
         assert_eq!(meta_json["fqn"], "xyz.dummy.tool@1");
-        assert_eq!(meta_json["url"], "http://localhost:8043/");
+        assert_eq!(meta_json["url"], "https://localhost:8043/");
         assert_eq!(
             meta_json["input_schema"]["properties"]["prompt"]["type"],
             "string"
@@ -142,17 +171,17 @@ mod tests {
             "string"
         );
 
-        let health = Client::new()
-            .get("http://localhost:8043/health")
+        let health = client
+            .get("https://localhost:8043/health")
             .send()
             .await
             .unwrap();
 
         assert_eq!(health.status(), 200);
 
-        let invoke = Client::new()
-            .post("http://localhost:8043/invoke")
-            .json(&json!({ "prompt": "Hello, world!" }))
+        let invoke = client
+            .post("https://localhost:8043/invoke")
+            .json(&leader_input("Hello, world!"))
             .send()
             .await
             .unwrap();
@@ -164,13 +193,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_422_when_input_malformed() {
+        let client = tls_client();
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8044), DummyTool) });
 
         // Give the webserver some time to start.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        let invoke = Client::new()
-            .post("http://localhost:8044/invoke")
+        let invoke = client
+            .post("https://localhost:8044/invoke")
             .json(&json!({ "invalid": "Hello, world!" }))
             .send()
             .await
@@ -185,14 +215,15 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_err_variant_returns_tagged_output() {
+        let client = tls_client();
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8045), [DummyErrTool]) });
 
         // Give the webserver some time to start.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        let invoke = Client::new()
-            .post("http://localhost:8045/path/invoke")
-            .json(&json!({ "prompt": "Hello, world!" }))
+        let invoke = client
+            .post("https://localhost:8045/path/invoke")
+            .json(&leader_input("Hello, world!"))
             .send()
             .await
             .unwrap();
@@ -202,8 +233,8 @@ mod tests {
         assert_canonical_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
 
         // Default health ep exists.
-        let health = Client::new()
-            .get("http://localhost:8045/health")
+        let health = client
+            .get("https://localhost:8045/health")
             .send()
             .await
             .unwrap();
@@ -213,15 +244,16 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_multiple_tools() {
+        let client = tls_client();
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8046), [DummyTool, DummyErrTool]) });
 
         // Give the webserver some time to start.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Invoke /path tool.
-        let invoke = Client::new()
-            .post("http://localhost:8046/path/invoke")
-            .json(&json!({ "prompt": "Hello, world!" }))
+        let invoke = client
+            .post("https://localhost:8046/path/invoke")
+            .json(&leader_input("Hello, world!"))
             .send()
             .await
             .unwrap();
@@ -231,8 +263,8 @@ mod tests {
         assert_canonical_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
 
         // Invoke / tool.
-        let invoke = Client::new()
-            .post("http://localhost:8046/invoke")
+        let invoke = client
+            .post("https://localhost:8046/invoke")
             .json(&json!({ "invalid": "Hello, world!" }))
             .send()
             .await
@@ -246,27 +278,24 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_meta_invalid_schema() {
+    async fn test_meta_ignores_forwarded_proto() {
+        let client = tls_client();
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8047), DummyTool) });
 
         // Give the webserver some time to start.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        let meta = Client::new()
-            .get("http://localhost:8047/meta")
+        let meta = client
+            .get("https://localhost:8047/meta")
             .header("X-Forwarded-Proto", "ftp")
             .send()
             .await
             .unwrap();
 
-        assert_eq!(meta.status(), 400);
+        assert_eq!(meta.status(), 200);
 
         let meta_json = meta.json::<serde_json::Value>().await.unwrap();
 
-        assert_eq!(meta_json["error"], "invalid_scheme");
-        assert_eq!(
-            meta_json["details"],
-            "Scheme must be either 'http' or 'https'."
-        );
+        assert_eq!(meta_json["url"], "https://localhost:8047/");
     }
 }

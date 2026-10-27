@@ -74,6 +74,7 @@ assert_matches = "1.5.0"
 move-ir-to-bytecode.workspace = true
 mockito.workspace = true
 nexus-toolkit.workspace = true
+rcgen = "0.13"
 rstest.workspace = true
 schemars.workspace = true
 serial_test.workspace = true

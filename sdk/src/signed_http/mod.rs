@@ -1,8 +1,7 @@
-//! Leader-to-Tool signing transport.
+//! Leader-to-Tool signed HTTP v3 transport.
 //!
 //! The offchain Tool prepares the signature consumed by the onchain RegisteredKey verifier.
-//! Legacy v2 signs `TaggedOutput` bytes with its v2 response domain; active v3 signs ordered BCS
-//! `OffchainToolOutput` bytes with the direct on-chain transcript:
+//! Signed HTTP v3 signs ordered BCS `OffchainToolOutput` bytes with the direct on-chain transcript:
 //! - the Leader signs the schema-ordered `PortCommitment` input hash;
 //! - the Tool signs `domain || leader_signature || deterministic_nonce || SHA-256(result_bytes)`;
 //! - `result_bytes` is the exact ordered BCS body reconstructed from typed fields onchain.
@@ -13,5 +12,4 @@
 //! network hop; these minimal onchain signatures do not make plaintext HTTP safe.
 
 pub mod keys;
-pub mod v2;
 pub mod v3;

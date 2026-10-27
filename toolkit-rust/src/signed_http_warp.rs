@@ -40,30 +40,33 @@ impl RefreshingAllowedLeadersResolver {
         }
     }
 
-    fn refresh_from_source_path(&self) {
-        let Some(path) = self
-            .allowed_leaders
-            .read()
-            .unwrap()
-            .source_path()
-            .map(ToOwned::to_owned)
-        else {
-            return;
-        };
-        let Ok(updated) = AllowedLeaders::from_path(path) else {
-            return;
-        };
-        *self.allowed_leaders.write().unwrap() = updated;
+    fn snapshot(&self) -> Result<AllowedLeaders, SignedHttpError> {
+        let mut allowed_leaders = self.allowed_leaders.write().unwrap();
+        if let Some(path) = allowed_leaders.source_path().map(ToOwned::to_owned) {
+            *allowed_leaders = AllowedLeaders::from_path(path)?;
+        }
+        Ok(allowed_leaders.clone())
     }
 }
 
 impl LeaderKeyResolver for RefreshingAllowedLeadersResolver {
     fn leader_public_key(&self, leader_id: &str, leader_key_id: u64) -> Option<[u8; 32]> {
-        self.refresh_from_source_path();
-        self.allowed_leaders
-            .read()
-            .unwrap()
+        self.snapshot()
+            .ok()?
             .leader_public_key(leader_id, leader_key_id)
+    }
+}
+
+struct PeerBoundResolver<'a> {
+    allowed_leaders: &'a AllowedLeaders,
+    peer_key: [u8; 32],
+}
+
+impl LeaderKeyResolver for PeerBoundResolver<'_> {
+    fn leader_public_key(&self, leader_id: &str, leader_key_id: u64) -> Option<[u8; 32]> {
+        self.allowed_leaders
+            .leader_public_key(leader_id, leader_key_id)
+            .filter(|key| *key == self.peer_key)
     }
 }
 
@@ -71,6 +74,8 @@ impl LeaderKeyResolver for RefreshingAllowedLeadersResolver {
 pub(crate) struct SignedInvokeRuntime {
     response_signing_key: Option<SigningKey>,
     allowed_leaders: Arc<RefreshingAllowedLeadersResolver>,
+    require_client_certificate: bool,
+    context_timestamp_window_ms: u64,
     replay_cache_ttl_ms: u64,
 }
 
@@ -104,6 +109,8 @@ impl InvokeAuthRuntime {
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(
                 (*signed_http.allowed_leaders).clone(),
             )),
+            require_client_certificate: tool.require_client_certificate,
+            context_timestamp_window_ms: tool.context_timestamp_window_ms,
             replay_cache_ttl_ms: tool.replay_cache_ttl_ms,
         })))
     }
@@ -179,8 +186,10 @@ impl InvokeAuth {
 pub(crate) async fn handle_invoke<F, Fut>(
     auth: &InvokeAuthRuntime,
     replay: &ReplayCache,
+    tool_fqn: &str,
     headers: HeaderMap,
     body_bytes: Vec<u8>,
+    tls_peer_key: Option<[u8; 32]>,
     run: F,
 ) -> warp::reply::Response
 where
@@ -193,12 +202,49 @@ where
             response(status, body, is_result, None)
         }
         InvokeAuthRuntime::Signed(runtime) => {
+            let allowlist = match runtime.allowed_leaders.snapshot() {
+                Ok(allowlist) => allowlist,
+                Err(error) => return auth_failed(error),
+            };
             let request_headers = RequestHeadersRef::from_getter(|name| header_str(&headers, name));
-            let authenticated =
-                match authenticate_request(request_headers, runtime.allowed_leaders.as_ref()) {
-                    Ok(authenticated) => authenticated,
-                    Err(error) => return auth_failed(error),
+            let current_context_ms = match context_now_ms() {
+                Ok(now_ms) => now_ms,
+                Err(error) => return auth_failed(error),
+            };
+            let authenticated_request = if runtime.require_client_certificate {
+                let Some(peer_key) = tls_peer_key else {
+                    return json_response(
+                        StatusCode::UNAUTHORIZED,
+                        json!({
+                            "error": "tls_peer_identity_required",
+                            "details": "signed invoke requires a registered Leader TLS identity",
+                        }),
+                    );
                 };
+                let bound_resolver = PeerBoundResolver {
+                    allowed_leaders: &allowlist,
+                    peer_key,
+                };
+                authenticate_request(
+                    request_headers,
+                    &bound_resolver,
+                    tool_fqn,
+                    current_context_ms,
+                    runtime.context_timestamp_window_ms,
+                )
+            } else {
+                authenticate_request(
+                    request_headers,
+                    &allowlist,
+                    tool_fqn,
+                    current_context_ms,
+                    runtime.context_timestamp_window_ms,
+                )
+            };
+            let authenticated = match authenticated_request {
+                Ok(authenticated) => authenticated,
+                Err(error) => return auth_failed(error),
+            };
             match replay.begin(authenticated.nonce, authenticated.input_hash, now_ms()) {
                 ReplayDecision::Return(cached) => cached.into_response(
                     &authenticated.leader_signature,
@@ -376,6 +422,16 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+fn context_now_ms() -> Result<u64, SignedHttpError> {
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| SignedHttpError::ClockUnavailable)?
+        .as_millis();
+    timestamp_ms
+        .try_into()
+        .map_err(|_| SignedHttpError::ClockUnavailable)
+}
+
 fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
@@ -429,7 +485,8 @@ mod tests {
         ed25519_dalek::SigningKey,
         http_body_util::BodyExt as _,
         nexus_sdk::signed_http::v3::wire::{
-            sign_request,
+            authenticate_request as authenticate_with_context,
+            sign_request as sign_with_context,
             verify_response,
             AllowedLeaderFileV1,
             AllowedLeaderKeyFileV1,
@@ -440,6 +497,97 @@ mod tests {
         },
         std::sync::atomic::{AtomicUsize, Ordering},
     };
+
+    const TEST_TOOL_FQN: &str = "xyz.demo@1";
+
+    fn signed_request(
+        leader_id: impl Into<String>,
+        key_id: u64,
+        input_hash: [u8; 32],
+        nonce: [u8; 32],
+        leader: &SigningKey,
+    ) -> nexus_sdk::signed_http::v3::wire::EncodedRequestHeaders {
+        signed_request_at(
+            leader_id,
+            key_id,
+            input_hash,
+            nonce,
+            TEST_TOOL_FQN,
+            now_ms(),
+            leader,
+        )
+    }
+
+    fn signed_request_at(
+        leader_id: impl Into<String>,
+        key_id: u64,
+        input_hash: [u8; 32],
+        nonce: [u8; 32],
+        tool_fqn: &str,
+        timestamp_ms: u64,
+        leader: &SigningKey,
+    ) -> nexus_sdk::signed_http::v3::wire::EncodedRequestHeaders {
+        sign_with_context(
+            leader_id,
+            key_id,
+            input_hash,
+            nonce,
+            tool_fqn,
+            timestamp_ms,
+            leader,
+        )
+    }
+
+    fn authenticate_request_for_test(
+        headers: RequestHeadersRef<'_>,
+        keys: &dyn nexus_sdk::signed_http::v3::wire::LeaderKeyResolver,
+    ) -> Result<nexus_sdk::signed_http::v3::wire::AuthenticatedRequest, SignedHttpError> {
+        authenticate_with_context(
+            headers,
+            keys,
+            TEST_TOOL_FQN,
+            now_ms(),
+            crate::config::DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS,
+        )
+    }
+
+    async fn invoke_for_test<F, Fut>(
+        auth: &InvokeAuthRuntime,
+        replay: &ReplayCache,
+        headers: HeaderMap,
+        body_bytes: Vec<u8>,
+        run: F,
+    ) -> warp::reply::Response
+    where
+        F: FnOnce(Option<AuthContext>, Vec<u8>) -> Fut,
+        Fut: Future<Output = (StatusCode, Vec<u8>, bool)> + Send,
+    {
+        invoke_for_test_with_peer(auth, replay, headers, body_bytes, None, run).await
+    }
+
+    async fn invoke_for_test_with_peer<F, Fut>(
+        auth: &InvokeAuthRuntime,
+        replay: &ReplayCache,
+        headers: HeaderMap,
+        body_bytes: Vec<u8>,
+        tls_peer_key: Option<[u8; 32]>,
+        run: F,
+    ) -> warp::reply::Response
+    where
+        F: FnOnce(Option<AuthContext>, Vec<u8>) -> Fut,
+        Fut: Future<Output = (StatusCode, Vec<u8>, bool)> + Send,
+    {
+        handle_invoke(
+            auth,
+            replay,
+            TEST_TOOL_FQN,
+            headers,
+            body_bytes,
+            tls_peer_key,
+            run,
+        )
+        .await
+    }
 
     fn allowed_leaders_file(leader_id: &str, kid: u64, key: &SigningKey) -> AllowedLeadersFileV1 {
         AllowedLeadersFileV1 {
@@ -459,10 +607,20 @@ mod tests {
     }
 
     fn signed_runtime(leader: &SigningKey, tool: &SigningKey) -> InvokeAuthRuntime {
+        signed_runtime_with_client_certificate(leader, tool, false)
+    }
+
+    fn signed_runtime_with_client_certificate(
+        leader: &SigningKey,
+        tool: &SigningKey,
+        require_client_certificate: bool,
+    ) -> InvokeAuthRuntime {
         let allowed = AllowedLeaders::try_from(allowed_leaders_file("leader", 0, leader)).unwrap();
         InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
             response_signing_key: Some(tool.clone()),
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(allowed)),
+            require_client_certificate,
+            context_timestamp_window_ms: crate::config::DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS,
             replay_cache_ttl_ms: 10_000,
         }))
     }
@@ -472,12 +630,14 @@ mod tests {
         InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
             response_signing_key: None,
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(allowed)),
+            require_client_certificate: false,
+            context_timestamp_window_ms: crate::config::DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS,
             replay_cache_ttl_ms: 10_000,
         }))
     }
 
     fn request_headers(leader: &SigningKey, input_hash: [u8; 32], nonce: [u8; 32]) -> HeaderMap {
-        let encoded = sign_request("leader", 0, input_hash, nonce, leader);
+        let encoded = signed_request("leader", 0, input_hash, nonce, leader);
         headers_from_encoded(encoded)
     }
 
@@ -512,9 +672,9 @@ mod tests {
         );
         assert_eq!(resolver.leader_public_key("0xwallet-address", 4), None);
 
-        let encoded = sign_request("0xwallet-address", 4, [3; 32], [1; 32], &leader);
+        let encoded = signed_request("0xwallet-address", 4, [3; 32], [1; 32], &leader);
         let leader_key_id = encoded.leader_key_id.to_string();
-        let error = authenticate_request(
+        let error = authenticate_request_for_test(
             RequestHeadersRef {
                 signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some(&encoded.leader_id),
@@ -522,6 +682,8 @@ mod tests {
                 input_hash: Some(&encoded.input_hash),
                 leader_signature: Some(&encoded.leader_signature),
                 nonce: Some(&encoded.nonce),
+                context_signature: Some(&encoded.context_signature),
+                context_timestamp: Some(&encoded.context_timestamp),
             },
             &resolver,
         )
@@ -545,6 +707,7 @@ mod tests {
                 "tools": {
                     "xyz.demo@1": {
                         "response_signing_key": hex::encode([9u8; 32]),
+                        "require_client_certificate": true,
                     }
                 }
             }
@@ -566,6 +729,7 @@ mod tests {
             runtime.replay_cache_ttl_ms,
             crate::config::DEFAULT_REPLAY_CACHE_TTL_MS
         );
+        assert!(runtime.require_client_certificate);
 
         let invoke_auth = InvokeAuth::new_sync(
             Config::from_config(Arc::new(required)),
@@ -593,6 +757,99 @@ mod tests {
             .expect("zero TTL must fail")
             .to_string()
             .contains("must be greater than zero"));
+    }
+
+    #[tokio::test]
+    async fn client_certificate_policy_binds_authentication_to_the_tls_peer() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let other = SigningKey::from_bytes(&[8; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime_with_client_certificate(&leader, &tool, true);
+        let replay = ReplayCache::new(1_000);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for peer_key in [None, Some(other.verifying_key().to_bytes())] {
+            let calls = Arc::clone(&calls);
+            let response = invoke_for_test_with_peer(
+                &runtime,
+                &replay,
+                request_headers(&leader, [1; 32], [2; 32]),
+                Vec::new(),
+                peer_key,
+                move |_ctx, _body| async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    (StatusCode::OK, vec![1], true)
+                },
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        let response = invoke_for_test_with_peer(
+            &runtime,
+            &replay,
+            request_headers(&leader, [1; 32], [2; 32]),
+            Vec::new(),
+            Some(leader.verifying_key().to_bytes()),
+            |_ctx, _body| async { (StatusCode::OK, vec![1], true) },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let disabled = signed_runtime(&leader, &tool);
+        let response = invoke_for_test_with_peer(
+            &disabled,
+            &ReplayCache::new(1_000),
+            request_headers(&leader, [3; 32], [4; 32]),
+            Vec::new(),
+            Some(other.verifying_key().to_bytes()),
+            |_ctx, _body| async { (StatusCode::OK, vec![1], true) },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn client_certificate_rejection_happens_before_replay_cache_lookup() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let headers = request_headers(&leader, [1; 32], [2; 32]);
+        let replay = ReplayCache::new(1_000);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let disabled = signed_runtime(&leader, &tool);
+        let initial_calls = Arc::clone(&calls);
+        let cached = invoke_for_test(
+            &disabled,
+            &replay,
+            headers.clone(),
+            Vec::new(),
+            move |_ctx, _body| async move {
+                initial_calls.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![1], true)
+            },
+        )
+        .await;
+        assert_eq!(cached.status(), StatusCode::OK);
+
+        let required = signed_runtime_with_client_certificate(&leader, &tool, true);
+        let rejected_calls = Arc::clone(&calls);
+        let response = invoke_for_test_with_peer(
+            &required,
+            &replay,
+            headers,
+            Vec::new(),
+            None,
+            move |_ctx, _body| async move {
+                rejected_calls.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![2], true)
+            },
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -623,6 +880,26 @@ mod tests {
             resolver.leader_public_key("leader", 0),
             Some(second.verifying_key().to_bytes())
         );
+    }
+
+    #[test]
+    fn file_backed_allowlist_refresh_failure_is_not_authorized() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("allowed-leaders.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&allowed_leaders_file("leader", 0, &leader)).unwrap(),
+        )
+        .unwrap();
+        let resolver = RefreshingAllowedLeadersResolver::new(
+            AllowedLeaders::from_path(&path).expect("file allowlist"),
+        );
+
+        std::fs::write(&path, b"not an allowlist").unwrap();
+
+        assert!(resolver.snapshot().is_err());
+        assert_eq!(resolver.leader_public_key("leader", 0), None);
     }
 
     #[test]
@@ -717,7 +994,7 @@ mod tests {
         let leader = SigningKey::from_bytes(&[7; 32]);
         let tool = SigningKey::from_bytes(&[9; 32]);
         let replay = ReplayCache::new(1_000);
-        let response = handle_invoke(
+        let response = invoke_for_test(
             &signed_runtime(&leader, &tool),
             &replay,
             HeaderMap::new(),
@@ -730,6 +1007,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn context_signature_is_checked_before_cache_miss_and_hit() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let wrong_context_key = SigningKey::from_bytes(&[8; 32]);
+        let runtime = verification_runtime(&leader);
+        let replay = ReplayCache::new(1_000);
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+        let timestamp_ms = now_ms();
+        let valid_request = signed_request_at(
+            "leader",
+            0,
+            input_hash,
+            nonce,
+            TEST_TOOL_FQN,
+            timestamp_ms,
+            &leader,
+        );
+        let wrong_context_request = signed_request_at(
+            "leader",
+            0,
+            input_hash,
+            nonce,
+            TEST_TOOL_FQN,
+            timestamp_ms,
+            &wrong_context_key,
+        );
+        let mut invalid_context_request = valid_request.clone();
+        invalid_context_request.context_signature = wrong_context_request.context_signature;
+        let invalid_headers = headers_from_encoded(invalid_context_request);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let response = invoke_for_test(
+            &runtime,
+            &replay,
+            invalid_headers.clone(),
+            Vec::new(),
+            |_ctx, _body| async { panic!("invalid context must not invoke or reserve") },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        let calls_on_miss = Arc::clone(&calls);
+        let response = invoke_for_test(
+            &runtime,
+            &replay,
+            headers_from_encoded(valid_request),
+            Vec::new(),
+            move |_ctx, _body| async move {
+                calls_on_miss.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![4], true)
+            },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let response = invoke_for_test(
+            &runtime,
+            &replay,
+            invalid_headers,
+            Vec::new(),
+            |_ctx, _body| async { panic!("invalid context must not read cached result") },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let retry_request = signed_request_at(
+            "leader",
+            0,
+            input_hash,
+            nonce,
+            TEST_TOOL_FQN,
+            timestamp_ms + 1,
+            &leader,
+        );
+        let response = invoke_for_test(
+            &runtime,
+            &replay,
+            headers_from_encoded(retry_request),
+            Vec::new(),
+            |_ctx, _body| async { panic!("valid exact retry must use cache") },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn verification_only_runtime_authenticates_request_without_signing_result() {
         let leader = SigningKey::from_bytes(&[7; 32]);
         let input_hash = [3; 32];
@@ -739,7 +1105,7 @@ mod tests {
 
         for _ in 0..2 {
             let calls = Arc::clone(&calls);
-            let response = handle_invoke(
+            let response = invoke_for_test(
                 &verification_runtime(&leader),
                 &replay,
                 request_headers(&leader, input_hash, nonce),
@@ -779,7 +1145,7 @@ mod tests {
 
         for input_hash in [[1; 32], [2; 32]] {
             let callback_calls = Arc::clone(&calls);
-            let response = handle_invoke(
+            let response = invoke_for_test(
                 &runtime,
                 &replay,
                 request_headers(&leader, input_hash, nonce),
@@ -807,7 +1173,7 @@ mod tests {
     async fn unsigned_result_is_returned_as_exact_bcs() {
         let body = vec![1, 2, 3];
         let replay = ReplayCache::new(1_000);
-        let response = handle_invoke(
+        let response = invoke_for_test(
             &InvokeAuthRuntime::Unsigned,
             &replay,
             HeaderMap::new(),
@@ -831,8 +1197,8 @@ mod tests {
         let tool = SigningKey::from_bytes(&[9; 32]);
         let input_hash = [3; 32];
         let nonce = [1; 32];
-        let request = sign_request("leader", 0, input_hash, nonce, &leader);
-        let leader_signature = nexus_sdk::signed_http::v3::wire::authenticate_request(
+        let request = signed_request("leader", 0, input_hash, nonce, &leader);
+        let leader_signature = authenticate_request_for_test(
             RequestHeadersRef {
                 signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some("leader"),
@@ -840,6 +1206,8 @@ mod tests {
                 input_hash: Some(&request.input_hash),
                 leader_signature: Some(&request.leader_signature),
                 nonce: Some(&request.nonce),
+                context_signature: Some(&request.context_signature),
+                context_timestamp: Some(&request.context_timestamp),
             },
             match &signed_runtime(&leader, &tool) {
                 InvokeAuthRuntime::Signed(runtime) => runtime.allowed_leaders.as_ref(),
@@ -850,7 +1218,7 @@ mod tests {
         .leader_signature;
         let result = vec![4, 5, 6];
         let replay = ReplayCache::new(1_000);
-        let response = handle_invoke(
+        let response = invoke_for_test(
             &signed_runtime(&leader, &tool),
             &replay,
             request_headers(&leader, input_hash, nonce),
@@ -889,7 +1257,7 @@ mod tests {
 
         for _ in 0..2 {
             let calls = Arc::clone(&calls);
-            let response = handle_invoke(
+            let response = invoke_for_test(
                 &runtime,
                 &replay,
                 request_headers(&leader, [1; 32], [1; 32]),
@@ -905,7 +1273,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 
         let changed_calls = Arc::clone(&calls);
-        let response = handle_invoke(
+        let response = invoke_for_test(
             &runtime,
             &replay,
             request_headers(&leader, [2; 32], [1; 32]),
@@ -931,7 +1299,7 @@ mod tests {
 
         for _ in 0..2 {
             let calls = Arc::clone(&calls);
-            let response = handle_invoke(
+            let response = invoke_for_test(
                 &runtime,
                 &replay,
                 request_headers(&leader, [1; 32], [5; 32]),
@@ -971,11 +1339,15 @@ mod tests {
         let runtime_a = InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
             response_signing_key: Some(tool_a.clone()),
             allowed_leaders: Arc::clone(&resolver),
+            require_client_certificate: false,
+            context_timestamp_window_ms: crate::config::DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS,
             replay_cache_ttl_ms: 10_000,
         }));
         let runtime_b = InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
             response_signing_key: Some(tool_b.clone()),
             allowed_leaders: Arc::clone(&resolver),
+            require_client_certificate: false,
+            context_timestamp_window_ms: crate::config::DEFAULT_CONTEXT_TIMESTAMP_WINDOW_MS,
             replay_cache_ttl_ms: 20_000,
         }));
         let replay = ReplayCache::new(1_000);
@@ -983,8 +1355,8 @@ mod tests {
         let input_hash = [3; 32];
         let calls = Arc::new(AtomicUsize::new(0));
 
-        let request_a = sign_request("leader-a", 0, input_hash, nonce, &leader_a);
-        let authenticated_a = authenticate_request(
+        let request_a = signed_request("leader-a", 0, input_hash, nonce, &leader_a);
+        let authenticated_a = authenticate_request_for_test(
             RequestHeadersRef {
                 signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some(&request_a.leader_id),
@@ -992,11 +1364,13 @@ mod tests {
                 input_hash: Some(&request_a.input_hash),
                 leader_signature: Some(&request_a.leader_signature),
                 nonce: Some(&request_a.nonce),
+                context_signature: Some(&request_a.context_signature),
+                context_timestamp: Some(&request_a.context_timestamp),
             },
             resolver.as_ref(),
         )
         .unwrap();
-        let response_a = handle_invoke(
+        let response_a = invoke_for_test(
             &runtime_a,
             &replay,
             headers_from_encoded(request_a),
@@ -1026,8 +1400,8 @@ mod tests {
         )
         .unwrap();
 
-        let request_b = sign_request("leader-b", 1, input_hash, nonce, &leader_b);
-        let authenticated_b = authenticate_request(
+        let request_b = signed_request("leader-b", 1, input_hash, nonce, &leader_b);
+        let authenticated_b = authenticate_request_for_test(
             RequestHeadersRef {
                 signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some(&request_b.leader_id),
@@ -1035,11 +1409,13 @@ mod tests {
                 input_hash: Some(&request_b.input_hash),
                 leader_signature: Some(&request_b.leader_signature),
                 nonce: Some(&request_b.nonce),
+                context_signature: Some(&request_b.context_signature),
+                context_timestamp: Some(&request_b.context_timestamp),
             },
             resolver.as_ref(),
         )
         .unwrap();
-        let response_b = handle_invoke(
+        let response_b = invoke_for_test(
             &runtime_b,
             &replay,
             headers_from_encoded(request_b),

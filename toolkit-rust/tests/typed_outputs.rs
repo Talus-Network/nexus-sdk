@@ -19,20 +19,26 @@ use {
         walrus::{WalrusClient, WalrusContentDigestMismatch, WalrusReader},
         ToolFqn,
     },
-    nexus_toolkit::{runtime::routes_for_with_config_, NexusTool, ToolkitRuntimeConfig},
-    reqwest::{header::HeaderMap, Client, StatusCode},
+    nexus_toolkit::{
+        runtime::{routes_for_with_config_, tls},
+        NexusTool,
+        ToolkitRuntimeConfig,
+    },
+    reqwest::{header::HeaderMap, Certificate, Client, StatusCode},
     schemars::JsonSchema,
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
         sync::{Arc, Mutex, OnceLock},
-        time::Duration,
+        time::{Duration, SystemTime, UNIX_EPOCH},
     },
-    tokio::{net::TcpListener, task::JoinHandle},
+    tempfile::TempDir,
+    tokio::task::JoinHandle,
 };
 
 const BLOB_ID: &[u8] = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const TOOL_KEY: [u8; 32] = [9; 32];
+const LEADER_KEY: [u8; 32] = [7; 32];
 const NONCE: [u8; 32] = [4; 32];
 
 #[derive(Deserialize, JsonSchema)]
@@ -210,9 +216,19 @@ impl NexusTool for UploadingTool {
 
 struct ToolServer {
     url: String,
+    tool_fqn: String,
     client: Client,
+    root: Certificate,
+    leader: SigningKey,
     schema: MetaSchema,
     task: JoinHandle<()>,
+    _temp_dir: TempDir,
+}
+
+impl Drop for ToolServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
 }
 
 impl ToolServer {
@@ -223,7 +239,31 @@ impl ToolServer {
     fn routes<T: NexusTool<Input = Input>>(
         limit: Option<u64>,
     ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-        let leader = SigningKey::from_bytes(&[7; 32]);
+        Self::routes_with_leaders::<T>(limit, &[], false)
+    }
+
+    fn routes_with_leaders<T: NexusTool<Input = Input>>(
+        limit: Option<u64>,
+        other_leaders: &[SigningKey],
+        require_client_certificate: bool,
+    ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        let leader = SigningKey::from_bytes(&LEADER_KEY);
+        let mut leaders = vec![json!({
+            "leader_id": "leader",
+            "keys": [{
+                "kid": 0,
+                "public_key": hex::encode(leader.verifying_key().to_bytes()),
+            }],
+        })];
+        leaders.extend(other_leaders.iter().enumerate().map(|(index, key)| {
+            json!({
+                "leader_id": format!("other-{index}"),
+                "keys": [{
+                    "kid": index as u64 + 1,
+                    "public_key": hex::encode(key.verifying_key().to_bytes()),
+                }],
+            })
+        }));
         let config = ToolkitRuntimeConfig::from_json_str(
             &json!({
                 "invoke_max_body_bytes": limit,
@@ -231,17 +271,12 @@ impl ToolServer {
                     "mode": "required",
                     "allowed_leaders": {
                         "version": 1,
-                        "leaders": [{
-                            "leader_id": "leader",
-                            "keys": [{
-                                "kid": 0,
-                                "public_key": hex::encode(leader.verifying_key().to_bytes()),
-                            }],
-                        }],
+                    "leaders": leaders,
                     },
                     "tools": {
                         (T::fqn().to_string()): {
                             "response_signing_key": hex::encode(TOOL_KEY),
+                            "require_client_certificate": require_client_certificate,
                         },
                     },
                 },
@@ -255,15 +290,50 @@ impl ToolServer {
     async fn with_body_limit<T: NexusTool<Input = Input>>(limit: Option<u64>) -> Self {
         // Use the same routes as bootstrap!, with isolated configuration and
         // an ephemeral listener so tests need no shared environment or port.
-        let routes = Self::routes::<T>(limit);
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}", listener.local_addr().unwrap());
-        let task = tokio::spawn(warp::serve(routes).incoming(listener).run());
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .no_proxy()
-            .build()
+        Self::with_allowed_leaders::<T>(limit, &[]).await
+    }
+
+    async fn with_allowed_leaders<T: NexusTool<Input = Input>>(
+        limit: Option<u64>,
+        other_leaders: &[SigningKey],
+    ) -> Self {
+        Self::with_allowed_leaders_and_client_certificate::<T>(limit, other_leaders, false).await
+    }
+
+    async fn with_client_certificate_requirement<T: NexusTool<Input = Input>>(
+        require_client_certificate: bool,
+    ) -> Self {
+        Self::with_allowed_leaders_and_client_certificate::<T>(
+            None,
+            &[],
+            require_client_certificate,
+        )
+        .await
+    }
+
+    async fn with_allowed_leaders_and_client_certificate<T: NexusTool<Input = Input>>(
+        limit: Option<u64>,
+        other_leaders: &[SigningKey],
+        require_client_certificate: bool,
+    ) -> Self {
+        let routes =
+            Self::routes_with_leaders::<T>(limit, other_leaders, require_client_certificate);
+        let temp_dir = tempfile::tempdir().unwrap();
+        let rcgen::CertifiedKey { cert, key_pair } =
+            rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.pem();
+        let cert_path = temp_dir.path().join("server-cert.pem");
+        let key_path = temp_dir.path().join("server-key.pem");
+        std::fs::write(&cert_path, &cert_pem).unwrap();
+        std::fs::write(&key_path, key_pair.serialize_pem()).unwrap();
+        let (address, incoming) = tls::bind(([127, 0, 0, 1], 0).into(), cert_path, key_path)
+            .await
             .unwrap();
+        let url = format!("https://localhost:{}", address.port());
+        let task = tokio::spawn(tls::serve(routes, incoming));
+        let root = Certificate::from_pem(cert_pem.as_bytes()).unwrap();
+        let leader = SigningKey::from_bytes(&LEADER_KEY);
+        let client = http_client(&root, None);
         let metadata: serde_json::Value = client
             .get(format!("{url}/meta"))
             .send()
@@ -281,13 +351,96 @@ impl ToolServer {
         .unwrap();
         Self {
             url,
+            tool_fqn: T::fqn().to_string(),
             client,
+            root,
+            leader,
             schema,
             task,
+            _temp_dir: temp_dir,
         }
     }
 
     async fn invoke(&self, case: &str) -> ToolResponse {
+        self.invoke_with_signers(case, &self.leader, &self.leader)
+            .await
+    }
+
+    async fn invoke_unsigned(&self, case: &str) -> ToolResponse {
+        let (body, input_hash) = self.request_body(case);
+        let response = self
+            .client
+            .post(format!("{}/invoke", self.url))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        ToolResponse {
+            status: response.status(),
+            headers: response.headers().clone(),
+            body: response.bytes().await.unwrap().to_vec(),
+            leader_signature: self.leader.sign(&input_hash).to_bytes(),
+        }
+    }
+
+    async fn invoke_with_signers(
+        &self,
+        case: &str,
+        leader_signer: &SigningKey,
+        context_signer: &SigningKey,
+    ) -> ToolResponse {
+        self.invoke_with_signers_and_client(case, leader_signer, context_signer, &self.client, None)
+            .await
+    }
+
+    async fn invoke_with_signers_and_client(
+        &self,
+        case: &str,
+        leader_signer: &SigningKey,
+        context_signer: &SigningKey,
+        client: &Client,
+        forwarded_certificate_header: Option<&str>,
+    ) -> ToolResponse {
+        let (body, input_hash) = self.request_body(case);
+        let timestamp_ms = now_ms();
+        let mut signed = sign_request(
+            "leader",
+            0,
+            input_hash,
+            NONCE,
+            &self.tool_fqn,
+            timestamp_ms,
+            leader_signer,
+        );
+        let context = sign_request(
+            "leader",
+            0,
+            input_hash,
+            NONCE,
+            &self.tool_fqn,
+            timestamp_ms,
+            context_signer,
+        );
+        signed.context_signature = context.context_signature;
+        signed.context_timestamp = context.context_timestamp;
+
+        let mut request = client.post(format!("{}/invoke", self.url)).json(&body);
+        for (name, value) in signed.to_pairs() {
+            request = request.header(name, value);
+        }
+        if let Some(value) = forwarded_certificate_header {
+            request = request.header("X-Forwarded-Client-Cert", value);
+        }
+        let response = request.send().await.unwrap();
+        ToolResponse {
+            status: response.status(),
+            headers: response.headers().clone(),
+            body: response.bytes().await.unwrap().to_vec(),
+            leader_signature: leader_signer.sign(&input_hash).to_bytes(),
+        }
+    }
+
+    fn request_body(&self, case: &str) -> (serde_json::Value, [u8; 32]) {
         let input = NexusData::inline_data(serde_json::to_vec(case).unwrap()).unwrap();
         let body = json!({"ports": [{
             "port_name": "case",
@@ -295,25 +448,50 @@ impl ToolServer {
         }]});
         let inputs = self.schema.resolved_inputs_from_json(&body).unwrap();
         let input_hash = self.schema.resolved_inputs_sha256(&inputs).unwrap();
-        let leader = SigningKey::from_bytes(&[7; 32]);
-        let mut request = self.client.post(format!("{}/invoke", self.url)).json(&body);
-        for (name, value) in sign_request("leader", 0, input_hash, NONCE, &leader).to_pairs() {
-            request = request.header(name, value);
-        }
-        let response = request.send().await.unwrap();
-        ToolResponse {
-            status: response.status(),
-            headers: response.headers().clone(),
-            body: response.bytes().await.unwrap().to_vec(),
-            leader_signature: leader.sign(&input_hash).to_bytes(),
-        }
+        (body, input_hash)
     }
 }
 
-impl Drop for ToolServer {
-    fn drop(&mut self) {
-        self.task.abort();
+fn http_client(root: &Certificate, client_key: Option<&SigningKey>) -> Client {
+    let mut builder = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .no_proxy()
+        .add_root_certificate(root.clone());
+    if let Some(signing_key) = client_key {
+        builder = builder.identity(client_identity(signing_key));
     }
+    builder.build().unwrap()
+}
+
+fn client_identity(signing_key: &SigningKey) -> reqwest::Identity {
+    use ed25519_dalek::pkcs8::EncodePrivateKey as _;
+
+    let private_key = signing_key.to_pkcs8_der().unwrap();
+    let private_key_der =
+        tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer::from(private_key.as_bytes());
+    let key_pair =
+        rcgen::KeyPair::from_pkcs8_der_and_sign_algo(&private_key_der, &rcgen::PKCS_ED25519)
+            .unwrap();
+    let mut params = rcgen::CertificateParams::new(vec!["leader".to_owned()]).unwrap();
+    params
+        .extended_key_usages
+        .push(rcgen::ExtendedKeyUsagePurpose::ClientAuth);
+    params
+        .key_usages
+        .push(rcgen::KeyUsagePurpose::DigitalSignature);
+    let certificate = params.self_signed(&key_pair).unwrap();
+    let identity_pem = format!("{}{}", certificate.pem(), key_pair.serialize_pem());
+    reqwest::Identity::from_pem(identity_pem.as_bytes()).unwrap()
+}
+
+fn now_ms() -> u64 {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock is after the Unix epoch")
+            .as_millis(),
+    )
+    .expect("Unix milliseconds fit in u64")
 }
 
 struct ToolResponse {
@@ -333,6 +511,158 @@ impl ToolResponse {
             SigningKey::from_bytes(&TOOL_KEY).verifying_key().to_bytes(),
         )
     }
+}
+
+#[tokio::test]
+async fn anonymous_routes_and_signed_context_work_without_client_certificates() {
+    let server = ToolServer::new::<TypedOutputTool>().await;
+    let health = server
+        .client
+        .get(format!("{}/health", server.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(health.status(), StatusCode::OK);
+
+    let metadata: serde_json::Value = server
+        .client
+        .get(format!("{}/meta", server.url))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(metadata["url"], format!("{}/", server.url));
+
+    let forwarded_host = "tools.example:8443";
+    let forwarded_metadata: serde_json::Value = server
+        .client
+        .get(format!("{}/meta", server.url))
+        .header("X-Forwarded-Proto", "http")
+        .header("X-Forwarded-Host", forwarded_host)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        forwarded_metadata["url"],
+        format!("https://{forwarded_host}/")
+    );
+
+    let unsigned = server.invoke_unsigned("valid").await;
+    assert_eq!(unsigned.status, StatusCode::UNAUTHORIZED);
+    assert!(!unsigned.headers.contains_key(HEADER_TOOL_SIGNATURE));
+
+    let registered = server.invoke("valid").await;
+    assert_eq!(registered.status, StatusCode::OK);
+    registered.verify(&registered.body).unwrap();
+}
+
+#[tokio::test]
+async fn optional_client_certificate_policy_uses_direct_tls_identity() {
+    let server = ToolServer::with_client_certificate_requirement::<TypedOutputTool>(true).await;
+    let health = server
+        .client
+        .get(format!("{}/health", server.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(health.status(), StatusCode::OK);
+    let meta = server
+        .client
+        .get(format!("{}/meta", server.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(meta.status(), StatusCode::OK);
+
+    let forged_header = server
+        .invoke_with_signers_and_client(
+            "valid",
+            &server.leader,
+            &server.leader,
+            &server.client,
+            Some("Hash=forged-client-certificate"),
+        )
+        .await;
+    assert_eq!(forged_header.status, StatusCode::UNAUTHORIZED);
+    assert!(!forged_header.headers.contains_key(HEADER_TOOL_SIGNATURE));
+
+    let unrelated_leader = SigningKey::from_bytes(&[8; 32]);
+    let unrelated_client = http_client(&server.root, Some(&unrelated_leader));
+    let mismatched = server
+        .invoke_with_signers_and_client(
+            "valid",
+            &server.leader,
+            &server.leader,
+            &unrelated_client,
+            None,
+        )
+        .await;
+    assert_eq!(mismatched.status, StatusCode::UNAUTHORIZED);
+    assert!(!mismatched.headers.contains_key(HEADER_TOOL_SIGNATURE));
+
+    let matching_client = http_client(&server.root, Some(&server.leader));
+    let matching = server
+        .invoke_with_signers_and_client(
+            "valid",
+            &server.leader,
+            &server.leader,
+            &matching_client,
+            None,
+        )
+        .await;
+    assert_eq!(matching.status, StatusCode::OK);
+    matching.verify(&matching.body).unwrap();
+}
+
+#[tokio::test]
+async fn disabled_client_certificate_policy_accepts_an_unrelated_tls_peer() {
+    let server = ToolServer::new::<TypedOutputTool>().await;
+    let unrelated_leader = SigningKey::from_bytes(&[8; 32]);
+    let unrelated_client = http_client(&server.root, Some(&unrelated_leader));
+    let response = server
+        .invoke_with_signers_and_client(
+            "valid",
+            &server.leader,
+            &server.leader,
+            &unrelated_client,
+            None,
+        )
+        .await;
+
+    assert_eq!(response.status, StatusCode::OK);
+    response.verify(&response.body).unwrap();
+}
+
+#[tokio::test]
+async fn context_signature_is_verified_before_replay_lookup() {
+    let wrong_context_key = SigningKey::from_bytes(&[8; 32]);
+    let other_leaders = [wrong_context_key.clone()];
+    let server = ToolServer::with_allowed_leaders::<TypedOutputTool>(None, &other_leaders).await;
+
+    let invalid_miss = server
+        .invoke_with_signers("valid", &server.leader, &wrong_context_key)
+        .await;
+    assert_eq!(invalid_miss.status, StatusCode::UNAUTHORIZED);
+    assert!(!invalid_miss.headers.contains_key(HEADER_TOOL_SIGNATURE));
+
+    let registered = server.invoke("valid").await;
+    assert_eq!(registered.status, StatusCode::OK);
+    registered.verify(&registered.body).unwrap();
+
+    let invalid_hit = server
+        .invoke_with_signers("valid", &server.leader, &wrong_context_key)
+        .await;
+    assert_eq!(invalid_hit.status, StatusCode::UNAUTHORIZED);
+    assert!(!invalid_hit.headers.contains_key(HEADER_TOOL_SIGNATURE));
+
+    let registered_hit = server.invoke("valid").await;
+    assert_eq!(registered_hit.status, StatusCode::OK);
+    registered_hit.verify(&registered_hit.body).unwrap();
 }
 
 #[tokio::test]

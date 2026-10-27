@@ -29,6 +29,16 @@ pub enum SignedHttpError {
     InvalidPublicKey { identity: String },
     #[error("invalid ed25519 signature")]
     InvalidSignature,
+    #[error(
+        "context timestamp {timestamp_ms} is outside the {window_ms} ms window around {now_ms}"
+    )]
+    TimestampOutsideWindow {
+        timestamp_ms: u64,
+        now_ms: u64,
+        window_ms: u64,
+    },
+    #[error("system clock is outside the supported Unix-millisecond range")]
+    ClockUnavailable,
     #[error("invalid allowed-leaders file: {0}")]
     InvalidAllowedLeadersFile(String),
     #[error("io error: {0}")]
