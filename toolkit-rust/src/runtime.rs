@@ -528,34 +528,31 @@ fn decode_tool_input<T: NexusTool>(
     body_bytes: &[u8],
     auth_ctx: Option<&crate::AuthContext>,
 ) -> Result<T::Input, ToolInputDecodeError> {
-    if let Some(auth_ctx) = auth_ctx {
-        let schema = MetaSchema::from_offchain_json_schemas(
-            &serde_json::to_vec(&schemars::schema_for!(T::Input))
-                .map_err(anyhow::Error::from)
-                .map_err(ToolInputDecodeError::Deserialization)?,
-            &serde_json::to_vec(&schemars::schema_for!(T::Output))
-                .map_err(anyhow::Error::from)
-                .map_err(ToolInputDecodeError::Deserialization)?,
-        )
-        .map_err(ToolInputDecodeError::Deserialization)?;
-        let resolved_inputs = serde_json::from_slice::<serde_json::Value>(body_bytes)
+    let schema = MetaSchema::from_offchain_json_schemas(
+        &serde_json::to_vec(&schemars::schema_for!(T::Input))
             .map_err(anyhow::Error::from)
-            .and_then(|value| schema.resolved_inputs_from_json(&value))
-            .map_err(ToolInputDecodeError::Deserialization)?;
+            .map_err(ToolInputDecodeError::Deserialization)?,
+        &serde_json::to_vec(&schemars::schema_for!(T::Output))
+            .map_err(anyhow::Error::from)
+            .map_err(ToolInputDecodeError::Deserialization)?,
+    )
+    .map_err(ToolInputDecodeError::Deserialization)?;
+    let resolved_inputs = serde_json::from_slice::<serde_json::Value>(body_bytes)
+        .map_err(anyhow::Error::from)
+        .and_then(|value| schema.resolved_inputs_from_json(&value))
+        .map_err(ToolInputDecodeError::Deserialization)?;
+    if let Some(auth_ctx) = auth_ctx {
         if schema.resolved_inputs_sha256(&resolved_inputs).ok() != Some(auth_ctx.input_hash) {
             return Err(ToolInputDecodeError::Integrity);
         }
-        return serde_json::from_value::<crate::WithSerdeErrorPath<T::Input>>(
-            schema
-                .resolved_inputs_to_semantic_json(&resolved_inputs)
-                .map_err(ToolInputDecodeError::Deserialization)?,
-        )
-        .map(|value| value.0)
-        .map_err(|error| ToolInputDecodeError::Deserialization(error.into()));
     }
-    serde_json::from_slice::<crate::WithSerdeErrorPath<T::Input>>(body_bytes)
-        .map(|value| value.0)
-        .map_err(|error| ToolInputDecodeError::Deserialization(error.into()))
+    serde_json::from_value::<crate::WithSerdeErrorPath<T::Input>>(
+        schema
+            .resolved_inputs_to_semantic_json(&resolved_inputs)
+            .map_err(ToolInputDecodeError::Deserialization)?,
+    )
+    .map(|value| value.0)
+    .map_err(|error| ToolInputDecodeError::Deserialization(error.into()))
 }
 
 #[cfg(test)]
@@ -813,12 +810,51 @@ mod tests {
 
     #[tokio::test]
     async fn invoke_pipeline_returns_exact_canonical_response_bytes() {
-        let body = serde_json::to_vec(&json!({"message": "hello"})).unwrap();
+        let body = serde_json::to_vec(&resolved_input("message", json!("hello"))).unwrap();
         let response = InvokePipeline::run::<TestTool>(&body, None).await;
         assert_eq!(response.status, StatusCode::OK);
         assert!(response.is_result);
         let output: OffchainToolOutput = bcs::from_bytes(&response.body).unwrap();
         assert_eq!(bcs::to_bytes(&output).unwrap(), response.body);
+    }
+
+    #[tokio::test]
+    async fn unsigned_routes_decode_leader_inputs_without_an_allowlist() {
+        for config in ["{}", r#"{"signed_http":{"mode":"disabled"}}"#] {
+            let routes = routes_for_with_config_::<TestTool>(std::sync::Arc::new(
+                ToolkitRuntimeConfig::from_json_str(config).unwrap(),
+            ));
+            let response = warp::test::request()
+                .method("POST")
+                .path("/invoke")
+                .json(&resolved_input("message", json!("hello")))
+                .reply(&routes)
+                .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(response.headers().get("X-Nexus-Tool-Signature").is_none());
+            let output: OffchainToolOutput = bcs::from_bytes(response.body()).unwrap();
+            let message = output
+                .ports
+                .iter()
+                .find(|port| port.port_name == b"message")
+                .unwrap();
+            assert_eq!(
+                NexusData::from_values(message.values.clone(), false)
+                    .unwrap()
+                    .inline_data_bytes(),
+                Some(br#""hello""#.to_vec())
+            );
+
+            for invalid in [json!({"message":"hello"}), json!({"ports": []})] {
+                let response = warp::test::request()
+                    .method("POST")
+                    .path("/invoke")
+                    .json(&invalid)
+                    .reply(&routes)
+                    .await;
+                assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            }
+        }
     }
 
     #[tokio::test]
@@ -887,11 +923,11 @@ mod tests {
 
     #[tokio::test]
     async fn panics_are_local_errors_and_later_requests_succeed() {
-        let body = br#"{"message":"hello"}"#;
+        let body = serde_json::to_vec(&resolved_input("message", json!("hello"))).unwrap();
         let responses = [
-            InvokePipeline::run::<FailingTool<0>>(body, None).await,
-            InvokePipeline::run::<FailingTool<2>>(body, None).await,
-            InvokePipeline::run::<FailingTool<3>>(body, None).await,
+            InvokePipeline::run::<FailingTool<0>>(&body, None).await,
+            InvokePipeline::run::<FailingTool<2>>(&body, None).await,
+            InvokePipeline::run::<FailingTool<3>>(&body, None).await,
         ];
         for response in responses {
             assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
@@ -902,7 +938,7 @@ mod tests {
             );
         }
         assert_eq!(
-            InvokePipeline::run::<TestTool>(body, None).await.status,
+            InvokePipeline::run::<TestTool>(&body, None).await.status,
             StatusCode::OK
         );
     }
@@ -938,7 +974,8 @@ mod tests {
 
     #[tokio::test]
     async fn asynchronous_work_obeys_the_tool_deadline() {
-        let response = InvokePipeline::run::<FailingTool<4>>(br#"{"message":"hello"}"#, None).await;
+        let body = serde_json::to_vec(&resolved_input("message", json!("hello"))).unwrap();
+        let response = InvokePipeline::run::<FailingTool<4>>(&body, None).await;
         assert_eq!(response.status, StatusCode::GATEWAY_TIMEOUT);
         assert!(!response.is_result);
         assert_eq!(
@@ -1060,8 +1097,8 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_references_remain_canonical_and_invalid_outputs_are_unsigned() {
-        let input = br#"{"message":"input"}"#;
-        let response = InvokePipeline::run::<ExplicitTool<false>>(input, None).await;
+        let input = serde_json::to_vec(&resolved_input("message", json!("input"))).unwrap();
+        let response = InvokePipeline::run::<ExplicitTool<false>>(&input, None).await;
         assert_eq!(response.status, StatusCode::OK);
         assert!(response.is_result);
         let output: OffchainToolOutput = bcs::from_bytes(&response.body).unwrap();
@@ -1069,7 +1106,7 @@ mod tests {
             output.ports[0].values[0],
             nexus_sdk::types::NexusValue::WalrusData { .. }
         ));
-        let response = InvokePipeline::run::<ExplicitTool<true>>(input, None).await;
+        let response = InvokePipeline::run::<ExplicitTool<true>>(&input, None).await;
         assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
         assert!(!response.is_result);
     }

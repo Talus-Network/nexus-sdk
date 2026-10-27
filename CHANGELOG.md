@@ -48,6 +48,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Required signed HTTP verifies the allowlisted Leader Tool-context signature and freshness before replay-cache access, with a configurable inclusive timestamp window defaulting to 30,000 ms.
 - Toolkit metadata always advertises HTTPS and ignores `X-Forwarded-Proto`; the listener retains ordinary server TLS behavior and no longer requests Leader client certificates.
 
+#### Fixed
+
+- The mismatch of tool inputs when signed_http is not required.
+
 ## [`2.1.1`] - 2026-10-07
 
 ### `nexus-sdk`

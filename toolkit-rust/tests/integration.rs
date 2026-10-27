@@ -93,6 +93,12 @@ mod tests {
         serde_json::json,
     };
 
+    fn leader_input(prompt: &str) -> serde_json::Value {
+        let value =
+            nexus_sdk::types::NexusData::inline_data(serde_json::to_vec(prompt).unwrap()).unwrap();
+        json!({"ports": [{"port_name": "prompt", "value": value.to_json_value().unwrap()}]})
+    }
+
     fn tls_client() -> Client {
         static TLS: std::sync::OnceLock<(tempfile::TempDir, String)> = std::sync::OnceLock::new();
         let (_, cert_pem) = TLS.get_or_init(|| {
@@ -175,7 +181,7 @@ mod tests {
 
         let invoke = client
             .post("https://localhost:8043/invoke")
-            .json(&json!({ "prompt": "Hello, world!" }))
+            .json(&leader_input("Hello, world!"))
             .send()
             .await
             .unwrap();
@@ -217,7 +223,7 @@ mod tests {
 
         let invoke = client
             .post("https://localhost:8045/path/invoke")
-            .json(&json!({ "prompt": "Hello, world!" }))
+            .json(&leader_input("Hello, world!"))
             .send()
             .await
             .unwrap();
@@ -247,7 +253,7 @@ mod tests {
         // Invoke /path tool.
         let invoke = client
             .post("https://localhost:8046/path/invoke")
-            .json(&json!({ "prompt": "Hello, world!" }))
+            .json(&leader_input("Hello, world!"))
             .send()
             .await
             .unwrap();
