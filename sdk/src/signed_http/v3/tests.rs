@@ -662,7 +662,7 @@ fn v3_rejects_v2_signature_headers() {
     assert!(matches!(
         authenticate_request_for_test(
             RequestHeadersRef {
-                signature_version: Some(crate::signed_http::v2::wire::SIGNATURE_VERSION_V2),
+                signature_version: Some("2"),
                 ..Default::default()
             },
             &keys,

@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Removed
 
 - Removed the recovery module's `ListConfig` and `ListEvent` reexports and the `poller_stream_reconnections` metric. Recovery continuation and event reconnection belong to the caller.
+- **Breaking:** Removed the unused public signed HTTP v2 SDK module.
 
 ### `nexus-cli`
 
