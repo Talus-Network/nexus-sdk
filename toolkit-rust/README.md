@@ -32,6 +32,8 @@ nexus-toolkit = "2.1.1"
 
 ## Authentication
 
+This branch implements **signed HTTP v3.1**, which adds a signed request context while retaining the `X-Nexus-Sig-V: 3` wire header and the SDK's `signed_http::v3` module. The strict version check still rejects `3.1` as a header value. Package versions are unchanged. See [Migrating from signed HTTP v3 to v3.1](../sdk/README.md#migrating-from-signed-http-v3-to-v31) for coordinated Leader and Toolkit upgrades; required mode rejects older requests without context headers.
+
 Nexus Tools expose an HTTP API. **HTTPS** protects the connection between a Leader and a Tool. The Toolkit also provides configurable checks for request signatures and TLS client certificates, and can sign Tool results for on-chain verification.
 
 - **HTTPS transport.** Leaders require HTTPS and validate the Tool's server certificate and hostname, with proxy, redirect, timeout, and destination restrictions. The Toolkit also requires TLS to serve requests: set both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` to nonempty paths containing a valid PEM certificate chain and matching private key. Missing either or both paths, an empty path, or invalid credentials prevents startup. There is no plaintext HTTP fallback, regardless of whether signed HTTP is enabled. The `--meta` command does not start a server and does not require TLS credentials.

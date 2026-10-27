@@ -100,16 +100,27 @@ An insufficient settlement marker records an earlier shortfall. It does not eras
 
 ## Signed HTTP (Leader nodes <-> Tools)
 
-This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:
+This crate includes **signed HTTP v3.1** for Leader node <=> Tool communication. v3.1 names the protocol revision that adds a signed request context to v3. The Rust API remains under `nexus_sdk::signed_http::v3`, and both requests and responses must still send `X-Nexus-Sig-V: 3`: the implementation strictly checks that value and rejects `3.1`. This documentation revision does not change Cargo package versions.
+
+The protocol preserves the existing input and result signature bytes:
 
 - the Leader's existing input signature remains over `SHA-256(BCS(canonical_tool_inputs))`
 - a separate context signature covers `SHA-256(BCS((String tool_fqn, [u8; 32] nonce, u64 unix_ms_timestamp)))`; requests carry it as base64url `nexus-context-sig` plus decimal `nexus-context-timestamp`
 - the Toolkit resolves the current allowed Leader key and receiving Tool FQN, checks the inclusive timestamp window, and verifies context before replay-cache access
 - the Tool's existing result signature remains over the Leader signature, invocation nonce, and exact canonical result bytes
 - Leader ID and key ID select the current allowlist entry; each retry keeps its invocation nonce and receives a fresh timestamp
-- Toolkit may separately require the direct TLS peer key to match the allowlisted Leader key for a Tool, without changing the v3 request-context or result-signature transcript
+- Toolkit may separately require the direct TLS peer key to match the allowlisted Leader key for a Tool, without changing the v3.1 request-context or result-signature transcript
 
 It is feature-gated under `signed_http` and is used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses.
+
+### Migrating from signed HTTP v3 to v3.1
+
+Coordinate Leader and Toolkit upgrades: required mode rejects older v3 requests that omit the context headers, even though both revisions use wire version `3`.
+
+1. Keep `signed_http::v3` imports and `X-Nexus-Sig-V: 3`. When calling `v3::wire::sign_request`, supply the receiving Tool FQN and current Unix-millisecond timestamp before the signing key. Forward both generated context headers along with the existing signature headers.
+1. For custom receivers, pass the receiving Tool's own FQN, current Unix-millisecond time, and allowed timestamp window to `v3::wire::authenticate_request`. Toolkit performs these checks automatically in required mode. Configure `signed_http.tools.<tool_id>.context_timestamp_window_ms` if needed; the default accepts timestamps up to 30,000 ms before or after the receiver's current time, including both endpoints.
+1. Keep Leader and Tool clocks synchronized. On retries, retain the invocation nonce and input commitment but generate a fresh context timestamp and signature. Authentication and freshness checks run before replay-cache access, including for cached results. Gateways must preserve the context and signature headers.
+1. Keep the existing input commitment and Tool result signing format. Serve Toolkit over HTTPS even when signed HTTP is disabled; both modes accept the Leader's `ports` envelope. TLS client-certificate verification remains a separate per-Tool option, disabled by default; see [Toolkit authentication](../toolkit-rust/README.md#authentication).
 
 ## Standard TAP Payments
 

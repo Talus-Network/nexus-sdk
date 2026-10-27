@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Updated the advisory policy for upstream-constrained zstd/zstd-safe versions and upgraded locked zstd-sys to 2.1.2; exception reasons record scope, review date, and removal criteria.
-- Signed HTTP v3 requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing input and result signature bytes.
+- **Signed HTTP v3.1:** Requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing v3 input and result signature bytes. This protocol revision retains the `signed_http::v3` API module and `X-Nexus-Sig-V: 3` wire header; package versions are unchanged. See the [v3.1 migration guide](sdk/README.md#migrating-from-signed-http-v3-to-v31).
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
 - **Breaking:** `EventIngestor::start` reports a connection failure once and closes the receiver. Callers own reconnection, resume from the last delivered checkpoint inclusively, and deduplicate replayed events.
 - Recovery discovery now returns failed reads, invalid responses, and incomplete coverage as errors. Individual requests and stalled response bodies have deadlines, while healthy pagination can continue as its cursor advances.
@@ -44,12 +44,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- Required signed HTTP verifies the allowlisted Leader Tool-context signature and freshness before replay-cache access, with a configurable inclusive timestamp window defaulting to 30,000 ms.
-- Toolkit metadata always advertises HTTPS and ignores `X-Forwarded-Proto`; the listener retains ordinary server TLS behavior and no longer requests Leader client certificates.
+- **Signed HTTP v3.1:** Required mode verifies the allowlisted Leader Tool-context signature and freshness before replay-cache access, with a configurable inclusive timestamp window defaulting to 30,000 ms. Older v3 requests without context headers are rejected even though the wire version remains `3`.
+- Toolkit metadata always advertises HTTPS and ignores `X-Forwarded-Proto`; the listener requires server TLS and supports optional Leader client certificates. Per-Tool `require_client_certificate` defaults to `false`; enabling it requires the TLS peer key to match the allowlisted Leader key before replay-cache access or execution.
 
 #### Fixed
 
-- The mismatch of tool inputs when signed_http is not required.
+- Unsigned `/invoke` requests now decode the Leader's `ports` envelope into Tool inputs, matching signed mode; plain input objects remain unsupported.
 
 ## [`2.1.1`] - 2026-10-07
 
