@@ -87,11 +87,11 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 ///
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
 /// The request body, nonce, and unsigned identity headers require authenticated HTTPS transport.
-/// Set both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` to terminate TLS directly in
-/// the Toolkit server. If a Tool enables `require_client_certificate`, TLS must terminate in
-/// Toolkit or pass through the gateway; forwarded certificate headers do not establish identity.
-/// With that option disabled, a gateway may terminate TLS if its gateway-to-Tool hop remains
-/// equivalently protected; signed HTTP does not make a plaintext hop safe.
+/// Serving requires both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH`; missing or
+/// empty paths and invalid TLS credentials prevent startup, regardless of signed HTTP mode.
+/// If a Tool enables `require_client_certificate`, TLS must terminate in Toolkit or pass through
+/// the gateway; forwarded certificate headers do not establish identity. With that option disabled,
+/// a gateway may terminate the Leader's TLS connection and use HTTPS to connect to the Toolkit.
 ///
 /// ## Example config
 /// ```json
@@ -251,21 +251,13 @@ macro_rules! bootstrap {
             .or(default_health_route)
             .or(default_tools_route)
             .boxed();
-        // Terminate TLS directly when both credential paths are configured.
-        let tls_config = $crate::runtime::tls::Config::from_env()
-            .expect("Invalid Nexus Tool TLS configuration");
-        match tls_config {
-            $crate::runtime::tls::Config::Disabled => {
-                $crate::warp::serve(routes).run($addr).await
-            }
-            $crate::runtime::tls::Config::Enabled { cert_path, key_path } => {
-                let (_, incoming) =
-                    $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
-                        .await
-                        .expect("Failed to start Nexus Tool TLS server");
-                $crate::runtime::tls::serve(routes, incoming).await
-            }
-        }
+            let $crate::runtime::tls::Config { cert_path, key_path } =
+                $crate::runtime::tls::Config::from_env()
+                    .expect("Invalid Nexus Tool TLS configuration");
+            let (_, incoming) = $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
+                .await
+                .expect("Failed to start Nexus Tool TLS server");
+            $crate::runtime::tls::serve(routes, incoming).await
     }};
     // Default address.
     ([$($tool:ty),+ $(,)?]) => {{
@@ -615,7 +607,7 @@ mod tests {
     };
 
     #[test]
-    fn required_signed_http_config_is_active_without_listener_tls_settings() {
+    fn signed_http_configuration_is_independent_of_listener_tls_configuration() {
         let required = ToolkitRuntimeConfig::from_json_str(
             r#"{
                 "signed_http": {

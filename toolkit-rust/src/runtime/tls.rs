@@ -47,16 +47,11 @@ const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// TLS configuration for [`crate::bootstrap!`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Config {
-    /// TLS is disabled.
-    Disabled,
-    /// TLS is enabled with credentials read from files.
-    Enabled {
-        /// Path to a PEM encoded certificate chain.
-        cert_path: PathBuf,
-        /// Path to a PEM encoded private key.
-        key_path: PathBuf,
-    },
+pub struct Config {
+    /// Path to the PEM encoded certificate chain.
+    pub cert_path: PathBuf,
+    /// Path to the PEM encoded private key.
+    pub key_path: PathBuf,
 }
 
 impl Config {
@@ -65,7 +60,7 @@ impl Config {
     /// # Errors
     ///
     /// Returns an error unless `NEXUS_TOOL_TLS_CERT_PATH` and
-    /// `NEXUS_TOOL_TLS_KEY_PATH` are both absent or both contain a path.
+    /// `NEXUS_TOOL_TLS_KEY_PATH` both contain a nonempty path.
     pub fn from_env() -> anyhow::Result<Self> {
         Self::from_paths(
             std::env::var_os("NEXUS_TOOL_TLS_CERT_PATH").map(PathBuf::from),
@@ -75,11 +70,10 @@ impl Config {
 
     fn from_paths(cert_path: Option<PathBuf>, key_path: Option<PathBuf>) -> anyhow::Result<Self> {
         match (cert_path, key_path) {
-            (None, None) => Ok(Self::Disabled),
             (Some(cert_path), Some(key_path))
                 if !cert_path.as_os_str().is_empty() && !key_path.as_os_str().is_empty() =>
             {
-                Ok(Self::Enabled {
+                Ok(Self {
                     cert_path,
                     key_path,
                 })
@@ -371,15 +365,15 @@ mod tests {
 
     #[test]
     fn config_requires_both_paths() {
-        assert_eq!(Config::from_paths(None, None).unwrap(), Config::Disabled);
         assert_eq!(
             Config::from_paths(Some("cert.pem".into()), Some("key.pem".into())).unwrap(),
-            Config::Enabled {
+            Config {
                 cert_path: "cert.pem".into(),
                 key_path: "key.pem".into(),
             }
         );
         for (cert, key) in [
+            (None, None),
             (Some("cert.pem".into()), None),
             (None, Some("key.pem".into())),
             (Some(PathBuf::new()), Some("key.pem".into())),
