@@ -63,8 +63,8 @@ impl ValidationAnalysis {
             }
         }
         let entry_tool_nodes_with_indices = entry_group_names_by_tool_node
-            .into_iter()
-            .map(|(tool_node, _)| {
+            .into_keys()
+            .map(|tool_node| {
                 let tool_node_index = node_index_by_node.get(&&tool_node).copied();
                 (tool_node, tool_node_index)
             })
