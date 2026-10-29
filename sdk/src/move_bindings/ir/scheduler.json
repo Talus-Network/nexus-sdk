@@ -34,6 +34,30 @@
           "type_name": {
             "address": "0xa5",
             "module": "era",
+            "name": "RuntimeV2"
+          },
+          "module": "era",
+          "name": "RuntimeV2",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa5",
+            "module": "era",
             "name": "V1"
           },
           "module": "era",
@@ -97,6 +121,25 @@
                   "address": "0xa5",
                   "module": "era",
                   "name": "RuntimeV1"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "runtime_v2",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "era",
+                  "name": "RuntimeV2"
                 },
                 "type_arguments": []
               }
@@ -9310,7 +9353,7 @@
                       "type_name": {
                         "address": "0xa5",
                         "module": "era",
-                        "name": "RuntimeV1"
+                        "name": "RuntimeV2"
                       },
                       "type_arguments": []
                     }

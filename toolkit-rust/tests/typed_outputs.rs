@@ -3,16 +3,19 @@ use {
     nexus_sdk::{
         fqn,
         move_bindings::interface::meta_schema::MetaSchema,
-        signed_http::v3::{
-            error::SignedHttpError,
-            wire::{
-                sha256,
-                sign_request,
-                verify_response,
-                ResponseHeadersRef,
-                CANONICAL_TOOL_RESPONSE_CONTENT_TYPE,
-                HEADER_SIGNATURE_VERSION,
-                HEADER_TOOL_SIGNATURE,
+        signed_http::{
+            v3::wire::sha256,
+            v4::{
+                error::SignedHttpError,
+                wire::{
+                    leader_request_message,
+                    sign_request,
+                    verify_response,
+                    ResponseHeadersRef,
+                    CANONICAL_TOOL_RESPONSE_CONTENT_TYPE,
+                    HEADER_SIGNATURE_VERSION,
+                    HEADER_TOOL_SIGNATURE,
+                },
             },
         },
         types::{NexusData, NexusValue, OffchainToolOutput},
@@ -34,6 +37,10 @@ use {
 const BLOB_ID: &[u8] = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const TOOL_KEY: [u8; 32] = [9; 32];
 const NONCE: [u8; 32] = [4; 32];
+
+fn registered_tool_id() -> [u8; 32] {
+    nexus_sdk::sui::types::Address::from_static("0x2a").into_inner()
+}
 
 #[derive(Deserialize, JsonSchema)]
 struct Input {
@@ -241,6 +248,7 @@ impl ToolServer {
                     },
                     "tools": {
                         (T::fqn().to_string()): {
+                            "registered_tool_id": "0x2a",
                             "response_signing_key": hex::encode(TOOL_KEY),
                         },
                     },
@@ -297,7 +305,16 @@ impl ToolServer {
         let input_hash = self.schema.resolved_inputs_sha256(&inputs).unwrap();
         let leader = SigningKey::from_bytes(&[7; 32]);
         let mut request = self.client.post(format!("{}/invoke", self.url)).json(&body);
-        for (name, value) in sign_request("leader", 0, input_hash, NONCE, &leader).to_pairs() {
+        for (name, value) in sign_request(
+            "leader",
+            0,
+            registered_tool_id(),
+            NONCE,
+            input_hash,
+            &leader,
+        )
+        .to_pairs()
+        {
             request = request.header(name, value);
         }
         let response = request.send().await.unwrap();
@@ -305,7 +322,13 @@ impl ToolServer {
             status: response.status(),
             headers: response.headers().clone(),
             body: response.bytes().await.unwrap().to_vec(),
-            leader_signature: leader.sign(&input_hash).to_bytes(),
+            leader_signature: leader
+                .sign(&leader_request_message(
+                    &registered_tool_id(),
+                    &NONCE,
+                    &input_hash,
+                ))
+                .to_bytes(),
         }
     }
 }

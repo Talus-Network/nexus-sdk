@@ -100,13 +100,13 @@ An insufficient settlement marker records an earlier shortfall. It does not eras
 
 ## Signed HTTP (Leader nodes <-> Tools)
 
-This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:
+This crate includes separate signed HTTP v3 and v4 wire modules for Leader-to-Tool communication:
 
-- the Leader signs `SHA-256(BCS(canonical_tool_inputs))`
-- the Tool signs the Leader signature followed by `SHA-256(result_bytes)`
-- Leader identity, active key selection, and the Tool's replay/cache nonce remain transport headers rather than signed claims
-
-It is feature-gated under `signed_http` and is used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses.
+- V3 authenticates the canonical input hash and does not authenticate a Tool ID.
+- V4 signs `b"nexus.signed_http.v4.leader_request" || registered_tool_id || nonce || SHA-256(BCS(canonical_tool_inputs))`, with `registered_tool_id` as the raw 32-byte Tool ID.
+- Both versions bind Tool result signatures to the Leader signature, invocation nonce, and result hash. The current Leader emits v4, and current on-chain runtime verification requires v4 evidence.
+- Required-mode Toolkit configuration still requires a valid `registered_tool_id` for every FQN at startup, even though v3 requests do not authenticate or carry a Tool ID.
+The feature-gated `signed_http` modules are used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses with the matching protocol version.
 
 ## Standard TAP Payments
 

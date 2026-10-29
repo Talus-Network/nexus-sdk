@@ -48,16 +48,22 @@ impl WorkAdmissionCommittee {
 }
 
 /// Read the current Move inputs shared by all Scheduler committee rankings.
+///
+/// The `context` argument remains for caller compatibility, but it does not
+/// select package authority for this current global registry read. The active
+/// RuntimeAuthority graph selects the package versions used to read the
+/// registry and work type.
 pub async fn fetch_work_admission_committee(
     client: &NexusClient,
-    context: &NexusContext,
+    _context: &NexusContext,
 ) -> anyhow::Result<WorkAdmissionCommittee> {
+    let runtime_context = client.runtime_context(&[]).await?;
     let registry_id = client.get_nexus_objects().leader_registry.object_id();
     let registry = client
         .state_resolver()
         .load_inner::<LeaderRegistry, RegistryWitnessV1, LeaderRegistryInnerV1>(
             registry_id,
-            context,
+            &runtime_context,
         )
         .await?;
     let leader_ids = registry.data.leaders.contents.clone();
@@ -66,7 +72,7 @@ pub async fn fetch_work_admission_committee(
         .get_dynamic_fields_by_keys::<ID, Leader, _>(
             registry.data.records.id(),
             leader_ids.iter().cloned(),
-            &crate::move_bindings::type_tag::<ID>(context),
+            &crate::move_bindings::type_tag::<ID>(&runtime_context),
         )
         .await?;
 
@@ -84,7 +90,7 @@ pub async fn fetch_work_admission_committee(
             eligible.push((id.bytes, leader.stake_manager.pool.value));
         }
     }
-    let origin = context.type_origin(PackageRole::Scheduler, "era", "WorkAdmissionV1")?;
+    let origin = runtime_context.type_origin(PackageRole::Scheduler, "era", "WorkAdmissionV1")?;
     let work_type = TypeName::new(&format!(
         "{}::era::WorkAdmissionV1",
         hex::encode(origin.as_bytes())

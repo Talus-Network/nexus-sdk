@@ -80,8 +80,9 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// When enabled (`signed_http.mode = "required"`), the runtime:
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
+/// - Rejects requests whose signed Tool ID does not match the ID configured for the served FQN.
 /// - Caches completed responses by deterministic nonce and canonical input hash; in-flight nonce reuse is rejected.
-/// - Returns exact ordered BCS Tool output bytes and signs the nonce-bound v3 Tool response message.
+/// - Returns exact ordered BCS Tool output bytes and signs the v4 Tool response headers.
 /// - Keeps nonce replay and cached-response handling entirely offchain.
 ///
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
@@ -98,6 +99,7 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 ///     "allowed_leaders_path": "./allowed_leaders.json",
 ///     "tools": {
 ///       "xyz.dummy.tool@1": {
+///         "registered_tool_id": "0x2a",
 ///         "response_signing_key": "0000000000000000000000000000000000000000000000000000000000000000",
 ///         "replay_cache_ttl_ms": 300000
 ///       }
@@ -619,9 +621,9 @@ async fn invoke_handler<T: NexusTool>(
 mod tests {
     use {
         super::*,
+        crate::{AuthContext, SignedHttpVersion},
         nexus_sdk::{
             fqn,
-            signed_http::v3::wire::AuthenticatedRequest,
             types::{NexusData, OffchainToolOutput},
             ToolFqn,
         },
@@ -916,9 +918,11 @@ mod tests {
         )
         .unwrap();
         let resolved = schema.resolved_inputs_from_json(&transport).unwrap();
-        let auth = AuthenticatedRequest {
+        let auth = AuthContext {
+            protocol_version: SignedHttpVersion::V4,
             leader_id: "leader".into(),
             leader_key_id: 0,
+            tool_id: Some([0; 32]),
             input_hash: schema.resolved_inputs_sha256(&resolved).unwrap(),
             leader_signature: [2; 64],
             nonce: [3; 32],
@@ -957,30 +961,38 @@ mod tests {
         .unwrap();
         let resolved = schema.resolved_inputs_from_json(&transport).unwrap();
         let actual_hash = schema.resolved_inputs_sha256(&resolved).unwrap();
-        let auth = |input_hash| AuthenticatedRequest {
+        let auth = |input_hash, protocol_version| AuthContext {
+            protocol_version,
             leader_id: "leader".to_string(),
             leader_key_id: 0,
+            tool_id: (protocol_version == SignedHttpVersion::V4).then_some([0; 32]),
             input_hash,
             leader_signature: [2; 64],
             nonce: [3; 32],
         };
 
-        let mismatch = InvokePipeline::run::<TestTool>(&body, Some(auth([9; 32]))).await;
-        assert_eq!(mismatch.status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&mismatch.body).unwrap()["error"],
-            "input_integrity_error"
-        );
+        for protocol_version in [SignedHttpVersion::V3, SignedHttpVersion::V4] {
+            let mismatch =
+                InvokePipeline::run::<TestTool>(&body, Some(auth([9; 32], protocol_version))).await;
+            assert_eq!(mismatch.status, StatusCode::UNPROCESSABLE_ENTITY);
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&mismatch.body).unwrap()["error"],
+                "input_integrity_error"
+            );
 
-        let accepted = InvokePipeline::run::<TestTool>(&body, Some(auth(actual_hash))).await;
-        assert_eq!(accepted.status, StatusCode::OK);
+            let accepted =
+                InvokePipeline::run::<TestTool>(&body, Some(auth(actual_hash, protocol_version)))
+                    .await;
+            assert_eq!(accepted.status, StatusCode::OK);
+        }
 
         let semantic_body = serde_json::to_vec(&json!({"message": "hello"})).unwrap();
         let injected = InvokePipeline::run::<TestTool>(
             &semantic_body,
-            Some(auth(nexus_sdk::signed_http::v3::wire::sha256(
-                &semantic_body,
-            ))),
+            Some(auth(
+                nexus_sdk::signed_http::v3::wire::sha256(&semantic_body),
+                SignedHttpVersion::V3,
+            )),
         )
         .await;
         assert_eq!(injected.status, StatusCode::UNPROCESSABLE_ENTITY);

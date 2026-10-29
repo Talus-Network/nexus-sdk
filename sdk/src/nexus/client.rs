@@ -2538,19 +2538,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runtime_context_resolves_only_the_bound_scheduler_graph() {
+    async fn runtime_context_routes_to_the_scheduler_selected_by_its_upgrade_cap() {
         let context = sui_mocks::mock_nexus_context();
+        let mut upgraded_packages = context.packages().clone();
+        let upgraded_scheduler = upgraded_packages
+            .scheduler
+            .as_mut()
+            .expect("fixture contains Scheduler");
+        upgraded_scheduler.storage_id = sui::types::Address::from_static("0xb5");
+        upgraded_scheduler.version = 2;
+        let upgraded_context =
+            NexusContext::new(Arc::new(context.objects().clone()), upgraded_packages);
         let mut ledger = sui_mocks::grpc::MockLedgerService::new();
         let mut packages = sui_mocks::grpc::MockMovePackageService::new();
-        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &context, false);
-        sui_mocks::grpc::mock_nexus_package_graph(&mut ledger, &mut packages, context.packages());
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &upgraded_context, false);
+        sui_mocks::grpc::mock_nexus_package_graph(
+            &mut ledger,
+            &mut packages,
+            upgraded_context.packages(),
+        );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger),
             package_service_mock: Some(packages),
             ..Default::default()
         });
         let client =
-            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+            nexus_mocks::mock_nexus_client_without_coins(upgraded_context.objects(), &rpc_url)
+                .await;
 
         let runtime = client.runtime_context(&[]).await.expect("runtime resolves");
 
@@ -2559,10 +2573,7 @@ mod tests {
                 .require_package(PackageRole::Scheduler)
                 .expect("runtime graph contains Scheduler")
                 .storage_id,
-            context
-                .require_package(PackageRole::Scheduler)
-                .expect("fixture contains Scheduler")
-                .storage_id,
+            sui::types::Address::from_static("0xb5"),
         );
     }
 

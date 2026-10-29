@@ -25,7 +25,7 @@ pub use {
     config::{SignedHttpMode, ToolkitRuntimeConfig, ENV_TOOLKIT_CONFIG_PATH},
     env_logger,
     log::debug,
-    nexus_tool::{AuthContext, NexusTool},
+    nexus_tool::{AuthContext, NexusTool, SignedHttpVersion},
     serde_tracked::*,
     warp::{self, http::StatusCode},
 };

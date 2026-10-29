@@ -1,21 +1,11 @@
 //! Warp integration for the minimal signed Tool transport.
 
-#[cfg(test)]
-use nexus_sdk::signed_http::v3::wire::SIGNATURE_VERSION_V3;
 use {
-    crate::{config::Config, AuthContext, ToolkitRuntimeConfig},
+    crate::{config::Config, AuthContext, SignedHttpVersion, ToolkitRuntimeConfig},
     ed25519_dalek::SigningKey,
-    nexus_sdk::signed_http::v3::{
-        error::SignedHttpError,
-        wire::{
-            authenticate_request,
-            sign_response,
-            AllowedLeaders,
-            EncodedResponseHeaders,
-            LeaderKeyResolver,
-            RequestHeadersRef,
-            CANONICAL_TOOL_RESPONSE_CONTENT_TYPE,
-        },
+    nexus_sdk::signed_http::{
+        v3::{wire as v3_wire, wire::AllowedLeaders},
+        v4::wire as v4_wire,
     },
     serde_json::json,
     std::{
@@ -26,6 +16,8 @@ use {
     },
     warp::http::{header::HeaderValue, HeaderMap, StatusCode},
 };
+#[cfg(test)]
+const TEST_TOOL_ID: [u8; 32] = [42; 32];
 const DEFAULT_IN_FLIGHT_LEASE_MS: u64 = 60_000;
 const JSON_CONTENT_TYPE: &str = "application/json";
 
@@ -57,7 +49,7 @@ impl RefreshingAllowedLeadersResolver {
     }
 }
 
-impl LeaderKeyResolver for RefreshingAllowedLeadersResolver {
+impl v4_wire::LeaderKeyResolver for RefreshingAllowedLeadersResolver {
     fn leader_public_key(&self, leader_id: &str, leader_key_id: u64) -> Option<[u8; 32]> {
         self.refresh_from_source_path();
         self.allowed_leaders
@@ -69,6 +61,7 @@ impl LeaderKeyResolver for RefreshingAllowedLeadersResolver {
 
 #[derive(Clone)]
 pub(crate) struct SignedInvokeRuntime {
+    registered_tool_id: [u8; 32],
     response_signing_key: Option<SigningKey>,
     allowed_leaders: Arc<RefreshingAllowedLeadersResolver>,
     replay_cache_ttl_ms: u64,
@@ -100,6 +93,7 @@ impl InvokeAuthRuntime {
         })?;
 
         Ok(Self::Signed(Box::new(SignedInvokeRuntime {
+            registered_tool_id: tool.registered_tool_id,
             response_signing_key: tool.response_signing_key.clone(),
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(
                 (*signed_http.allowed_leaders).clone(),
@@ -193,18 +187,14 @@ where
             response(status, body, is_result, None)
         }
         InvokeAuthRuntime::Signed(runtime) => {
-            let request_headers = RequestHeadersRef::from_getter(|name| header_str(&headers, name));
-            let authenticated =
-                match authenticate_request(request_headers, runtime.allowed_leaders.as_ref()) {
-                    Ok(authenticated) => authenticated,
-                    Err(error) => return auth_failed(error),
-                };
+            let authenticated = match authenticate_request(&headers, runtime) {
+                Ok(authenticated) => authenticated,
+                Err(error) => return auth_failed(error),
+            };
             match replay.begin(authenticated.nonce, authenticated.input_hash, now_ms()) {
-                ReplayDecision::Return(cached) => cached.into_response(
-                    &authenticated.leader_signature,
-                    &authenticated.nonce,
-                    runtime.response_signing_key.as_ref(),
-                ),
+                ReplayDecision::Return(cached) => {
+                    cached.into_response(&authenticated, runtime.response_signing_key.as_ref())
+                }
                 ReplayDecision::InFlight => json_response(
                     StatusCode::CONFLICT,
                     json!({
@@ -221,11 +211,7 @@ where
                         is_result,
                     };
                     reservation.complete(cached.clone(), now_ms(), runtime.replay_cache_ttl_ms);
-                    cached.into_response(
-                        &authenticated.leader_signature,
-                        &authenticated.nonce,
-                        runtime.response_signing_key.as_ref(),
-                    )
+                    cached.into_response(&authenticated, runtime.response_signing_key.as_ref())
                 }
             }
         }
@@ -242,14 +228,70 @@ struct CachedResponse {
 impl CachedResponse {
     fn into_response(
         self,
-        leader_signature: &[u8; 64],
-        nonce: &[u8; 32],
+        authenticated: &AuthContext,
         response_signing_key: Option<&SigningKey>,
     ) -> warp::reply::Response {
-        let signature = response_signing_key
-            .filter(|_| self.is_result)
-            .map(|key| sign_response(leader_signature, nonce, &self.body, key));
-        response(self.status, self.body, self.is_result, signature.as_ref())
+        let response_headers = self.is_result.then(|| match response_signing_key {
+            Some(key) => match authenticated.protocol_version {
+                SignedHttpVersion::V3 => v3_wire::sign_response(
+                    &authenticated.leader_signature,
+                    &authenticated.nonce,
+                    &self.body,
+                    key,
+                )
+                .to_pairs(),
+                SignedHttpVersion::V4 => v4_wire::sign_response(
+                    &authenticated.leader_signature,
+                    &authenticated.nonce,
+                    &self.body,
+                    key,
+                )
+                .to_pairs(),
+            },
+            None => {
+                let version = match authenticated.protocol_version {
+                    SignedHttpVersion::V3 => v3_wire::SIGNATURE_VERSION_V3,
+                    SignedHttpVersion::V4 => v4_wire::SIGNATURE_VERSION_V4,
+                };
+                vec![(v4_wire::HEADER_SIGNATURE_VERSION, version.to_string())]
+            }
+        });
+        response(
+            self.status,
+            self.body,
+            self.is_result,
+            response_headers.as_deref(),
+        )
+    }
+}
+
+fn authenticate_request(
+    headers: &HeaderMap,
+    runtime: &SignedInvokeRuntime,
+) -> Result<AuthContext, String> {
+    match header_str(headers, v4_wire::HEADER_SIGNATURE_VERSION) {
+        Some(v3_wire::SIGNATURE_VERSION_V3) => {
+            let request_headers =
+                v3_wire::RequestHeadersRef::from_getter(|name| header_str(headers, name));
+            v3_wire::authenticate_request(request_headers, runtime.allowed_leaders.as_ref())
+                .map(AuthContext::from_v3)
+                .map_err(|error| error.to_string())
+        }
+        Some(v4_wire::SIGNATURE_VERSION_V4) => {
+            let request_headers =
+                v4_wire::RequestHeadersRef::from_getter(|name| header_str(headers, name));
+            let authenticated =
+                v4_wire::authenticate_request(request_headers, runtime.allowed_leaders.as_ref())
+                    .map_err(|error| error.to_string())?;
+            if authenticated.tool_id != runtime.registered_tool_id {
+                return Err("signed Tool ID does not match this Toolkit configuration".to_string());
+            }
+            Ok(AuthContext::from_v4(authenticated))
+        }
+        Some(version) => Err(format!(
+            "unsupported signed HTTP version '{version}', expected '3' or '4'"
+        )),
+        None => Err("missing signed HTTP version header".to_string()),
     }
 }
 
@@ -384,22 +426,22 @@ fn response(
     status: StatusCode,
     body: Vec<u8>,
     is_result: bool,
-    signature: Option<&EncodedResponseHeaders>,
+    signature: Option<&[(&'static str, String)]>,
 ) -> warp::reply::Response {
     let mut response = warp::reply::Response::new(body.into());
     *response.status_mut() = status;
     response.headers_mut().insert(
         "content-type",
         HeaderValue::from_static(if is_result {
-            CANONICAL_TOOL_RESPONSE_CONTENT_TYPE
+            v4_wire::CANONICAL_TOOL_RESPONSE_CONTENT_TYPE
         } else {
             JSON_CONTENT_TYPE
         }),
     );
     if let Some(signature) = signature {
-        for (name, value) in signature.to_pairs() {
-            if let Ok(value) = HeaderValue::from_str(&value) {
-                response.headers_mut().insert(name, value);
+        for (name, value) in signature {
+            if let Ok(value) = HeaderValue::from_str(value) {
+                response.headers_mut().insert(*name, value);
             }
         }
     }
@@ -412,7 +454,7 @@ fn json_response(status: StatusCode, value: serde_json::Value) -> warp::reply::R
     response(status, body, false, None)
 }
 
-fn auth_failed(error: SignedHttpError) -> warp::reply::Response {
+fn auth_failed(error: impl std::fmt::Display) -> warp::reply::Response {
     json_response(
         StatusCode::UNAUTHORIZED,
         json!({
@@ -428,15 +470,32 @@ mod tests {
         super::*,
         ed25519_dalek::SigningKey,
         http_body_util::BodyExt as _,
-        nexus_sdk::signed_http::v3::wire::{
-            sign_request,
-            verify_response,
-            AllowedLeaderFileV1,
-            AllowedLeaderKeyFileV1,
-            AllowedLeadersFileV1,
-            ResponseHeadersRef,
-            HEADER_SIGNATURE_VERSION,
-            HEADER_TOOL_SIGNATURE,
+        nexus_sdk::signed_http::{
+            v3::wire::{
+                sign_request as sign_request_v3,
+                verify_response as verify_response_v3,
+                AllowedLeaderFileV1,
+                AllowedLeaderKeyFileV1,
+                AllowedLeadersFileV1,
+                LeaderKeyResolver,
+                ResponseHeadersRef as ResponseHeadersRefV3,
+                SIGNATURE_VERSION_V3,
+            },
+            v4::{
+                error::SignedHttpError,
+                wire::{
+                    authenticate_request as authenticate_request_v4,
+                    sign_request,
+                    verify_response,
+                    EncodedRequestHeaders,
+                    RequestHeadersRef,
+                    ResponseHeadersRef,
+                    CANONICAL_TOOL_RESPONSE_CONTENT_TYPE,
+                    HEADER_SIGNATURE_VERSION,
+                    HEADER_TOOL_SIGNATURE,
+                    SIGNATURE_VERSION_V4,
+                },
+            },
         },
         std::sync::atomic::{AtomicUsize, Ordering},
     };
@@ -459,8 +518,17 @@ mod tests {
     }
 
     fn signed_runtime(leader: &SigningKey, tool: &SigningKey) -> InvokeAuthRuntime {
+        signed_runtime_with_tool_id(leader, tool, TEST_TOOL_ID)
+    }
+
+    fn signed_runtime_with_tool_id(
+        leader: &SigningKey,
+        tool: &SigningKey,
+        registered_tool_id: [u8; 32],
+    ) -> InvokeAuthRuntime {
         let allowed = AllowedLeaders::try_from(allowed_leaders_file("leader", 0, leader)).unwrap();
         InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
+            registered_tool_id,
             response_signing_key: Some(tool.clone()),
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(allowed)),
             replay_cache_ttl_ms: 10_000,
@@ -470,6 +538,7 @@ mod tests {
     fn verification_runtime(leader: &SigningKey) -> InvokeAuthRuntime {
         let allowed = AllowedLeaders::try_from(allowed_leaders_file("leader", 0, leader)).unwrap();
         InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
+            registered_tool_id: TEST_TOOL_ID,
             response_signing_key: None,
             allowed_leaders: Arc::new(RefreshingAllowedLeadersResolver::new(allowed)),
             replay_cache_ttl_ms: 10_000,
@@ -477,18 +546,96 @@ mod tests {
     }
 
     fn request_headers(leader: &SigningKey, input_hash: [u8; 32], nonce: [u8; 32]) -> HeaderMap {
-        let encoded = sign_request("leader", 0, input_hash, nonce, leader);
+        let encoded = sign_request("leader", 0, TEST_TOOL_ID, nonce, input_hash, leader);
         headers_from_encoded(encoded)
     }
 
-    fn headers_from_encoded(
-        encoded: nexus_sdk::signed_http::v3::wire::EncodedRequestHeaders,
-    ) -> HeaderMap {
+    fn request_headers_v3(leader: &SigningKey, input_hash: [u8; 32], nonce: [u8; 32]) -> HeaderMap {
+        let encoded = sign_request_v3("leader", 0, input_hash, nonce, leader);
+        headers_from_pairs(encoded.to_pairs())
+    }
+
+    fn headers_from_encoded(encoded: EncodedRequestHeaders) -> HeaderMap {
+        headers_from_pairs(encoded.to_pairs())
+    }
+
+    fn headers_from_pairs(pairs: Vec<(&'static str, String)>) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        for (name, value) in encoded.to_pairs() {
+        for (name, value) in pairs {
             headers.insert(name, HeaderValue::from_str(&value).unwrap());
         }
         headers
+    }
+
+    fn authenticate_v3_context(headers: &HeaderMap, runtime: &InvokeAuthRuntime) -> AuthContext {
+        let InvokeAuthRuntime::Signed(runtime) = runtime else {
+            panic!("signed test runtime expected");
+        };
+        let request_headers =
+            v3_wire::RequestHeadersRef::from_getter(|name| header_str(headers, name));
+        AuthContext::from_v3(
+            v3_wire::authenticate_request(request_headers, runtime.allowed_leaders.as_ref())
+                .unwrap(),
+        )
+    }
+
+    fn authenticate_v4_context(headers: &HeaderMap, runtime: &InvokeAuthRuntime) -> AuthContext {
+        let InvokeAuthRuntime::Signed(runtime) = runtime else {
+            panic!("signed test runtime expected");
+        };
+        let request_headers =
+            v4_wire::RequestHeadersRef::from_getter(|name| header_str(headers, name));
+        AuthContext::from_v4(
+            v4_wire::authenticate_request(request_headers, runtime.allowed_leaders.as_ref())
+                .unwrap(),
+        )
+    }
+
+    async fn assert_signed_result_response(
+        response: warp::reply::Response,
+        authenticated: &AuthContext,
+        expected_body: &[u8],
+        tool_public_key: [u8; 32],
+    ) {
+        assert_eq!(response.status(), StatusCode::OK);
+        let expected_version = match authenticated.protocol_version {
+            SignedHttpVersion::V3 => SIGNATURE_VERSION_V3,
+            SignedHttpVersion::V4 => SIGNATURE_VERSION_V4,
+        };
+        assert_eq!(
+            response.headers()[HEADER_SIGNATURE_VERSION],
+            expected_version
+        );
+        let tool_signature = response.headers()[HEADER_TOOL_SIGNATURE]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body.as_ref(), expected_body);
+        match authenticated.protocol_version {
+            SignedHttpVersion::V3 => verify_response_v3(
+                ResponseHeadersRefV3 {
+                    signature_version: Some(SIGNATURE_VERSION_V3),
+                    tool_signature: Some(&tool_signature),
+                },
+                &authenticated.leader_signature,
+                &authenticated.nonce,
+                &body,
+                tool_public_key,
+            )
+            .unwrap(),
+            SignedHttpVersion::V4 => verify_response(
+                ResponseHeadersRef {
+                    signature_version: Some(SIGNATURE_VERSION_V4),
+                    tool_signature: Some(&tool_signature),
+                },
+                &authenticated.leader_signature,
+                &authenticated.nonce,
+                &body,
+                tool_public_key,
+            )
+            .unwrap(),
+        };
     }
 
     fn cached_response(body: u8) -> CachedResponse {
@@ -512,13 +659,21 @@ mod tests {
         );
         assert_eq!(resolver.leader_public_key("0xwallet-address", 4), None);
 
-        let encoded = sign_request("0xwallet-address", 4, [3; 32], [1; 32], &leader);
+        let encoded = sign_request(
+            "0xwallet-address",
+            4,
+            TEST_TOOL_ID,
+            [1; 32],
+            [3; 32],
+            &leader,
+        );
         let leader_key_id = encoded.leader_key_id.to_string();
-        let error = authenticate_request(
+        let error = authenticate_request_v4(
             RequestHeadersRef {
-                signature_version: Some(SIGNATURE_VERSION_V3),
+                signature_version: Some(SIGNATURE_VERSION_V4),
                 leader_id: Some(&encoded.leader_id),
                 leader_key_id: Some(&leader_key_id),
+                tool_id: Some(&encoded.tool_id),
                 input_hash: Some(&encoded.input_hash),
                 leader_signature: Some(&encoded.leader_signature),
                 nonce: Some(&encoded.nonce),
@@ -544,6 +699,7 @@ mod tests {
                 "allowed_leaders": allowed_leaders_file("leader", 0, &leader),
                 "tools": {
                     "xyz.demo@1": {
+                        "registered_tool_id": "0x2a",
                         "response_signing_key": hex::encode([9u8; 32]),
                     }
                 }
@@ -754,6 +910,10 @@ mod tests {
             .await;
 
             assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()[HEADER_SIGNATURE_VERSION],
+                SIGNATURE_VERSION_V4
+            );
             assert!(response.headers().get(HEADER_TOOL_SIGNATURE).is_none());
             assert_eq!(
                 response.into_body().collect().await.unwrap().to_bytes(),
@@ -826,17 +986,254 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_unknown_and_v2_versions_are_rejected_without_handler_access() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime(&leader, &tool);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for version in [None, Some("5"), Some("2")] {
+            let mut headers = request_headers(&leader, [3; 32], [1; 32]);
+            if let Some(version) = version {
+                headers.insert(HEADER_SIGNATURE_VERSION, HeaderValue::from_static(version));
+            } else {
+                headers.remove(HEADER_SIGNATURE_VERSION);
+            }
+            let handler_calls = Arc::clone(&calls);
+            let response = handle_invoke(
+                &runtime,
+                &ReplayCache::new(1_000),
+                headers,
+                Vec::new(),
+                move |_ctx, _body| async move {
+                    handler_calls.fetch_add(1, Ordering::SeqCst);
+                    (StatusCode::OK, vec![1, 2, 3], true)
+                },
+            )
+            .await;
+
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert!(response.headers().get(HEADER_TOOL_SIGNATURE).is_none());
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn invalid_v4_signature_is_not_retried_as_v3() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime(&leader, &tool);
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+        let mut encoded = sign_request("leader", 0, TEST_TOOL_ID, nonce, input_hash, &leader);
+        encoded.leader_signature =
+            sign_request_v3("leader", 0, input_hash, nonce, &leader).leader_signature;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handler_calls = Arc::clone(&calls);
+        let response = handle_invoke(
+            &runtime,
+            &ReplayCache::new(1_000),
+            headers_from_encoded(encoded),
+            Vec::new(),
+            move |_ctx, _body| async move {
+                handler_calls.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![1, 2, 3], true)
+            },
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn allowed_leader_check_applies_to_both_versions() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let unlisted_leader = SigningKey::from_bytes(&[8; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime(&leader, &tool);
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+        let v3_headers = headers_from_pairs(
+            sign_request_v3("leader", 0, input_hash, nonce, &unlisted_leader).to_pairs(),
+        );
+        let v4_headers = headers_from_encoded(sign_request(
+            "leader",
+            0,
+            TEST_TOOL_ID,
+            nonce,
+            input_hash,
+            &unlisted_leader,
+        ));
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for headers in [v3_headers, v4_headers] {
+            let handler_calls = Arc::clone(&calls);
+            let response = handle_invoke(
+                &runtime,
+                &ReplayCache::new(1_000),
+                headers,
+                Vec::new(),
+                move |_ctx, _body| async move {
+                    handler_calls.fetch_add(1, Ordering::SeqCst);
+                    (StatusCode::OK, vec![1, 2, 3], true)
+                },
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn wrong_tool_id_is_rejected_before_replay_lookup() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime(&leader, &tool);
+        let replay = ReplayCache::new(1_000);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let first_calls = Arc::clone(&calls);
+        let accepted = handle_invoke(
+            &runtime,
+            &replay,
+            request_headers(&leader, [3; 32], [1; 32]),
+            Vec::new(),
+            move |_ctx, _body| async move {
+                first_calls.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![1, 2, 3], true)
+            },
+        )
+        .await;
+        assert_eq!(accepted.status(), StatusCode::OK);
+
+        let mismatched_headers = headers_from_encoded(sign_request(
+            "leader", 0, [99; 32], [1; 32], [3; 32], &leader,
+        ));
+        let rejected_calls = Arc::clone(&calls);
+        let rejected = handle_invoke(
+            &runtime,
+            &replay,
+            mismatched_headers,
+            Vec::new(),
+            move |_ctx, _body| async move {
+                rejected_calls.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![4, 5, 6], true)
+            },
+        )
+        .await;
+
+        assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn explicit_v3_request_returns_v3_signed_response_without_request_tool_id() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime_with_tool_id(&leader, &tool, TEST_TOOL_ID);
+        let replay = ReplayCache::new(1_000);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+        let headers = request_headers_v3(&leader, input_hash, nonce);
+        let authenticated = authenticate_v3_context(&headers, &runtime);
+
+        let rejected_calls = Arc::clone(&calls);
+        let response = handle_invoke(
+            &runtime,
+            &replay,
+            headers,
+            Vec::new(),
+            move |ctx, _body| async move {
+                rejected_calls.fetch_add(1, Ordering::SeqCst);
+                let ctx = ctx.unwrap();
+                assert_eq!(ctx.protocol_version, SignedHttpVersion::V3);
+                assert_eq!(ctx.tool_id, None);
+                assert_eq!(ctx.input_hash, input_hash);
+                (StatusCode::OK, vec![1, 2, 3], true)
+            },
+        )
+        .await;
+
+        assert_signed_result_response(
+            response,
+            &authenticated,
+            &[1, 2, 3],
+            tool.verifying_key().to_bytes(),
+        )
+        .await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn v4_tool_id_mismatch_is_rejected_before_cached_result_access() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime_with_tool_id(&leader, &tool, TEST_TOOL_ID);
+        let replay = ReplayCache::new(1_000);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+        let v3_headers = request_headers_v3(&leader, input_hash, nonce);
+        let authenticated_v3 = authenticate_v3_context(&v3_headers, &runtime);
+        let first_calls = Arc::clone(&calls);
+        let first = handle_invoke(
+            &runtime,
+            &replay,
+            v3_headers,
+            Vec::new(),
+            move |ctx, _body| async move {
+                first_calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(ctx.unwrap().protocol_version, SignedHttpVersion::V3);
+                (StatusCode::OK, vec![1, 2, 3], true)
+            },
+        )
+        .await;
+        assert_signed_result_response(
+            first,
+            &authenticated_v3,
+            &[1, 2, 3],
+            tool.verifying_key().to_bytes(),
+        )
+        .await;
+
+        let second_calls = Arc::clone(&calls);
+        let second = handle_invoke(
+            &runtime,
+            &replay,
+            headers_from_encoded(sign_request(
+                "leader", 0, [2; 32], nonce, input_hash, &leader,
+            )),
+            Vec::new(),
+            move |_ctx, _body| async move {
+                second_calls.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::OK, vec![4, 5, 6], true)
+            },
+        )
+        .await;
+
+        assert_eq!(second.status(), StatusCode::UNAUTHORIZED);
+        assert!(second.headers().get(HEADER_SIGNATURE_VERSION).is_none());
+        assert!(second.headers().get(HEADER_TOOL_SIGNATURE).is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn signed_result_uses_exact_body_and_tool_signature() {
         let leader = SigningKey::from_bytes(&[7; 32]);
         let tool = SigningKey::from_bytes(&[9; 32]);
         let input_hash = [3; 32];
         let nonce = [1; 32];
-        let request = sign_request("leader", 0, input_hash, nonce, &leader);
-        let leader_signature = nexus_sdk::signed_http::v3::wire::authenticate_request(
+        let request = sign_request("leader", 0, TEST_TOOL_ID, nonce, input_hash, &leader);
+        let leader_signature = authenticate_request_v4(
             RequestHeadersRef {
-                signature_version: Some(SIGNATURE_VERSION_V3),
+                signature_version: Some(SIGNATURE_VERSION_V4),
                 leader_id: Some("leader"),
                 leader_key_id: Some("0"),
+                tool_id: Some(&request.tool_id),
                 input_hash: Some(&request.input_hash),
                 leader_signature: Some(&request.leader_signature),
                 nonce: Some(&request.nonce),
@@ -868,7 +1265,7 @@ mod tests {
         let body = response.into_body().collect().await.unwrap().to_bytes();
         verify_response(
             ResponseHeadersRef {
-                signature_version: Some(SIGNATURE_VERSION_V3),
+                signature_version: Some(SIGNATURE_VERSION_V4),
                 tool_signature: Some(&tool_signature),
             },
             &leader_signature,
@@ -922,6 +1319,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mixed_version_cache_hits_return_current_version_signatures() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime(&leader, &tool);
+        let input_hash = [3; 32];
+        let nonce = [1; 32];
+
+        for first_version in [SignedHttpVersion::V3, SignedHttpVersion::V4] {
+            let replay = ReplayCache::new(1_000);
+            let calls = Arc::new(AtomicUsize::new(0));
+            let v3_headers = request_headers_v3(&leader, input_hash, nonce);
+            let v4_headers = request_headers(&leader, input_hash, nonce);
+            let v3_context = authenticate_v3_context(&v3_headers, &runtime);
+            let v4_context = authenticate_v4_context(&v4_headers, &runtime);
+            let (first_headers, first_context, second_headers, second_context) =
+                if first_version == SignedHttpVersion::V3 {
+                    (v3_headers, v3_context, v4_headers, v4_context)
+                } else {
+                    (v4_headers, v4_context, v3_headers, v3_context)
+                };
+
+            let first_calls = Arc::clone(&calls);
+            let first = handle_invoke(
+                &runtime,
+                &replay,
+                first_headers,
+                Vec::new(),
+                move |_ctx, _body| async move {
+                    first_calls.fetch_add(1, Ordering::SeqCst);
+                    (StatusCode::OK, vec![4, 5, 6], true)
+                },
+            )
+            .await;
+            assert_signed_result_response(
+                first,
+                &first_context,
+                &[4, 5, 6],
+                tool.verifying_key().to_bytes(),
+            )
+            .await;
+
+            let second_calls = Arc::clone(&calls);
+            let second = handle_invoke(
+                &runtime,
+                &replay,
+                second_headers,
+                Vec::new(),
+                move |_ctx, _body| async move {
+                    second_calls.fetch_add(1, Ordering::SeqCst);
+                    (StatusCode::OK, vec![7, 8, 9], true)
+                },
+            )
+            .await;
+            assert_signed_result_response(
+                second,
+                &second_context,
+                &[4, 5, 6],
+                tool.verifying_key().to_bytes(),
+            )
+            .await;
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
     async fn completed_tool_errors_are_cached_without_a_signature() {
         let leader = SigningKey::from_bytes(&[7; 32]);
         let tool = SigningKey::from_bytes(&[9; 32]);
@@ -969,11 +1431,13 @@ mod tests {
             .unwrap(),
         ));
         let runtime_a = InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
+            registered_tool_id: TEST_TOOL_ID,
             response_signing_key: Some(tool_a.clone()),
             allowed_leaders: Arc::clone(&resolver),
             replay_cache_ttl_ms: 10_000,
         }));
         let runtime_b = InvokeAuthRuntime::Signed(Box::new(SignedInvokeRuntime {
+            registered_tool_id: TEST_TOOL_ID,
             response_signing_key: Some(tool_b.clone()),
             allowed_leaders: Arc::clone(&resolver),
             replay_cache_ttl_ms: 20_000,
@@ -983,12 +1447,13 @@ mod tests {
         let input_hash = [3; 32];
         let calls = Arc::new(AtomicUsize::new(0));
 
-        let request_a = sign_request("leader-a", 0, input_hash, nonce, &leader_a);
-        let authenticated_a = authenticate_request(
+        let request_a = sign_request("leader-a", 0, TEST_TOOL_ID, nonce, input_hash, &leader_a);
+        let authenticated_a = authenticate_request_v4(
             RequestHeadersRef {
-                signature_version: Some(SIGNATURE_VERSION_V3),
+                signature_version: Some(SIGNATURE_VERSION_V4),
                 leader_id: Some(&request_a.leader_id),
                 leader_key_id: Some("0"),
+                tool_id: Some(&request_a.tool_id),
                 input_hash: Some(&request_a.input_hash),
                 leader_signature: Some(&request_a.leader_signature),
                 nonce: Some(&request_a.nonce),
@@ -1016,7 +1481,7 @@ mod tests {
             .to_owned();
         verify_response(
             ResponseHeadersRef {
-                signature_version: Some(SIGNATURE_VERSION_V3),
+                signature_version: Some(SIGNATURE_VERSION_V4),
                 tool_signature: Some(&signature_a),
             },
             &authenticated_a.leader_signature,
@@ -1026,12 +1491,13 @@ mod tests {
         )
         .unwrap();
 
-        let request_b = sign_request("leader-b", 1, input_hash, nonce, &leader_b);
-        let authenticated_b = authenticate_request(
+        let request_b = sign_request("leader-b", 1, TEST_TOOL_ID, nonce, input_hash, &leader_b);
+        let authenticated_b = authenticate_request_v4(
             RequestHeadersRef {
-                signature_version: Some(SIGNATURE_VERSION_V3),
+                signature_version: Some(SIGNATURE_VERSION_V4),
                 leader_id: Some(&request_b.leader_id),
                 leader_key_id: Some("1"),
+                tool_id: Some(&request_b.tool_id),
                 input_hash: Some(&request_b.input_hash),
                 leader_signature: Some(&request_b.leader_signature),
                 nonce: Some(&request_b.nonce),
@@ -1053,7 +1519,7 @@ mod tests {
             .to_owned();
         verify_response(
             ResponseHeadersRef {
-                signature_version: Some(SIGNATURE_VERSION_V3),
+                signature_version: Some(SIGNATURE_VERSION_V4),
                 tool_signature: Some(&signature_b),
             },
             &authenticated_b.leader_signature,

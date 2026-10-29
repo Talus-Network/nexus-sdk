@@ -13,9 +13,9 @@ use {
 
 /// Authenticated request context available to tools when signed HTTP is enabled.
 ///
-/// This context is produced by the toolkit runtime after it has:
-/// - verified the Leader signature over the supplied canonical input hash, and
-/// - reserved the request nonce in the Tool's offchain replay cache.
+/// This context is produced after the runtime verifies the declared signed HTTP version, the
+/// allowed Leader, and the canonical input commitment. V4 contexts include the authenticated
+/// Tool ID; v3 contexts do not, because v3 does not sign one. The nonce cache is process-local.
 ///
 /// Tools can use this context inside [`NexusTool::authorize`] to implement their own
 /// admission policy (allowlists, task gating, rate-limits, etc) without any on-chain reads.
@@ -23,7 +23,58 @@ use {
 /// Terminology:
 /// - Invoker: the node calling the tool (in Nexus, the Leader).
 /// - Responder: the node serving the request (in Nexus, the Tool).
-pub type AuthContext = nexus_sdk::signed_http::v3::wire::AuthenticatedRequest;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignedHttpVersion {
+    /// The request used the v3 input-hash transcript, which does not authenticate a Tool ID.
+    V3,
+    /// The request used the v4 Tool-ID, nonce, and input-hash transcript.
+    V4,
+}
+
+/// Authenticated request data passed to a Tool's authorization hook.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthContext {
+    /// Declared and verified signed HTTP protocol version.
+    pub protocol_version: SignedHttpVersion,
+    /// Leader identity supplied by the request and checked against the local allowlist.
+    pub leader_id: String,
+    /// Leader key identifier checked against the local allowlist.
+    pub leader_key_id: u64,
+    /// Authenticated Tool ID for v4, or `None` for v3.
+    pub tool_id: Option<[u8; 32]>,
+    /// Canonical resolved-input commitment authenticated by the Leader.
+    pub input_hash: [u8; 32],
+    /// Verified Leader signature bytes.
+    pub leader_signature: [u8; 64],
+    /// Invocation nonce carried by the request.
+    pub nonce: [u8; 32],
+}
+
+impl AuthContext {
+    pub(crate) fn from_v3(request: nexus_sdk::signed_http::v3::wire::AuthenticatedRequest) -> Self {
+        Self {
+            protocol_version: SignedHttpVersion::V3,
+            leader_id: request.leader_id,
+            leader_key_id: request.leader_key_id,
+            tool_id: None,
+            input_hash: request.input_hash,
+            leader_signature: request.leader_signature,
+            nonce: request.nonce,
+        }
+    }
+
+    pub(crate) fn from_v4(request: nexus_sdk::signed_http::v4::wire::AuthenticatedRequest) -> Self {
+        Self {
+            protocol_version: SignedHttpVersion::V4,
+            leader_id: request.leader_id,
+            leader_key_id: request.leader_key_id,
+            tool_id: Some(request.tool_id),
+            input_hash: request.input_hash,
+            leader_signature: request.leader_signature,
+            nonce: request.nonce,
+        }
+    }
+}
 
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:
