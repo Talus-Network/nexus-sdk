@@ -100,6 +100,22 @@ struct Inputs {
     metadata_file: PathBuf,
     grpc_url: String,
     source_root: Option<PathBuf>,
+    output_root: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct OutputPaths {
+    ir_dir: PathBuf,
+    protocol_limits_file: PathBuf,
+}
+
+impl OutputPaths {
+    fn from_sdk_crate_root(root: &Path) -> Self {
+        Self {
+            ir_dir: root.join(IR_DIR),
+            protocol_limits_file: root.join(PROTOCOL_LIMITS_FILE),
+        }
+    }
 }
 
 #[tokio::main]
@@ -130,8 +146,9 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
         inputs.metadata_file.clone()
     };
     let package_ids = packages_from_metadata_file(&metadata_file)?;
-    let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(IR_DIR);
-    fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    let output_paths = OutputPaths::from_sdk_crate_root(&inputs.output_root);
+    fs::create_dir_all(&output_paths.ir_dir)
+        .with_context(|| format!("create {}", output_paths.ir_dir.display()))?;
     let protocol_limits = extract_protocol_limits(source_root)?;
 
     let mut client = GrpcClient::new(&inputs.grpc_url)
@@ -148,14 +165,13 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
     }
 
     canonicalize_sdk_ir(&mut packages);
-    let limits_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(PROTOCOL_LIMITS_FILE);
-    write_protocol_limits(&limits_path, &protocol_limits)?;
+    write_protocol_limits(&output_paths.protocol_limits_file, &protocol_limits)?;
     for (name, package) in packages {
         if name == KERNEL_PACKAGE.0 {
             continue;
         }
         let module_count = package.modules.len();
-        let path = write_package_ir(&out_dir, &name, &package)?;
+        let path = write_package_ir(&output_paths.ir_dir, &name, &package)?;
         println!("wrote {} ({} modules)", path.display(), module_count);
     }
 
@@ -323,6 +339,7 @@ impl Inputs {
     fn from_args(args: impl IntoIterator<Item = String>) -> Result<Self> {
         let mut positional = Vec::new();
         let mut source_root = None;
+        let mut output_root = None;
         let mut args = args.into_iter();
 
         while let Some(arg) = args.next() {
@@ -336,25 +353,38 @@ impl Inputs {
                         .ok_or_else(|| anyhow!("--source-root requires a path"))?;
                     source_root = Some(PathBuf::from(path));
                 }
+                "--output-root" => {
+                    if output_root.is_some() {
+                        bail!("--output-root may only be provided once");
+                    }
+                    let path = args
+                        .next()
+                        .filter(|path| !path.is_empty())
+                        .ok_or_else(|| anyhow!("--output-root requires a non-empty path"))?;
+                    output_root = Some(PathBuf::from(path));
+                }
                 option if option.starts_with('-') => bail!("unknown option: {option}"),
                 _ => positional.push(arg),
             }
         }
 
+        let output_root = output_root.ok_or_else(|| anyhow!("--output-root is required"))?;
         match positional.as_slice() {
             [metadata_file] => Ok(Self {
                 metadata_file: PathBuf::from(metadata_file),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
                 source_root,
+                output_root,
             }),
             [metadata_file, grpc_url] => Ok(Self {
                 metadata_file: PathBuf::from(metadata_file),
                 grpc_url: grpc_url.to_string(),
                 source_root,
+                output_root,
             }),
             _ => bail!(
                 "expected: regenerate_bindings <deployment_or_candidate_json> [grpc_url] \
-                 [--source-root <path>]"
+                 [--source-root <path>] --output-root <sdk_crate_root>"
             ),
         }
     }
@@ -458,7 +488,7 @@ fn write_package_ir(out_dir: &Path, name: &str, package: &NormalizedPackage) -> 
 mod tests {
     use {
         super::*,
-        std::collections::BTreeMap,
+        std::{collections::BTreeMap, process::Command},
         talus_sui_move_codegen::ir::{
             Datatype,
             DatatypeKind,
@@ -678,24 +708,33 @@ mod tests {
     #[test]
     fn accepts_metadata_file_and_optional_grpc_url() {
         assert_eq!(
-            Inputs::from_args(["objects.toml".to_string()]).unwrap(),
+            Inputs::from_args([
+                "objects.toml".to_string(),
+                "--output-root".to_string(),
+                "/selected/sdk".to_string(),
+            ])
+            .unwrap(),
             Inputs {
                 metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
                 source_root: None,
+                output_root: PathBuf::from("/selected/sdk"),
             }
         );
 
         assert_eq!(
             Inputs::from_args([
                 "objects.toml".to_string(),
-                "http://localhost:9000".to_string()
+                "http://localhost:9000".to_string(),
+                "--output-root".to_string(),
+                "/selected/sdk".to_string(),
             ])
             .unwrap(),
             Inputs {
                 metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: "http://localhost:9000".to_string(),
                 source_root: None,
+                output_root: PathBuf::from("/selected/sdk"),
             }
         );
     }
@@ -707,12 +746,15 @@ mod tests {
                 "objects.toml".to_string(),
                 "--source-root".to_string(),
                 "../nexus/sui".to_string(),
+                "--output-root".to_string(),
+                "/selected/sdk".to_string(),
             ])
             .unwrap(),
             Inputs {
                 metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
                 source_root: Some(PathBuf::from("../nexus/sui")),
+                output_root: PathBuf::from("/selected/sdk"),
             }
         );
 
@@ -722,14 +764,189 @@ mod tests {
                 "http://localhost:9000".to_string(),
                 "--source-root".to_string(),
                 "../nexus/sui".to_string(),
+                "--output-root".to_string(),
+                "/selected/sdk".to_string(),
             ])
             .unwrap(),
             Inputs {
                 metadata_file: PathBuf::from("objects.toml"),
                 grpc_url: "http://localhost:9000".to_string(),
                 source_root: Some(PathBuf::from("../nexus/sui")),
+                output_root: PathBuf::from("/selected/sdk"),
             }
         );
+    }
+
+    #[test]
+    fn runtime_output_root_routes_ir_and_protocol_limits_to_selected_checkout() {
+        let tempdir = tempfile::tempdir().expect("create temporary directory");
+        let sdk_root = tempdir.path().join("current-checkout").join("sdk");
+        let compile_time_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        assert_ne!(sdk_root, compile_time_root);
+
+        let inputs = Inputs::from_args([
+            "objects.toml".to_string(),
+            "http://localhost:9000".to_string(),
+            "--source-root".to_string(),
+            "../nexus/sui".to_string(),
+            "--output-root".to_string(),
+            sdk_root.display().to_string(),
+        ])
+        .expect("parse selected checkout output root");
+        assert_eq!(inputs.output_root, sdk_root);
+        assert_eq!(inputs.source_root, Some(PathBuf::from("../nexus/sui")));
+        assert_eq!(inputs.grpc_url, "http://localhost:9000");
+
+        let output_paths = OutputPaths::from_sdk_crate_root(&inputs.output_root);
+        assert_eq!(output_paths.ir_dir, sdk_root.join(IR_DIR));
+        assert_eq!(
+            output_paths.protocol_limits_file,
+            sdk_root.join(PROTOCOL_LIMITS_FILE)
+        );
+        assert!(!output_paths.ir_dir.starts_with(&compile_time_root));
+        assert!(!output_paths
+            .protocol_limits_file
+            .starts_with(&compile_time_root));
+
+        fs::create_dir_all(&output_paths.ir_dir).expect("create selected output directory");
+        let package = NormalizedPackage {
+            storage_id: "0xa1".to_string(),
+            original_id: None,
+            version: 1,
+            modules: BTreeMap::new(),
+        };
+        let ir_path = write_package_ir(&output_paths.ir_dir, "primitives", &package)
+            .expect("write IR into selected checkout");
+        let limits = BTreeMap::from([(
+            "interface".to_string(),
+            BTreeMap::from([(
+                "payment".to_string(),
+                BTreeMap::from([("MAX_PRIORITY_FEE_PERCENTAGE".to_string(), 10)]),
+            )]),
+        )]);
+        write_protocol_limits(&output_paths.protocol_limits_file, &limits)
+            .expect("write protocol limits into selected checkout");
+
+        assert_eq!(ir_path, output_paths.ir_dir.join("primitives.json"));
+        assert!(ir_path.starts_with(&sdk_root));
+        assert!(output_paths.protocol_limits_file.starts_with(&sdk_root));
+        let written_ir = fs::read_to_string(&ir_path).expect("read generated IR");
+        assert_eq!(
+            NormalizedPackage::from_json_str(&written_ir)
+                .expect("decode generated IR")
+                .storage_id,
+            "0xa1"
+        );
+        let written_limits = fs::read_to_string(&output_paths.protocol_limits_file)
+            .expect("read generated protocol limits");
+        assert!(written_limits.contains("MAX_PRIORITY_FEE_PERCENTAGE = 10"));
+    }
+
+    #[test]
+    fn rebind_recipe_anchors_outputs_to_sdk_checkout_and_inputs_to_caller() {
+        let sdk_crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let sdk_checkout_root = sdk_crate_root
+            .parent()
+            .expect("SDK crate is inside the repository checkout")
+            .to_path_buf();
+        let justfile = sdk_checkout_root.join("justfile");
+        let external_caller = tempfile::tempdir().expect("create external caller directory");
+        let callers = [
+            (sdk_checkout_root.clone(), false),
+            (sdk_crate_root.clone(), false),
+            (external_caller.path().to_path_buf(), true),
+        ];
+
+        for (caller, explicit_justfile) in callers {
+            let mut command = Command::new("just");
+            command.current_dir(&caller).args(["--color", "never"]);
+            if explicit_justfile {
+                command.args(["--justfile", justfile.to_str().unwrap()]);
+            }
+            let output = command
+                .args([
+                    "--dry-run",
+                    "sdk",
+                    "rebind",
+                    "deployment.json",
+                    "http://127.0.0.1:9000",
+                    "../nexus/sui",
+                ])
+                .output()
+                .expect("run Just rebind dry run");
+            assert!(
+                output.status.success(),
+                "Just rebind dry run failed in {}: {}",
+                caller.display(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let script = format!(
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                script.contains(&format!("output_root=\"{}\"", sdk_crate_root.display())),
+                "SDK output root did not follow the selected justfile from {}:\n{}",
+                caller.display(),
+                script
+            );
+            assert!(script.contains("objects_file=\"deployment.json\""));
+            assert!(
+                script.contains(&format!(
+                    "*) objects_file=\"{}/$objects_file\" ;;",
+                    caller.display()
+                )),
+                "relative metadata path was not anchored to its caller in {}:\n{}",
+                caller.display(),
+                script
+            );
+            assert!(script.contains("source_root=\"../nexus/sui\""));
+            assert!(
+                script.contains(&format!(
+                    "*) source_root=\"{}/$source_root\" ;;",
+                    caller.display()
+                )),
+                "relative Move source path was not anchored to its caller in {}:\n{}",
+                caller.display(),
+                script
+            );
+            assert!(script.contains("--output-root \"$output_root\""));
+        }
+    }
+
+    #[test]
+    fn rejects_missing_empty_or_duplicate_output_roots() {
+        let omitted = Inputs::from_args(["objects.toml".to_string()])
+            .expect_err("output root is required")
+            .to_string();
+        assert!(omitted.contains("--output-root is required"));
+
+        let missing = Inputs::from_args(["objects.toml".to_string(), "--output-root".to_string()])
+            .expect_err("output root requires a path")
+            .to_string();
+        assert!(missing.contains("--output-root requires a non-empty path"));
+
+        let empty = Inputs::from_args([
+            "objects.toml".to_string(),
+            "--output-root".to_string(),
+            "".to_string(),
+        ])
+        .expect_err("empty output root is invalid")
+        .to_string();
+        assert!(empty.contains("--output-root requires a non-empty path"));
+
+        let duplicate = Inputs::from_args([
+            "objects.toml".to_string(),
+            "--output-root".to_string(),
+            "/current/sdk".to_string(),
+            "--output-root".to_string(),
+            "/other/sdk".to_string(),
+        ])
+        .expect_err("output root can only be supplied once")
+        .to_string();
+        assert!(duplicate.contains("--output-root may only be provided once"));
     }
 
     #[test]

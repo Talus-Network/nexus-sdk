@@ -29,8 +29,9 @@
 //! Operational note: if you run tools behind a gateway/proxy, ensure it forwards the `X-Nexus-Sig-*`
 //! headers. If these headers are stripped, signed HTTP will fail closed.
 //!
-//! The signature protocol itself lives in `nexus-sdk` under
-//! [`nexus_sdk::signed_http::v3`](nexus_sdk::signed_http::v3).
+//! The signature protocols live in the SDK's separate v3 and v4 wire modules. Required mode accepts
+//! either explicitly declared version and requires a valid configured Tool ID for every FQN.
+//! V3 requests do not authenticate that ID; v4 requests do and must match the configured value.
 //!
 //! # Example config
 //! ```json
@@ -40,6 +41,7 @@
 //!     "allowed_leaders_path": "./allowed_leaders.json",
 //!     "tools": {
 //!       "xyz.dummy.tool@1": {
+//!         "registered_tool_id": "0x2a",
 //!         "response_signing_key": "0000000000000000000000000000000000000000000000000000000000000000"
 //!       }
 //!     }
@@ -67,6 +69,7 @@
 //! tools.insert(
 //!     tool_id.to_string(),
 //!     json!({
+//!         "registered_tool_id": "0x2a",
 //!         "response_signing_key": tool_sk_hex,
 //!     }),
 //! );
@@ -104,6 +107,7 @@ use {
             keys::parse_ed25519_signing_key,
             v3::wire::{AllowedLeaders, AllowedLeadersFileV1},
         },
+        sui::types::Address,
     },
     notify::{Event, RecommendedWatcher, RecursiveMode, Watcher},
     serde::Deserialize,
@@ -149,6 +153,8 @@ pub(crate) struct SignedHttpRuntimeConfig {
 
 #[derive(Clone)]
 pub(crate) struct SignedHttpToolRuntimeConfig {
+    /// Stable on-chain Tool object ID required for this FQN in required mode.
+    pub(crate) registered_tool_id: [u8; 32],
     /// Key used to attest successful Tool results.
     ///
     /// Request authentication does not depend on this key. When it is absent,
@@ -262,6 +268,10 @@ struct SignedHttpConfigFile {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SignedHttpToolConfigFile {
+    /// Stable on-chain Tool object ID associated with this FQN, required in required mode.
+    #[serde(default)]
+    pub registered_tool_id: Option<String>,
+
     /// Optional hex or base64 encoding of a 32 byte Ed25519 private key.
     ///
     /// This also accepts Sui keytool encoding: base64 of `0x00 || sk32`.
@@ -315,6 +325,21 @@ fn load_signed_http_config(file: SignedHttpConfigFile) -> anyhow::Result<SignedH
                 "invalid signed_http.tools[\"{tool_id}\"].replay_cache_ttl_ms: must be greater than zero"
             );
         }
+
+        let registered_tool_id = tool
+            .registered_tool_id
+            .as_deref()
+            .ok_or_else(|| {
+                anyhow::anyhow!("missing signed_http.tools[\"{tool_id}\"].registered_tool_id")
+            })?
+            .parse::<Address>()
+            .map(Address::into_inner)
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "invalid signed_http.tools[\"{tool_id}\"].registered_tool_id: {error}"
+                )
+            })?;
+
         let response_signing_key = tool
             .response_signing_key
             .as_deref()
@@ -328,6 +353,7 @@ fn load_signed_http_config(file: SignedHttpConfigFile) -> anyhow::Result<SignedH
         tools.insert(
             tool_id,
             SignedHttpToolRuntimeConfig {
+                registered_tool_id,
                 response_signing_key,
                 replay_cache_ttl_ms,
             },
@@ -540,6 +566,7 @@ mod tests {
         tools.insert(
             tool_id.to_string(),
             json!({
+                "registered_tool_id": "0x2a",
                 "response_signing_key": tool_sk_hex,
             }),
         );
@@ -608,6 +635,7 @@ mod tests {
                 },
                 "tools": {
                     tool_id: {
+                        "registered_tool_id": "0x2a",
                         "replay_cache_ttl_ms": 60_000,
                     },
                 },
@@ -620,6 +648,41 @@ mod tests {
 
         assert!(tool.response_signing_key.is_none());
         assert_eq!(tool.replay_cache_ttl_ms, 60_000);
+    }
+
+    #[test]
+    fn required_mode_requires_a_valid_registered_tool_id() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let leader_public_key = hex::encode(leader.verifying_key().to_bytes());
+        let tool_id = "xyz.demo.tool@1";
+        let config = make_config_json(tool_id, &hex::encode([9; 32]), "leader", &leader_public_key);
+        let valid = ToolkitRuntimeConfig::from_json_str(&config).unwrap();
+        assert_eq!(
+            valid.signed_http().unwrap().tools[tool_id].registered_tool_id,
+            Address::from_static("0x2a").into_inner()
+        );
+
+        let mut missing_id: serde_json::Value = serde_json::from_str(&config).unwrap();
+        missing_id["signed_http"]["tools"][tool_id]
+            .as_object_mut()
+            .unwrap()
+            .remove("registered_tool_id");
+        let missing_error = ToolkitRuntimeConfig::from_json_str(&missing_id.to_string())
+            .err()
+            .unwrap();
+        assert!(missing_error.to_string().contains("registered_tool_id"));
+
+        missing_id["signed_http"]["mode"] = serde_json::json!("disabled");
+        let disabled = ToolkitRuntimeConfig::from_json_str(&missing_id.to_string()).unwrap();
+        assert!(!disabled.signed_http_is_required());
+
+        let mut invalid_id: serde_json::Value = serde_json::from_str(&config).unwrap();
+        invalid_id["signed_http"]["tools"][tool_id]["registered_tool_id"] =
+            serde_json::json!("not-a-sui-id");
+        let invalid_error = ToolkitRuntimeConfig::from_json_str(&invalid_id.to_string())
+            .err()
+            .unwrap();
+        assert!(invalid_error.to_string().contains("registered_tool_id"));
     }
 
     #[test]
@@ -656,6 +719,7 @@ mod tests {
                 "allowed_leaders_path": path.display().to_string(),
                 "tools": {
                     "xyz.demo.tool@1": {
+                        "registered_tool_id": "0x2a",
                         "response_signing_key": tool_sk_hex,
                     },
                 },
@@ -731,6 +795,7 @@ mod tests {
                 "tools": {
                     "demo": {
                         "tool_kid": 0,
+                        "registered_tool_id": "0x2a",
                         "response_signing_key": hex::encode([7; 32]),
                     },
                 },
@@ -924,6 +989,7 @@ mod tests {
                 },
                 "tools": {
                     "xyz.demo.tool@1": {
+                        "registered_tool_id": "0x2a",
                         "response_signing_key": tool_sk_hex,
                         "replay_cache_ttl_ms": DEFAULT_REPLAY_CACHE_TTL_MS + 1,
                     },

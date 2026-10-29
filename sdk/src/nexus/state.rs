@@ -1852,8 +1852,16 @@ fn parse_runtime_type(
         object: authority_id,
         reason,
     };
-    let tag = runtime_type
-        .as_str()
+    let runtime_type_str = runtime_type.as_str();
+    let prefixed_runtime_type = runtime_type_str
+        .split_once("::")
+        .filter(|(address, _)| {
+            address.len() == 64 && address.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+        .map(|(address, rest)| format!("0x{address}::{rest}"));
+    let tag = prefixed_runtime_type
+        .as_deref()
+        .unwrap_or(runtime_type_str)
         .parse::<sui::types::StructTag>()
         .map_err(|error| {
             invalid(format!(
@@ -2986,19 +2994,57 @@ mod tests {
             PackageLinkage::new(),
         );
 
+        let prefixless_type = |origin: sui::types::Address, runtime_name: &str| {
+            let origin = origin.to_string();
+            let origin = origin.strip_prefix("0x").unwrap_or(&origin);
+            TypeName::new(&format!("{origin:0>64}::era::{runtime_name}"))
+        };
         for (runtime_name, origin) in [
             ("RuntimeV1", address("0xa5")),
             ("RuntimeV2", address("0xb5")),
         ] {
-            let runtime_type = TypeName::new(&format!("{origin}::era::{runtime_name}"));
+            let runtime_type = prefixless_type(origin, runtime_name);
+            assert_eq!(runtime_type.as_str().split_once("::").unwrap().0.len(), 64);
+            assert!(
+                runtime_type
+                    .as_str()
+                    .parse::<sui::types::StructTag>()
+                    .is_err(),
+                "Sui's strict parser rejects the unnormalized Move TypeName"
+            );
             let tag = parse_runtime_type(address("0xd0"), &runtime_type, origin)
                 .expect("recorded runtime identity parses");
             assert!(
                 validate_runtime_type_origin(address("0xb5"), &scheduler, &tag, origin).is_ok()
             );
+
+            let prefixed_type = TypeName::new(&format!("{origin}::era::{runtime_name}"));
+            let tag = parse_runtime_type(address("0xd0"), &prefixed_type, origin)
+                .expect("prefixed runtime identity remains supported");
+            assert!(
+                validate_runtime_type_origin(address("0xb5"), &scheduler, &tag, origin).is_ok()
+            );
         }
 
-        let mismatched_type = TypeName::new("0xa5::era::RuntimeV2");
+        let short_type = TypeName::new("a5::era::RuntimeV1");
+        assert!(matches!(
+            parse_runtime_type(address("0xd0"), &short_type, address("0xa5")),
+            Err(NexusError::InvalidObjectState { .. })
+        ));
+
+        let non_hex_type = TypeName::new(&format!("{}::era::RuntimeV1", "g".repeat(64)));
+        assert!(matches!(
+            parse_runtime_type(address("0xd0"), &non_hex_type, address("0xa5")),
+            Err(NexusError::InvalidObjectState { .. })
+        ));
+
+        let generic_type = TypeName::new("0xb5::era::RuntimeV1<u8>");
+        assert!(matches!(
+            parse_runtime_type(address("0xd0"), &generic_type, address("0xb5")),
+            Err(NexusError::InvalidObjectState { .. })
+        ));
+
+        let mismatched_type = prefixless_type(address("0xa5"), "RuntimeV2");
         assert!(matches!(
             parse_runtime_type(address("0xd0"), &mismatched_type, address("0xb5")),
             Err(NexusError::InvalidObjectState { .. })

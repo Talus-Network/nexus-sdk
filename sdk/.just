@@ -25,7 +25,8 @@ test: _check-cargo
 # Accepts either deployment metadata JSON or a Nexus `sui` source directory and a running Sui gRPC
 # endpoint. Move source is required to regenerate protocol limits and parameter names. A source
 # directory resolves `bin/target/deployment.localnet.json`; set source_root when passing metadata.
-# The wrapper does not start Sui or publish packages.
+# The wrapper does not start Sui or publish packages. It routes generated files to the SDK checkout
+# containing the root Justfile even when Cargo reuses an older binary.
 #
 # The offline render happens automatically in build.rs on the next build.
 rebind objects_file grpc='http://127.0.0.1:9000' source_root='': _check-cargo
@@ -39,6 +40,7 @@ rebind objects_file grpc='http://127.0.0.1:9000' source_root='': _check-cargo
     esac
 
     source_root="{{ source_root }}"
+    output_root="{{ justfile_directory() }}/sdk"
     if [ -n "$source_root" ]; then
         case "$source_root" in
         /*) ;;
@@ -48,13 +50,13 @@ rebind objects_file grpc='http://127.0.0.1:9000' source_root='': _check-cargo
             --package {{ package }} \
             --features binding_codegen \
             --bin regenerate_bindings \
-            -- "$objects_file" "{{ grpc }}" --source-root "$source_root"
+            -- "$objects_file" "{{ grpc }}" --source-root "$source_root" --output-root "$output_root"
     else
         cargo +stable run \
             --package {{ package }} \
             --features binding_codegen \
             --bin regenerate_bindings \
-            -- "$objects_file" "{{ grpc }}"
+            -- "$objects_file" "{{ grpc }}" --output-root "$output_root"
     fi
 
 # Run rustfmt on the Nexus SDK

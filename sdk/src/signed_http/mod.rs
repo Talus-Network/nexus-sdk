@@ -1,17 +1,18 @@
 //! Leader-to-Tool signing transport.
 //!
-//! The offchain Tool prepares the signature consumed by the onchain RegisteredKey verifier.
-//! Legacy v2 signs `TaggedOutput` bytes with its v2 response domain; active v3 signs ordered BCS
-//! `OffchainToolOutput` bytes with the direct on-chain transcript:
-//! - the Leader signs the schema-ordered `PortCommitment` input hash;
-//! - the Tool signs `domain || leader_signature || deterministic_nonce || SHA-256(result_bytes)`;
-//! - `result_bytes` is the exact ordered BCS body reconstructed from typed fields onchain.
+//! The SDK keeps signed HTTP v3 and v4 as separate wire protocols. V3 authenticates the
+//! canonical input hash without a Tool ID; v4 authenticates the registered Tool ID, nonce,
+//! and canonical input hash in a domain-separated request transcript. Both versions bind Tool
+//! result signatures to the Leader signature, nonce, and exact ordered BCS result bytes.
 //!
-//! Leader identity and active-key selection remain offchain transport concerns. The deterministic
-//! nonce is bound by the Tool signature and verified against authoritative execution context
-//! onchain. Authenticated HTTPS must still protect the request body and unsigned headers on every
-//! network hop; these minimal onchain signatures do not make plaintext HTTP safe.
+//! The Toolkit requires a configured Tool ID for each FQN in required mode for both versions.
+//! This local setting does not make the v3 request authenticate a Tool ID.
+//!
+//! The current Leader emits v4, and current on-chain runtime verification requires v4 evidence.
+//! Leader identity and active-key selection remain off-chain transport concerns. Authenticated
+//! HTTPS must still protect request bodies and unsigned headers on every network hop.
 
 pub mod keys;
 pub mod v2;
 pub mod v3;
+pub mod v4;

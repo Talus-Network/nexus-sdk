@@ -35,8 +35,11 @@ nexus-toolkit = "2.1.1"
 Nexus Tools are HTTP servers. Nexus expects Tools to be reachable over **HTTPS** (TLS certificate validated by Leader nodes via system roots) and to require **signed HTTP** (Ed25519 signatures in `X-Nexus-Sig-*` headers) for `POST /invoke`.
 
 - The toolkit runtime can terminate TLS directly when `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` are both set. Otherwise, deploy it behind a TLS terminator (reverse proxy / load balancer).
-- To enforce signed HTTP in the runtime, set `signed_http.mode = "required"` in the toolkit config.
-- Signed HTTP is application-layer authentication for `/invoke`: the Tool verifies which Leader node signed the request, and the Leader node verifies which Tool signed the response (with request/response binding and replay resistance).
+- To enforce signed HTTP in the runtime, set `signed_http.mode = "required"` in the Toolkit config. Required mode accepts explicitly declared v3 and v4 requests and requires a valid `registered_tool_id` for every served FQN at startup.
+- V4 requests authenticate the Tool ID and Toolkit checks it against this configuration before replay-cache lookup or handler execution. Missing or malformed IDs fail configuration loading.
+- V3 does not authenticate a Tool ID; its requests carry no Tool-ID header and `AuthContext.tool_id` remains `None`. Current Nexus leaders emit v4.
+- The Toolkit verifies each Leader request. When `response_signing_key` is configured, successful results are signed for the Leader with the matching protocol version. Without it, successful results carry the version header but no Tool signature; local HTTP errors remain unsigned. The in-process nonce cache supports exact retries and in-flight handling but does not provide durable replay protection.
+- Signed HTTP may be absent or disabled for intentionally unsigned deployments; those modes do not require `registered_tool_id`.
 - Signed HTTP is enabled via a JSON config file loaded from `NEXUS_TOOLKIT_CONFIG_PATH`.
 - Signed HTTP verification happens after the TLS handshake. If you want to reduce unwanted TLS handshakes/traffic, apply edge policy at your TLS terminator (rate limiting, firewall/WAF, mTLS, or private ingress such as Cloudflare Tunnel).
 - Nexus Leader nodes do not currently present client certificates when calling Tools (no mTLS client authentication today). In a future update, Nexus will support self-signed certificates and TLS client authentication (mTLS) for Tool communication.

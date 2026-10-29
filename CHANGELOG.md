@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Added strict signed HTTP v4 request headers and signatures binding the registered Tool ID, invocation nonce, and canonical input hash.
+- Documented the separate signed HTTP v3 compatibility and active v4 request transcript surfaces.
+
 - State adapters now decode V2 witnesses for the five canonical roots with retained V1 inner layouts while preserving package-role, storage-address, and type-origin validation.
 - Refreshed generated Move bindings for the candidate Nexus runtime Task authorization and kernel-linked primitive ABI.
 - Current Scheduler committee reads resolve the global LeaderRegistry through the active RuntimeAuthority context, including when callers hold historical Task contexts.
@@ -20,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Fixed
 
 - Tool inspection recognizes persisted V1 Tool state as current only when its exact Tool, witness, and inner type origins belong to the Registry-selected Tool package lineage.
+- Binding regeneration writes IR and protocol limits into the SDK checkout selected by the current rebind invocation, including when Cargo reuses a cached binary.
 
 - Updated the locked rustls dependency to 0.23.46 to address four TLS security advisories.
 - Expired walk inspection now considers committed Tool results preserved behind an earlier insufficient settlement marker. Current simulation determines whether funding permits settlement after a refill.
@@ -30,6 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Removed
 
 - Removed the recovery module's `ListConfig` and `ListEvent` reexports and the `poller_stream_reconnections` metric. Recovery continuation and event reconnection belong to the caller.
+
+- RuntimeAuthority state resolution accepts Move's full-width prefixless runtime `TypeName` addresses while retaining Scheduler origin validation.
 
 ### `nexus-cli`
 
@@ -44,6 +50,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Walrus commands decode Sui objects from their requested BCS bytes, preserving ownership and type checks without requiring omitted response fields.
 - Fixed CLI argument validation incorrectly rejecting valid combinations of occurrence start, deadline, and priority fee options.
 - `conf set`, `tap agent save`/`remove`, and Tool registration no longer replace an existing configuration with defaults when `conf.toml` cannot be read or parsed. The command now fails and leaves the file untouched; only a missing file starts from the default configuration.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- **Breaking:** Required-mode Toolkit configurations must include a valid `registered_tool_id` for every FQN at startup. Endpoints continue to authenticate explicit v3 and v4 requests and sign successful responses with the matching version when configured.
+- **Breaking:** `AuthContext` now exposes the verified protocol version and an optional authenticated Tool ID so v3 requests do not imply Tool-ID authentication.
+- Required signed HTTP configurations reject v4 Tool ID mismatches before replay handling; successful responses remain matched to the authenticated request version.
 
 ## [`2.1.1`] - 2026-10-07
 
