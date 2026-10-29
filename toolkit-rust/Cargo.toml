@@ -37,6 +37,7 @@ notify = "8.2.0"
 tls-listener.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
 tokio-rustls.workspace = true
+rustls = { version = "0.23.43", default-features = false }
 tokio-stream.workspace = true
 tower-service = "0.3"
 tracing = "0.1"
