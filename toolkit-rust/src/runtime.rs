@@ -87,8 +87,11 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 ///
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
 /// The request body, nonce, and unsigned identity headers require authenticated HTTPS transport.
-/// Serving requires both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH`; missing or
-/// empty paths and invalid TLS credentials prevent startup, regardless of signed HTTP mode.
+/// Set both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` to terminate TLS in the
+/// Toolkit; setting only one, or invalid TLS credentials, prevents startup. Plain HTTP is served
+/// only when neither is set, which is intended solely for hosts that terminate HTTPS in front of
+/// the Toolkit (e.g. Cloud Run or a load balancer). The Leader only calls `https://` Tool URLs,
+/// so a Tool exposed directly over plain HTTP is never invoked.
 /// If a Tool enables `require_client_certificate`, TLS must terminate in Toolkit or pass through
 /// the gateway; forwarded certificate headers do not establish identity. With that option disabled,
 /// a gateway may terminate the Leader's TLS connection and use HTTPS to connect to the Toolkit.
@@ -251,13 +254,25 @@ macro_rules! bootstrap {
             .or(default_health_route)
             .or(default_tools_route)
             .boxed();
-            let $crate::runtime::tls::Config { cert_path, key_path } =
-                $crate::runtime::tls::Config::from_env()
-                    .expect("Invalid Nexus Tool TLS configuration");
-            let (_, incoming) = $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
-                .await
-                .expect("Failed to start Nexus Tool TLS server");
-            $crate::runtime::tls::serve(routes, incoming).await
+        match $crate::runtime::tls::Config::from_env()
+            .expect("Invalid Nexus Tool TLS configuration")
+        {
+            // Plaintext is only valid behind an external HTTPS terminator; the
+            // Leader never calls http:// Tool URLs.
+            $crate::runtime::tls::Config::Disabled => {
+                $crate::log::warn!(
+                    "Nexus Tool TLS is disabled; the Tool must sit behind an external HTTPS terminator"
+                );
+                $crate::warp::serve(routes).run($addr).await
+            }
+            $crate::runtime::tls::Config::Enabled { cert_path, key_path } => {
+                let (_, incoming) =
+                    $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
+                        .await
+                        .expect("Failed to start Nexus Tool TLS server");
+                $crate::runtime::tls::serve(routes, incoming).await
+            }
+        }
     }};
     // Default address.
     ([$($tool:ty),+ $(,)?]) => {{

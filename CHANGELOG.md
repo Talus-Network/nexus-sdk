@@ -46,10 +46,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - **Signed HTTP v3.1:** Required mode verifies the allowlisted Leader Tool-context signature and freshness before replay-cache access, with a configurable inclusive timestamp window defaulting to 30,000 ms. Older v3 requests without context headers are rejected even though the wire version remains `3`.
-- Toolkit metadata always advertises HTTPS and ignores `X-Forwarded-Proto`; the listener requires server TLS and supports optional Leader client certificates. Per-Tool `require_client_certificate` defaults to `false`; enabling it requires the TLS peer key to match the allowlisted Leader key before replay-cache access or execution.
+- Toolkit metadata always advertises HTTPS and ignores `X-Forwarded-Proto`; the listener supports optional Leader client certificates. Per-Tool `require_client_certificate` defaults to `false`; enabling it requires the TLS peer key to match the allowlisted Leader key before replay-cache access or execution.
 
 #### Fixed
 
+- Toolkit serves plain HTTP again when no TLS credentials are configured, for hosts that terminate HTTPS externally (e.g. Cloud Run). TLS remains required for `require_client_certificate`.
 - Unsigned `/invoke` requests now decode the Leader's `ports` envelope into Tool inputs, matching signed mode; plain input objects remain unsupported.
 
 ## [`2.1.1`] - 2026-10-07
