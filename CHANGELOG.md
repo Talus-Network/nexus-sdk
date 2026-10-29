@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `NexusError` preserves wrapped error sources so callers can identify typed RPC failures and choose the appropriate recovery policy.
 - DAG validation rejects entry ports on a vertex that is not a member of any entry group. Publishing only records entry ports for group members, so these ports were dropped silently and the published DAG could not supply them at run time.
 - DAG validation rejects edges, default values and outputs that name an undeclared vertex, and a second default value for the same input port. These DAGs passed validation and then aborted on chain during publishing.
+- Local DAG validation now uses reachability and memoized traversal to avoid enumerating repeated paths while preserving validation rules.
 
 #### Removed
 
