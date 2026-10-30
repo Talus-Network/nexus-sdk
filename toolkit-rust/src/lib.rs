@@ -31,4 +31,4 @@ pub use {
 };
 // Re-exported for use by the `bootstrap!` macro. Not part of the public API.
 #[doc(hidden)]
-pub use {reqwest, serde_json};
+pub use {log, reqwest, serde_json};
