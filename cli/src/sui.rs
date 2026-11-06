@@ -642,6 +642,65 @@ mod tests {
         assert_eq!(response.object_ref(), object, "{command}");
     }
 
+    fn kms_conf(kms: Option<&str>, pk: Option<&str>) -> crate::cli_conf::SuiConf {
+        crate::cli_conf::SuiConf {
+            pk: pk.map(|p| p.to_string().into()),
+            kms_key_version: kms.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    const KMS: &str = "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1";
+
+    #[test]
+    fn signer_source_only_pk_selects_local() {
+        let from_env = signer_source(Some("env".into()), None, &kms_conf(None, None)).unwrap();
+        assert_eq!(from_env, SignerSource::LocalKey("env".into()));
+        let from_conf = signer_source(None, None, &kms_conf(None, Some("conf"))).unwrap();
+        assert_eq!(from_conf, SignerSource::LocalKey("conf".into()));
+    }
+
+    #[test]
+    fn signer_source_only_kms_selects_kms() {
+        let from_env = signer_source(None, Some(KMS.into()), &kms_conf(None, None)).unwrap();
+        assert_eq!(from_env, SignerSource::Kms(KMS.into()));
+        let from_conf = signer_source(None, None, &kms_conf(Some(KMS), None)).unwrap();
+        assert_eq!(from_conf, SignerSource::Kms(KMS.into()));
+    }
+
+    #[test]
+    fn signer_source_both_is_an_error() {
+        for (env_pk, env_kms, conf) in [
+            (Some("env".to_string()), None, kms_conf(Some(KMS), None)),
+            (None, Some(KMS.to_string()), kms_conf(None, Some("conf"))),
+            (
+                Some("env".to_string()),
+                Some(KMS.to_string()),
+                kms_conf(None, None),
+            ),
+            (None, None, kms_conf(Some(KMS), Some("conf"))),
+        ] {
+            let message = signer_source(env_pk, env_kms, &conf)
+                .unwrap_err()
+                .to_string();
+            assert!(message.contains("SUI_PK"), "{message}");
+            assert!(message.contains("SUI_KMS_KEY_VERSION"), "{message}");
+        }
+    }
+
+    #[test]
+    fn signer_source_neither_errors_with_existing_message() {
+        let message = signer_source(None, None, &kms_conf(None, None))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("The Sui private key is not configured"),
+            "{message}"
+        );
+        assert!(message.contains("nexus conf set --sui.pk"), "{message}");
+        assert!(message.contains("SUI_KMS_KEY_VERSION"), "{message}");
+    }
+
     #[test]
     fn every_coin_free_nexus_client_call_has_boundary_proof() {
         let assert_call_sites = |call_sites: &[CoinFreeClientCallSite], client_call: &str| {
@@ -664,65 +723,6 @@ mod tests {
                 );
             }
         };
-
-        fn kms_conf(kms: Option<&str>, pk: Option<&str>) -> crate::cli_conf::SuiConf {
-            crate::cli_conf::SuiConf {
-                pk: pk.map(|p| p.to_string().into()),
-                kms_key_version: kms.map(str::to_string),
-                ..Default::default()
-            }
-        }
-
-        const KMS: &str = "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1";
-
-        #[test]
-        fn signer_source_only_pk_selects_local() {
-            let from_env = signer_source(Some("env".into()), None, &kms_conf(None, None)).unwrap();
-            assert_eq!(from_env, SignerSource::LocalKey("env".into()));
-            let from_conf = signer_source(None, None, &kms_conf(None, Some("conf"))).unwrap();
-            assert_eq!(from_conf, SignerSource::LocalKey("conf".into()));
-        }
-
-        #[test]
-        fn signer_source_only_kms_selects_kms() {
-            let from_env = signer_source(None, Some(KMS.into()), &kms_conf(None, None)).unwrap();
-            assert_eq!(from_env, SignerSource::Kms(KMS.into()));
-            let from_conf = signer_source(None, None, &kms_conf(Some(KMS), None)).unwrap();
-            assert_eq!(from_conf, SignerSource::Kms(KMS.into()));
-        }
-
-        #[test]
-        fn signer_source_both_is_an_error() {
-            for (env_pk, env_kms, conf) in [
-                (Some("env".to_string()), None, kms_conf(Some(KMS), None)),
-                (None, Some(KMS.to_string()), kms_conf(None, Some("conf"))),
-                (
-                    Some("env".to_string()),
-                    Some(KMS.to_string()),
-                    kms_conf(None, None),
-                ),
-                (None, None, kms_conf(Some(KMS), Some("conf"))),
-            ] {
-                let message = signer_source(env_pk, env_kms, &conf)
-                    .unwrap_err()
-                    .to_string();
-                assert!(message.contains("SUI_PK"), "{message}");
-                assert!(message.contains("SUI_KMS_KEY_VERSION"), "{message}");
-            }
-        }
-
-        #[test]
-        fn signer_source_neither_errors_with_existing_message() {
-            let message = signer_source(None, None, &kms_conf(None, None))
-                .unwrap_err()
-                .to_string();
-            assert!(
-                message.contains("The Sui private key is not configured"),
-                "{message}"
-            );
-            assert!(message.contains("nexus conf set --sui.pk"), "{message}");
-            assert!(message.contains("SUI_KMS_KEY_VERSION"), "{message}");
-        }
         let owner_client = ["get_owner_nexus_client", "()"].concat();
         let anonymous_client = ["get_read_only_nexus_client", "()"].concat();
         assert_call_sites(OWNER_SCOPED_COIN_FREE_NEXUS_COMMANDS, &owner_client);
