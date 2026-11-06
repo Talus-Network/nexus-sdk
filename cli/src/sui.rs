@@ -140,30 +140,34 @@ pub(crate) async fn get_signing_key(
 /// Where the transaction signer comes from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SignerSource {
-    /// Base64 encoded local private key.
-    LocalKey(String),
+    /// Local private key (`SUI_PK` or `[sui].pk`), read by [`get_signing_key`].
+    LocalKey,
     /// Pinned Cloud KMS key version resource name.
     Kms(String),
 }
 
 /// Pick the signer source. Local key = `SUI_PK` env, else `[sui].pk`. KMS =
-/// `SUI_KMS_KEY_VERSION` env, else `[sui].kms_key_version`. Configuring both
-/// is ambiguous and rejected.
+/// `SUI_KMS_KEY_VERSION` env, else `[sui].kms_key_version`; an empty or
+/// whitespace-only KMS value counts as unset (CI renders unset variables as
+/// ""). Configuring both is ambiguous and rejected.
 pub(crate) fn signer_source(
     env_pk: Option<String>,
     env_kms: Option<String>,
     conf: &crate::cli_conf::SuiConf,
 ) -> Result<SignerSource, NexusCliError> {
-    let pk = env_pk.or_else(|| conf.pk.clone().map(|pk| pk.peek().to_string()));
-    let kms = env_kms.or_else(|| conf.kms_key_version.clone());
+    let has_pk = env_pk.is_some() || conf.pk.is_some();
+    let is_set = |value: &String| !value.trim().is_empty();
+    let kms = env_kms
+        .filter(is_set)
+        .or_else(|| conf.kms_key_version.clone().filter(is_set));
 
-    match (pk, kms) {
-        (Some(_), Some(_)) => Err(NexusCliError::Any(anyhow!(
+    match (has_pk, kms) {
+        (true, Some(_)) => Err(NexusCliError::Any(anyhow!(
             "Both a local Sui private key (SUI_PK or [sui].pk) and a Cloud KMS key version (SUI_KMS_KEY_VERSION or [sui].kms_key_version) are configured. Configure only one signer."
         ))),
-        (Some(pk), None) => Ok(SignerSource::LocalKey(pk)),
-        (None, Some(kms)) => Ok(SignerSource::Kms(kms)),
-        (None, None) => Err(NexusCliError::Any(anyhow!(
+        (true, None) => Ok(SignerSource::LocalKey),
+        (false, Some(kms)) => Ok(SignerSource::Kms(kms)),
+        (false, None) => Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}\n\n{kms}",
             message = "The Sui private key is not configured. Please set it via environment or the CLI configuration.",
             command = "$ nexus conf set --sui.pk <base64_encoded_key>".to_string().bold(),
@@ -184,7 +188,7 @@ pub(crate) async fn get_signer(
     )?;
 
     match source {
-        SignerSource::LocalKey(_) => Ok(Arc::new(get_signing_key(conf).await?)),
+        SignerSource::LocalKey => Ok(Arc::new(get_signing_key(conf).await?)),
         SignerSource::Kms(key_version) => {
             let handle = loading!("Connecting to Cloud KMS signer...");
             match GcpKmsSigner::new(key_version).await {
@@ -655,9 +659,40 @@ mod tests {
     #[test]
     fn signer_source_only_pk_selects_local() {
         let from_env = signer_source(Some("env".into()), None, &kms_conf(None, None)).unwrap();
-        assert_eq!(from_env, SignerSource::LocalKey("env".into()));
+        assert_eq!(from_env, SignerSource::LocalKey);
         let from_conf = signer_source(None, None, &kms_conf(None, Some("conf"))).unwrap();
-        assert_eq!(from_conf, SignerSource::LocalKey("conf".into()));
+        assert_eq!(from_conf, SignerSource::LocalKey);
+    }
+
+    #[test]
+    fn signer_source_blank_kms_counts_as_unset() {
+        for blank in ["", "  ", "\t\n"] {
+            // A local key plus a blank KMS value is the local key, not a conflict.
+            let from_env = signer_source(
+                Some("env".into()),
+                Some(blank.into()),
+                &kms_conf(None, None),
+            )
+            .unwrap();
+            assert_eq!(from_env, SignerSource::LocalKey, "env {blank:?}");
+            let from_conf =
+                signer_source(None, None, &kms_conf(Some(blank), Some("conf"))).unwrap();
+            assert_eq!(from_conf, SignerSource::LocalKey, "conf {blank:?}");
+
+            // A blank env value does not hide a configured key version.
+            let falls_back =
+                signer_source(None, Some(blank.into()), &kms_conf(Some(KMS), None)).unwrap();
+            assert_eq!(falls_back, SignerSource::Kms(KMS.into()), "{blank:?}");
+
+            // Blank KMS and no local key is the "not configured" error.
+            let message = signer_source(None, Some(blank.into()), &kms_conf(Some(blank), None))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                message.contains("The Sui private key is not configured"),
+                "{message}"
+            );
+        }
     }
 
     #[test]
@@ -752,7 +787,12 @@ mod tests {
         let source = include_str!("tool/tool_auth.rs");
         let body = function_source(source, "async fn sync_allowed_leaders(");
 
-        for wallet_dependency in ["get_nexus_client(", "get_signing_key(", "fetch_coin("] {
+        for wallet_dependency in [
+            "get_nexus_client(",
+            "get_signer(",
+            "get_signing_key(",
+            "fetch_coin(",
+        ] {
             assert!(
                 !body.contains(wallet_dependency),
                 "nexus tool auth sync-allowed-leaders unexpectedly uses {wallet_dependency}"
