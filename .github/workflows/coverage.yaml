@@ -8,7 +8,7 @@ jobs:
   detect-changes:
     uses: ./.github/workflows/detect_rust_changes.yml
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect-changes
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.changed != 'false') }}
     steps:

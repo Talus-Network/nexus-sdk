@@ -41,7 +41,7 @@ env:
 jobs:
   packages:
     name: Verify crate archives
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -68,7 +68,7 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
+            os: ubuntu-24.04
             deb: true
           - target: x86_64-apple-darwin
             os: macos-15-intel

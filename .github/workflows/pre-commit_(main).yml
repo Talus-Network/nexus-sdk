@@ -19,7 +19,7 @@ jobs:
 
   run-pre-commit:
     name: Run pre-commit hook (main branch)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect-changes
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.changed != 'false') }}
     steps:
