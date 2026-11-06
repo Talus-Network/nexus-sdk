@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - `TransactionSigner` trait with `NexusClientBuilder::with_signer` and `WalletClient::connect_with_signer`, so a wallet can sign with a key held outside the process; `with_private_key` is unchanged.
+- `gcp-kms` feature with `GcpKmsSigner`, a `TransactionSigner` backed by a Google Cloud KMS Ed25519 or P-256 key version, authenticated through Application Default Credentials.
 
 #### Changed
 

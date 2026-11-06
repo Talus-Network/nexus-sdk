@@ -76,6 +76,11 @@ binding_codegen = [
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
+# Google Cloud KMS signer (`GcpKmsSigner`): signs Sui transactions with a Cloud KMS
+# Ed25519 or P-256 key version, authenticating through Application Default
+# Credentials (the KMS client uses `google-cloud-auth`). Off by default.
+gcp-kms = ["nexus", "google-cloud-kms-v1", "p256", "crc32c", "sha2", "base64", "hex", "bcs"]
+
 # Types feature enables the use of the `types` module.
 types = [
     "tool_fqn",
@@ -290,6 +295,21 @@ optional = true
 
 [dependencies.tonic]
 workspace = true
+optional = true
+
+# === GCP KMS signer ===
+[dependencies.google-cloud-kms-v1]
+version = "1.9"
+optional = true
+
+[dependencies.p256]
+version = "0.13"
+default-features = false
+features = ["ecdsa", "pem", "std"]
+optional = true
+
+[dependencies.crc32c]
+version = "0.6"
 optional = true
 
 # === Move binding ===
