@@ -1287,6 +1287,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn builder_with_signer_and_with_private_key_hold_equivalent_signers() {
+        let via_key = NexusClientBuilder::new()
+            .with_private_key(sui::crypto::Ed25519PrivateKey::new([17; 32]));
+        let via_signer = NexusClientBuilder::new()
+            .with_signer(Arc::new(sui::crypto::Ed25519PrivateKey::new([17; 32])));
+        let key_signer = via_key.signer.as_ref().expect("signer from key");
+        let other_signer = via_signer.signer.as_ref().expect("signer");
+        assert_eq!(key_signer.address(), other_signer.address());
+        let tx = crate::nexus::address_balance::finish_transaction(
+            sui::types::ProgrammableTransaction {
+                inputs: vec![],
+                commands: vec![],
+            },
+            key_signer.address(),
+            1_000_000,
+            crate::nexus::address_balance::SubmissionContext {
+                reference_gas_price: 1,
+                epoch: 1,
+                chain: sui::types::Digest::new([9; 32]),
+            },
+            1,
+        );
+        assert_eq!(
+            key_signer.sign(&tx).await.unwrap(),
+            other_signer.sign(&tx).await.unwrap()
+        );
+    }
+
+    #[tokio::test]
     async fn test_builder_with_private_key() {
         let mut rng = rand::thread_rng();
         let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);

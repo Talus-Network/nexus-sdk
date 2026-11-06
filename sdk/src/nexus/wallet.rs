@@ -36,10 +36,7 @@ impl WalletClient {
         rpc_url: &str,
         key: sui::crypto::Ed25519PrivateKey,
     ) -> Result<Self, NexusError> {
-        let client = Arc::new(sui::grpc::client(rpc_url).map_err(NexusError::Rpc)?);
-        let wallet = Self::from_client(client, key, Duration::from_secs(60));
-        wallet.chain_id().await?;
-        Ok(wallet)
+        Self::connect_with_signer(rpc_url, Arc::new(key)).await
     }
 
     /// Connects a wallet that signs through any [`TransactionSigner`].
@@ -223,10 +220,6 @@ impl WalletClient {
             .map_err(|error| NexusError::Wallet(error.into()))?;
         let signer_address = match &signature {
             sui::types::UserSignature::Simple(sui::types::SimpleSignature::Ed25519 {
-                public_key,
-                ..
-            }) => public_key.derive_address(),
-            sui::types::UserSignature::Simple(sui::types::SimpleSignature::Secp256k1 {
                 public_key,
                 ..
             }) => public_key.derive_address(),
@@ -458,26 +451,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn with_signer_and_with_private_key_are_equivalent() {
-        use {super::WalletClient, crate::nexus::transaction_signer::TransactionSigner};
-        let client = std::sync::Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
-        let from_key = WalletClient::from_client(
-            client.clone(),
-            sui::crypto::Ed25519PrivateKey::new([17; 32]),
-            Duration::from_secs(1),
-        );
-        let signer: std::sync::Arc<dyn TransactionSigner> =
-            std::sync::Arc::new(sui::crypto::Ed25519PrivateKey::new([17; 32]));
-        let from_signer = WalletClient::from_signer(client, signer, Duration::from_secs(1));
-        assert_eq!(from_key.owner(), from_signer.owner());
-        let tx = test_transaction(from_key.owner());
-        assert_eq!(
-            from_key.sign_transaction(&tx).await.unwrap(),
-            from_signer.sign_transaction(&tx).await.unwrap()
-        );
-    }
-
-    #[tokio::test]
     async fn execute_signed_transaction_rejects_signature_from_other_key() {
         use super::WalletClient;
         let client = std::sync::Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
@@ -490,6 +463,52 @@ mod tests {
         let other = sui::crypto::Ed25519PrivateKey::new([18; 32]);
         let signature = sui::crypto::SuiSigner::sign_transaction(&other, &tx).unwrap();
         assert!(matches!(
+            wallet.execute_signed_transaction(tx, signature).await,
+            Err(NexusError::Wallet(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn secp256r1_signature_from_the_wallet_signer_passes_pre_rpc_checks() {
+        use {
+            super::WalletClient,
+            crate::nexus::{error::NexusError, transaction_signer::TransactionSigner},
+            futures::future::{ready, BoxFuture, FutureExt as _},
+        };
+        #[derive(Debug)]
+        struct R1(sui::crypto::secp256r1::Secp256r1PrivateKey);
+        impl TransactionSigner for R1 {
+            fn address(&self) -> sui::types::Address {
+                self.0.public_key().derive_address()
+            }
+
+            fn sign<'a>(
+                &'a self,
+                tx: &'a sui::types::Transaction,
+            ) -> BoxFuture<'a, Result<sui::types::UserSignature, NexusError>> {
+                ready(
+                    sui::crypto::SuiSigner::sign_transaction(&self.0, tx)
+                        .map_err(|error| NexusError::Wallet(error.into())),
+                )
+                .boxed()
+            }
+        }
+        let client = std::sync::Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
+        let wallet = WalletClient::from_signer(
+            client,
+            std::sync::Arc::new(R1(sui::crypto::secp256r1::Secp256r1PrivateKey::new(
+                [19; 32],
+            ))),
+            Duration::from_secs(1),
+        );
+        let tx = test_transaction(wallet.owner());
+        let signature = wallet.sign_transaction(&tx).await.unwrap();
+        assert!(matches!(
+            signature,
+            sui::types::UserSignature::Simple(sui::types::SimpleSignature::Secp256r1 { .. })
+        ));
+        // Verification passes, so the call reaches the (unreachable) RPC.
+        assert!(!matches!(
             wallet.execute_signed_transaction(tx, signature).await,
             Err(NexusError::Wallet(_))
         ));

@@ -322,7 +322,7 @@ optional = true
 
 [dependencies.sui-crypto]
 version = "0.4.0"
-features = ["ed25519", "pem"]
+features = ["ed25519", "secp256r1", "pem"]
 optional = true
 
 [dependencies.sui-transaction-builder]
