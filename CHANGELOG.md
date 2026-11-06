@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Updated the locked libz-sys to 1.1.31 to address RUSTSEC-2026-0418 (build script printed the full environment).
 - Updated the locked rustls dependency to 0.23.46 to address four TLS security advisories.
 - Expired walk inspection now considers committed Tool results preserved behind an earlier insufficient settlement marker. Current simulation determines whether funding permits settlement after a refill.
 - `NexusError` preserves wrapped error sources so callers can identify typed RPC failures and choose the appropriate recovery policy.
