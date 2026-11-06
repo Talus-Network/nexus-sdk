@@ -81,7 +81,8 @@ impl Settings {
 
     pub(super) async fn wallet(&self, conf: &CliConf) -> AnyResult<WalletClient> {
         let wallet =
-            WalletClient::connect(&self.rpc_url, crate::sui::get_signing_key(conf).await?).await?;
+            WalletClient::connect_with_signer(&self.rpc_url, crate::sui::get_signer(conf).await?)
+                .await?;
         ensure!(
             wallet.chain_id().await? == self.chain_id,
             "Sui network changed while loading the wallet"

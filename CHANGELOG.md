@@ -8,8 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- `TransactionSigner` trait with `NexusClientBuilder::with_signer` and `WalletClient::connect_with_signer`, so a wallet can sign with a key held outside the process; `with_private_key` is unchanged.
+- `gcp-kms` feature with `GcpKmsSigner`, a `TransactionSigner` backed by a Google Cloud KMS Ed25519 or P-256 key version, authenticated through Application Default Credentials; `GcpKmsSigner::new` installs rustls' ring provider as the process default when none is installed.
+
 #### Changed
 
+- **Breaking:** `WalletClient::sign_transaction` is now async; local-key signatures are unchanged.
 - Updated the advisory policy for upstream-constrained zstd/zstd-safe versions and upgraded locked zstd-sys to 2.1.2; exception reasons record scope, review date, and removal criteria.
 - **Signed HTTP v3.1:** Requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing v3 input and result signature bytes. This protocol revision retains the `signed_http::v3` API module and `X-Nexus-Sig-V: 3` wire header; package versions are unchanged. See the [v3.1 migration guide](sdk/README.md#migrating-from-signed-http-v3-to-v31).
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
@@ -32,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Breaking:** Removed the unused public signed HTTP v2 SDK module.
 
 ### `nexus-cli`
+
+#### Added
+
+- Opt-in Cloud KMS signing: set `SUI_KMS_KEY_VERSION` or `nexus conf set --sui.kms-key-version` to a pinned `.../cryptoKeyVersions/N` resource to sign with a Google Cloud KMS key through Application Default Credentials (`roles/cloudkms.signerVerifier`); an empty value counts as unset. Configuring it together with `SUI_PK`/`sui.pk` is an error; without it the CLI behaves as before.
 
 #### Fixed
 

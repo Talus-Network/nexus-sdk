@@ -35,6 +35,12 @@ pub(crate) enum ConfCommand {
         )]
         sui_pk: Option<String>,
         #[arg(
+            long = "sui.kms-key-version",
+            help = "Sign with a pinned Cloud KMS key version (projects/.../cryptoKeyVersions/N) instead of a local key",
+            value_name = "RESOURCE"
+        )]
+        sui_kms_key_version: Option<String>,
+        #[arg(
             long = "sui.rpc-url",
             help = "Set a Sui node RPC URL",
             value_name = "URL"
@@ -107,6 +113,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
         }
         ConfCommand::Set {
             sui_pk,
+            sui_kms_key_version,
             sui_rpc_url,
             nexus_objects_path,
             data_storage_walrus_aggregator_url,
@@ -117,6 +124,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
         } => {
             set_nexus_conf(
                 sui_pk,
+                sui_kms_key_version,
                 sui_rpc_url,
                 nexus_objects_path,
                 data_storage_walrus_aggregator_url,

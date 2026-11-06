@@ -8,6 +8,7 @@ use {
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
     sui_pk: Option<String>,
+    sui_kms_key_version: Option<String>,
     sui_rpc_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
     data_storage_walrus_aggregator_url: Option<reqwest::Url>,
@@ -43,6 +44,7 @@ pub(crate) async fn set_nexus_conf(
     }
 
     conf.sui.pk = sui_pk.map(SecretValue::from).or(conf.sui.pk);
+    conf.sui.kms_key_version = sui_kms_key_version.or(conf.sui.kms_key_version);
     conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
 
     // Preferred remote storage cannot be inline.
@@ -112,6 +114,7 @@ mod tests {
         // Command saves values.
         let result = set_nexus_conf(
             Some("123".to_string()),
+            None,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
             Some(objects_path),
             Some(reqwest::Url::parse("https://aggregator.url").unwrap()),
@@ -146,6 +149,7 @@ mod tests {
 
         // Overriding one value will save that one value and leave other values intact.
         let result = set_nexus_conf(
+            None,
             None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
             None,
@@ -187,6 +191,7 @@ mod tests {
         // Run with data_storage_testnet = true
         let result = set_nexus_conf(
             None,
+            None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
             None,
             None,
@@ -218,6 +223,7 @@ mod tests {
 
         let result = set_nexus_conf(
             None,
+            None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
             None,
             None,
@@ -239,6 +245,7 @@ mod tests {
         tokio::fs::write(&path, original).await.unwrap();
 
         let result = set_nexus_conf(
+            None,
             None,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap()),
             None,

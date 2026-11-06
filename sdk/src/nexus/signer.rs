@@ -69,7 +69,7 @@ impl Signer {
         &self,
         tx: &sui::types::Transaction,
     ) -> Result<sui::types::UserSignature, NexusError> {
-        self.wallet.sign_transaction(tx)
+        self.wallet.sign_transaction(tx).await
     }
 
     /// Executes a coin based transaction and refreshes its owned gas coin.

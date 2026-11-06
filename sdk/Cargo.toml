@@ -76,6 +76,27 @@ binding_codegen = [
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
+# Google Cloud KMS signer (`GcpKmsSigner`): signs Sui transactions with a Cloud KMS
+# Ed25519 or P-256 key version, authenticating through Application Default
+# Credentials (the KMS client uses `google-cloud-auth`). Off by default.
+# The Google crates are built without their default rustls provider (aws-lc-rs):
+# enabling both ring and aws-lc-rs makes `rustls::ClientConfig::builder()` panic
+# in every other TLS client of the process. `GcpKmsSigner::new` installs ring,
+# the provider rustls already selects in builds without this feature.
+gcp-kms = [
+    "nexus",
+    "google-cloud-kms-v1",
+    "google-cloud-gax",
+    "google-cloud-auth",
+    "rustls",
+    "p256",
+    "crc32c",
+    "sha2",
+    "base64",
+    "hex",
+    "bcs",
+]
+
 # Types feature enables the use of the `types` module.
 types = [
     "tool_fqn",
@@ -292,6 +313,38 @@ optional = true
 workspace = true
 optional = true
 
+# === GCP KMS signer ===
+[dependencies.google-cloud-kms-v1]
+version = "1.9"
+default-features = false
+optional = true
+
+[dependencies.google-cloud-gax]
+version = "1.10"
+default-features = false
+optional = true
+
+[dependencies.google-cloud-auth]
+version = "1.10"
+default-features = false
+optional = true
+
+[dependencies.rustls]
+version = "0.23.46"
+default-features = false
+features = ["ring", "std"]
+optional = true
+
+[dependencies.p256]
+version = "0.13"
+default-features = false
+features = ["ecdsa", "pem", "std"]
+optional = true
+
+[dependencies.crc32c]
+version = "0.6"
+optional = true
+
 # === Move binding ===
 [dependencies.talus-sui-move-codegen]
 version = "=0.3.0"
@@ -322,7 +375,7 @@ optional = true
 
 [dependencies.sui-crypto]
 version = "0.4.0"
-features = ["ed25519", "pem"]
+features = ["ed25519", "secp256r1", "pem"]
 optional = true
 
 [dependencies.sui-transaction-builder]

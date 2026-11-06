@@ -143,7 +143,7 @@ impl AddressBalanceGas {
 #[derive(Default)]
 pub struct NexusClientBuilder {
     wallet: Option<super::wallet::WalletClient>,
-    pk: Option<sui::crypto::Ed25519PrivateKey>,
+    signer: Option<Arc<dyn super::transaction_signer::TransactionSigner>>,
     rpc_url: Option<String>,
     state_catalog_rpc_url: Option<String>,
     gas_coins: Vec<sui::types::ObjectReference>,
@@ -160,14 +160,23 @@ impl NexusClientBuilder {
     }
 
     /// Add a private key to the builder.
-    pub fn with_private_key(mut self, pk: sui::crypto::Ed25519PrivateKey) -> Self {
-        self.pk = Some(pk);
+    pub fn with_private_key(self, pk: sui::crypto::Ed25519PrivateKey) -> Self {
+        self.with_signer(Arc::new(pk))
+    }
+
+    /// Sign with any [`TransactionSigner`](super::transaction_signer::TransactionSigner),
+    /// for example a key held outside the process.
+    pub fn with_signer(
+        mut self,
+        signer: Arc<dyn super::transaction_signer::TransactionSigner>,
+    ) -> Self {
+        self.signer = Some(signer);
         self
     }
 
     /// Reuses the wallet authority used by other domain clients such as Walrus.
     /// Its RPC endpoint becomes the default and must not be overridden with a
-    /// different endpoint. Supplying a second private key is an error.
+    /// different endpoint. Supplying a second signer is an error.
     pub fn with_wallet(mut self, wallet: super::wallet::WalletClient) -> Self {
         self.wallet = Some(wallet);
         self
@@ -239,9 +248,9 @@ impl NexusClientBuilder {
     /// Returns [`NexusError::MissingPrivateKey`] when a gas source is
     /// configured without a signing key.
     pub async fn build(self) -> Result<NexusClient, NexusError> {
-        if self.wallet.is_some() && self.pk.is_some() {
+        if self.wallet.is_some() && self.signer.is_some() {
             return Err(NexusError::Configuration(
-                "provide either a wallet or a private key".into(),
+                "provide either a wallet or a signer".into(),
             ));
         }
         let rpc_url = self
@@ -284,7 +293,7 @@ impl NexusClientBuilder {
             (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
             (false, None) => None,
         };
-        if gas_source.is_some() && self.pk.is_none() && self.wallet.is_none() {
+        if gas_source.is_some() && self.signer.is_none() && self.wallet.is_none() {
             return Err(NexusError::MissingPrivateKey);
         }
 
@@ -293,10 +302,10 @@ impl NexusClientBuilder {
             None => Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?),
         };
         let wallet = self.wallet.or_else(|| {
-            self.pk.map(|pk| {
-                super::wallet::WalletClient::from_client(
+            self.signer.map(|signer| {
+                super::wallet::WalletClient::from_signer(
                     Arc::clone(&client),
-                    pk,
+                    signer,
                     self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
                 )
             })
@@ -1275,6 +1284,35 @@ mod tests {
             .err()
             .expect("a conflicting wallet RPC must be rejected");
         assert!(matches!(error, NexusError::Configuration(_)));
+    }
+
+    #[tokio::test]
+    async fn builder_with_signer_and_with_private_key_hold_equivalent_signers() {
+        let via_key = NexusClientBuilder::new()
+            .with_private_key(sui::crypto::Ed25519PrivateKey::new([17; 32]));
+        let via_signer = NexusClientBuilder::new()
+            .with_signer(Arc::new(sui::crypto::Ed25519PrivateKey::new([17; 32])));
+        let key_signer = via_key.signer.as_ref().expect("signer from key");
+        let other_signer = via_signer.signer.as_ref().expect("signer");
+        assert_eq!(key_signer.address(), other_signer.address());
+        let tx = crate::nexus::address_balance::finish_transaction(
+            sui::types::ProgrammableTransaction {
+                inputs: vec![],
+                commands: vec![],
+            },
+            key_signer.address(),
+            1_000_000,
+            crate::nexus::address_balance::SubmissionContext {
+                reference_gas_price: 1,
+                epoch: 1,
+                chain: sui::types::Digest::new([9; 32]),
+            },
+            1,
+        );
+        assert_eq!(
+            key_signer.sign(&tx).await.unwrap(),
+            other_signer.sign(&tx).await.unwrap()
+        );
     }
 
     #[tokio::test]
