@@ -227,6 +227,7 @@ mod tests {
                             sui: SuiConf {
                                 rpc_url: Some(rpc_url.parse().unwrap()),
                                 pk: None,
+                                kms_key_version: None,
                             },
                             nexus: Some(sui_mocks::mock_nexus_objects()),
                             ..Default::default()
@@ -365,6 +366,7 @@ mod tests {
             sui: SuiConf {
                 rpc_url: Some(rpc_url.parse().unwrap()),
                 pk: None,
+                kms_key_version: None,
             },
             ..Default::default()
         };

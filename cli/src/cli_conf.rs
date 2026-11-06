@@ -88,6 +88,9 @@ pub(crate) struct SuiConf {
     pub(crate) pk: Option<SecretValue>,
     #[serde(default)]
     pub(crate) rpc_url: Option<reqwest::Url>,
+    /// Pinned Cloud KMS key version used to sign instead of a local key.
+    #[serde(default)]
+    pub(crate) kms_key_version: Option<String>,
 }
 
 /// Local secrets configuration.
@@ -147,6 +150,28 @@ pub(crate) struct DataStorageConf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn conf_round_trips_kms_key_version() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let path = tempdir.path().join("conf.toml");
+        let version = "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1";
+
+        for value in [Some(version.to_string()), None] {
+            let mut conf = CliConf::default();
+            conf.sui.kms_key_version = value.clone();
+            conf.save_to_path(&path).await.unwrap();
+            let loaded = CliConf::load_from_path(&path).await.unwrap();
+            assert_eq!(loaded.sui.kms_key_version, value);
+        }
+
+        // Files written before the field existed still load.
+        tokio::fs::write(&path, "[sui]\nrpc_url = \"https://rpc.example.com\"\n")
+            .await
+            .unwrap();
+        let loaded = CliConf::load_from_path(&path).await.unwrap();
+        assert_eq!(loaded.sui.kms_key_version, None);
+    }
 
     #[tokio::test]
     async fn load_from_path_or_default_starts_from_defaults_for_a_missing_file() {

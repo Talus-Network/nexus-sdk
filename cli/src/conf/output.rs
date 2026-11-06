@@ -17,6 +17,7 @@ pub(super) struct ConfOutput<'a> {
 struct SuiConfOutput<'a> {
     pk: Option<&'static str>,
     rpc_url: &'a Option<reqwest::Url>,
+    kms_key_version: &'a Option<String>,
 }
 
 impl<'a> From<&'a CliConf> for ConfOutput<'a> {
@@ -25,6 +26,7 @@ impl<'a> From<&'a CliConf> for ConfOutput<'a> {
             sui: SuiConfOutput {
                 pk: conf.sui.pk.as_ref().map(|_| REDACTED_SECRET),
                 rpc_url: &conf.sui.rpc_url,
+                kms_key_version: &conf.sui.kms_key_version,
             },
             nexus: &conf.nexus,
             tools: &conf.tools,
@@ -49,6 +51,7 @@ mod tests {
             sui: SuiConf {
                 pk: Some(SecretValue::from("actual private key")),
                 rpc_url: Some(reqwest::Url::parse("https://rpc.example.com").unwrap()),
+                kms_key_version: None,
             },
             ..CliConf::default()
         };

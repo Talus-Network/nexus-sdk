@@ -67,7 +67,7 @@ sui-types.workspace = true
 
 [dependencies.nexus-sdk]
 workspace = true
-features = ["full", "move_publish"]
+features = ["full", "move_publish", "gcp-kms"]
 
 [dev-dependencies]
 assert_matches = "1.5.0"

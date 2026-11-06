@@ -4,7 +4,11 @@ use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
     nexus_sdk::{
-        nexus::client::{AddressBalanceGas, GasSource, NexusClient},
+        nexus::{
+            client::{AddressBalanceGas, GasSource, NexusClient},
+            signers::GcpKmsSigner,
+            transaction_signer::TransactionSigner,
+        },
         sui,
         types::PackageRole,
     },
@@ -133,6 +137,70 @@ pub(crate) async fn get_signing_key(
     }
 }
 
+/// Where the transaction signer comes from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SignerSource {
+    /// Base64 encoded local private key.
+    LocalKey(String),
+    /// Pinned Cloud KMS key version resource name.
+    Kms(String),
+}
+
+/// Pick the signer source. Local key = `SUI_PK` env, else `[sui].pk`. KMS =
+/// `SUI_KMS_KEY_VERSION` env, else `[sui].kms_key_version`. Configuring both
+/// is ambiguous and rejected.
+pub(crate) fn signer_source(
+    env_pk: Option<String>,
+    env_kms: Option<String>,
+    conf: &crate::cli_conf::SuiConf,
+) -> Result<SignerSource, NexusCliError> {
+    let pk = env_pk.or_else(|| conf.pk.clone().map(|pk| pk.peek().to_string()));
+    let kms = env_kms.or_else(|| conf.kms_key_version.clone());
+
+    match (pk, kms) {
+        (Some(_), Some(_)) => Err(NexusCliError::Any(anyhow!(
+            "Both a local Sui private key (SUI_PK or [sui].pk) and a Cloud KMS key version (SUI_KMS_KEY_VERSION or [sui].kms_key_version) are configured. Configure only one signer."
+        ))),
+        (Some(pk), None) => Ok(SignerSource::LocalKey(pk)),
+        (None, Some(kms)) => Ok(SignerSource::Kms(kms)),
+        (None, None) => Err(NexusCliError::Any(anyhow!(
+            "{message}\n\n{command}\n\n{kms}",
+            message = "The Sui private key is not configured. Please set it via environment or the CLI configuration.",
+            command = "$ nexus conf set --sui.pk <base64_encoded_key>".to_string().bold(),
+            kms = "Alternatively, sign with Cloud KMS by setting SUI_KMS_KEY_VERSION.",
+        ))),
+    }
+}
+
+/// Resolve the configured transaction signer: a local key, or Cloud KMS when a
+/// key version is configured.
+pub(crate) async fn get_signer(
+    conf: &CliConf,
+) -> AnyResult<Arc<dyn TransactionSigner>, NexusCliError> {
+    let source = signer_source(
+        std::env::var("SUI_PK").ok(),
+        std::env::var("SUI_KMS_KEY_VERSION").ok(),
+        &conf.sui,
+    )?;
+
+    match source {
+        SignerSource::LocalKey(_) => Ok(Arc::new(get_signing_key(conf).await?)),
+        SignerSource::Kms(key_version) => {
+            let handle = loading!("Connecting to Cloud KMS signer...");
+            match GcpKmsSigner::new(key_version).await {
+                Ok(signer) => {
+                    handle.success();
+                    Ok(Arc::new(signer))
+                }
+                Err(e) => {
+                    handle.error();
+                    Err(NexusCliError::Nexus(e))
+                }
+            }
+        }
+    }
+}
+
 /// Wrapping some conf parsing functionality used around the CLI.
 pub(crate) async fn get_nexus_objects(
     conf: &mut CliConf,
@@ -234,7 +302,7 @@ async fn build_nexus_client_context(access: ClientAccess) -> Result<NexusClient,
     let builder = NexusClient::builder().with_rpc_url(&rpc_url);
     let builder = match access {
         ClientAccess::ReadOnly => builder,
-        ClientAccess::Signing => builder.with_private_key(get_signing_key(&conf).await?),
+        ClientAccess::Signing => builder.with_signer(get_signer(&conf).await?),
     };
     let builder = builder.with_nexus_objects(nexus_objects);
     builder.build().await.map_err(NexusCliError::Nexus)
@@ -596,6 +664,65 @@ mod tests {
                 );
             }
         };
+
+        fn kms_conf(kms: Option<&str>, pk: Option<&str>) -> crate::cli_conf::SuiConf {
+            crate::cli_conf::SuiConf {
+                pk: pk.map(|p| p.to_string().into()),
+                kms_key_version: kms.map(str::to_string),
+                ..Default::default()
+            }
+        }
+
+        const KMS: &str = "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1";
+
+        #[test]
+        fn signer_source_only_pk_selects_local() {
+            let from_env = signer_source(Some("env".into()), None, &kms_conf(None, None)).unwrap();
+            assert_eq!(from_env, SignerSource::LocalKey("env".into()));
+            let from_conf = signer_source(None, None, &kms_conf(None, Some("conf"))).unwrap();
+            assert_eq!(from_conf, SignerSource::LocalKey("conf".into()));
+        }
+
+        #[test]
+        fn signer_source_only_kms_selects_kms() {
+            let from_env = signer_source(None, Some(KMS.into()), &kms_conf(None, None)).unwrap();
+            assert_eq!(from_env, SignerSource::Kms(KMS.into()));
+            let from_conf = signer_source(None, None, &kms_conf(Some(KMS), None)).unwrap();
+            assert_eq!(from_conf, SignerSource::Kms(KMS.into()));
+        }
+
+        #[test]
+        fn signer_source_both_is_an_error() {
+            for (env_pk, env_kms, conf) in [
+                (Some("env".to_string()), None, kms_conf(Some(KMS), None)),
+                (None, Some(KMS.to_string()), kms_conf(None, Some("conf"))),
+                (
+                    Some("env".to_string()),
+                    Some(KMS.to_string()),
+                    kms_conf(None, None),
+                ),
+                (None, None, kms_conf(Some(KMS), Some("conf"))),
+            ] {
+                let message = signer_source(env_pk, env_kms, &conf)
+                    .unwrap_err()
+                    .to_string();
+                assert!(message.contains("SUI_PK"), "{message}");
+                assert!(message.contains("SUI_KMS_KEY_VERSION"), "{message}");
+            }
+        }
+
+        #[test]
+        fn signer_source_neither_errors_with_existing_message() {
+            let message = signer_source(None, None, &kms_conf(None, None))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                message.contains("The Sui private key is not configured"),
+                "{message}"
+            );
+            assert!(message.contains("nexus conf set --sui.pk"), "{message}");
+            assert!(message.contains("SUI_KMS_KEY_VERSION"), "{message}");
+        }
         let owner_client = ["get_owner_nexus_client", "()"].concat();
         let anonymous_client = ["get_read_only_nexus_client", "()"].concat();
         assert_call_sites(OWNER_SCOPED_COIN_FREE_NEXUS_COMMANDS, &owner_client);
