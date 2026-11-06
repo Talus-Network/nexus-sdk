@@ -76,6 +76,9 @@ mockito.workspace = true
 nexus-toolkit.workspace = true
 rcgen = "0.13"
 rstest.workspace = true
+# No features of its own: the regression test sees exactly the providers the
+# CLI's dependencies enable.
+rustls = { version = "0.23.46", default-features = false }
 schemars.workspace = true
 serial_test.workspace = true
 tempfile.workspace = true

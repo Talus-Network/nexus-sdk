@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - `TransactionSigner` trait with `NexusClientBuilder::with_signer` and `WalletClient::connect_with_signer`, so a wallet can sign with a key held outside the process; `with_private_key` is unchanged.
-- `gcp-kms` feature with `GcpKmsSigner`, a `TransactionSigner` backed by a Google Cloud KMS Ed25519 or P-256 key version, authenticated through Application Default Credentials.
+- `gcp-kms` feature with `GcpKmsSigner`, a `TransactionSigner` backed by a Google Cloud KMS Ed25519 or P-256 key version, authenticated through Application Default Credentials; `GcpKmsSigner::new` installs rustls' ring provider as the process default when none is installed.
 
 #### Changed
 
@@ -40,7 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Opt-in Cloud KMS signing: set `SUI_KMS_KEY_VERSION` or `nexus conf set --sui.kms-key-version` to a pinned `.../cryptoKeyVersions/N` resource to sign with a Google Cloud KMS key through Application Default Credentials (`roles/cloudkms.signerVerifier`). Configuring it together with `SUI_PK`/`sui.pk` is an error; without it the CLI behaves as before.
+- Opt-in Cloud KMS signing: set `SUI_KMS_KEY_VERSION` or `nexus conf set --sui.kms-key-version` to a pinned `.../cryptoKeyVersions/N` resource to sign with a Google Cloud KMS key through Application Default Credentials (`roles/cloudkms.signerVerifier`); an empty value counts as unset. Configuring it together with `SUI_PK`/`sui.pk` is an error; without it the CLI behaves as before.
 
 #### Fixed
 

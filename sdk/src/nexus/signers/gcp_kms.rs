@@ -90,21 +90,45 @@ fn kms_error(context: &str, error: impl std::fmt::Display) -> NexusError {
     NexusError::Wallet(anyhow::anyhow!("Cloud KMS {context}: {error}"))
 }
 
+/// Upper bound on a single KMS request; gax retries within its overall limit.
+const KMS_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// CRC32C (Castagnoli) as KMS uses it for request and response integrity.
+fn kms_crc32c(bytes: &[u8]) -> i64 {
+    i64::from(crc32c::crc32c(bytes))
+}
+
+/// Installs rustls' ring provider as the process default unless one is set.
+///
+/// The Google crates are built without a provider of their own, so the KMS
+/// client needs a process default. ring is what rustls selects on its own in
+/// builds without `gcp-kms`, so other TLS clients in the process are unaffected.
+fn install_default_crypto_provider() {
+    // `Err` only means another provider is already installed, which is fine.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 /// The real KMS client, built once and shared by all signing calls.
 struct GoogleKms {
     client: google_cloud_kms_v1::client::KeyManagementService,
 }
 
 impl GoogleKms {
-    async fn connect() -> Result<Self, NexusError> {
-        let client = google_cloud_kms_v1::client::KeyManagementService::builder()
-            .build()
-            .await
-            .map_err(|error| {
-                NexusError::Configuration(format!(
-                    "could not create the Cloud KMS client (Application Default Credentials): {error}"
-                ))
-            })?;
+    /// Builds the client with Application Default Credentials, or `credentials`.
+    async fn connect(
+        credentials: Option<google_cloud_auth::credentials::Credentials>,
+    ) -> Result<Self, NexusError> {
+        install_default_crypto_provider();
+        let builder = google_cloud_kms_v1::client::KeyManagementService::builder();
+        let builder = match credentials {
+            Some(credentials) => builder.with_credentials(credentials),
+            None => builder,
+        };
+        let client = builder.build().await.map_err(|error| {
+            NexusError::Configuration(format!(
+                "could not create the Cloud KMS client (Application Default Credentials): {error}"
+            ))
+        })?;
         Ok(Self { client })
     }
 }
@@ -114,12 +138,17 @@ impl KmsApi for GoogleKms {
         &'a self,
         name: &'a str,
     ) -> BoxFuture<'a, Result<PublicKeyResp, NexusError>> {
-        use google_cloud_kms_v1::model::crypto_key_version::CryptoKeyVersionAlgorithm as Algorithm;
+        use {
+            google_cloud_gax::options::RequestOptionsBuilder as _,
+            google_cloud_kms_v1::model::crypto_key_version::CryptoKeyVersionAlgorithm as Algorithm,
+        };
         async move {
             let response = self
                 .client
                 .get_public_key()
                 .set_name(name)
+                .with_idempotency(true)
+                .with_attempt_timeout(KMS_ATTEMPT_TIMEOUT)
                 .send()
                 .await
                 .map_err(|error| kms_error("GetPublicKey failed", error))?;
@@ -151,8 +180,16 @@ impl KmsApi for GoogleKms {
         input: SignInput,
         input_crc32c: i64,
     ) -> BoxFuture<'a, Result<SignResp, NexusError>> {
+        use google_cloud_gax::options::RequestOptionsBuilder as _;
         async move {
-            let request = self.client.asymmetric_sign().set_name(name);
+            // Signing has no side effects, so transport failures and 429/503
+            // after the request was sent are safe to retry.
+            let request = self
+                .client
+                .asymmetric_sign()
+                .set_name(name)
+                .with_idempotency(true)
+                .with_attempt_timeout(KMS_ATTEMPT_TIMEOUT);
             let request = match input {
                 SignInput::Data(data) => request.set_data(data).set_data_crc32c(input_crc32c),
                 SignInput::Sha256Digest(digest) => request
@@ -208,10 +245,13 @@ impl GcpKmsSigner {
     /// Connects with Application Default Credentials and loads the public key of
     /// `key_version`, a pinned key version resource name:
     /// `projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>/cryptoKeyVersions/<n>`.
+    ///
+    /// Installs rustls' ring provider as the process default when none is
+    /// installed yet; the Google client libraries are built without one.
     pub async fn new(key_version: impl Into<String>) -> Result<Self, NexusError> {
         let key_version = key_version.into();
         validate_key_version(&key_version)?;
-        let api = GoogleKms::connect().await?;
+        let api = GoogleKms::connect(None).await?;
         Self::with_api(key_version, Arc::new(api)).await
     }
 
@@ -227,7 +267,7 @@ impl GcpKmsSigner {
                 "unsupported KMS key algorithm {name}; supported: EC_SIGN_ED25519, EC_SIGN_P256_SHA256"
             )));
         }
-        if response.pem_crc32c != Some(i64::from(crc32c::crc32c(response.pem.as_bytes()))) {
+        if response.pem_crc32c != Some(kms_crc32c(response.pem.as_bytes())) {
             return Err(kms_error(
                 "GetPublicKey response",
                 "missing or failed its CRC32C integrity check",
@@ -287,7 +327,7 @@ impl GcpKmsSigner {
             KmsAlgorithm::Ed25519 => SignInput::Data(digest.to_vec()),
             _ => SignInput::Sha256Digest(Sha256::digest(digest).into()),
         };
-        let input_crc32c = i64::from(crc32c::crc32c(input.bytes()));
+        let input_crc32c = kms_crc32c(input.bytes());
         let response = self
             .api
             .asymmetric_sign(&self.key_version, input, input_crc32c)
@@ -304,7 +344,7 @@ impl GcpKmsSigner {
                 "did not verify the request CRC32C (request corrupted in transit)",
             ));
         }
-        if response.signature_crc32c != Some(i64::from(crc32c::crc32c(&response.signature))) {
+        if response.signature_crc32c != Some(kms_crc32c(&response.signature)) {
             return Err(kms_error(
                 "AsymmetricSign response",
                 "signature is missing its CRC32C or failed the integrity check",
@@ -441,7 +481,7 @@ mod tests {
     }
 
     fn crc(bytes: &[u8]) -> i64 {
-        i64::from(crc32c::crc32c(bytes))
+        kms_crc32c(bytes)
     }
 
     enum Key {
@@ -724,6 +764,22 @@ mod tests {
         assert!(results.iter().all(Result::is_ok));
         assert_eq!(kms.public_key_calls.load(Ordering::SeqCst), 1);
         assert_eq!(kms.sign_calls.load(Ordering::SeqCst), 32);
+    }
+
+    #[test]
+    fn crc32c_known_answer() {
+        // The CRC-32C (Castagnoli) check value.
+        assert_eq!(kms_crc32c(b"123456789"), 0xe306_9283);
+    }
+
+    /// The Google crates ship without a rustls provider, so building the
+    /// client (which builds its HTTPS stack) panics unless `connect` installs
+    /// one. Anonymous credentials keep this offline: nothing is sent.
+    #[tokio::test]
+    async fn connect_builds_https_client_without_bundled_provider() {
+        let credentials = google_cloud_auth::credentials::anonymous::Builder::new().build();
+        assert!(GoogleKms::connect(Some(credentials)).await.is_ok());
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
     }
 
     #[test]
