@@ -176,7 +176,7 @@ impl NexusClientBuilder {
 
     /// Reuses the wallet authority used by other domain clients such as Walrus.
     /// Its RPC endpoint becomes the default and must not be overridden with a
-    /// different endpoint. Supplying a second private key is an error.
+    /// different endpoint. Supplying a second signer is an error.
     pub fn with_wallet(mut self, wallet: super::wallet::WalletClient) -> Self {
         self.wallet = Some(wallet);
         self
@@ -250,7 +250,7 @@ impl NexusClientBuilder {
     pub async fn build(self) -> Result<NexusClient, NexusError> {
         if self.wallet.is_some() && self.signer.is_some() {
             return Err(NexusError::Configuration(
-                "provide either a wallet or a private key".into(),
+                "provide either a wallet or a signer".into(),
             ));
         }
         let rpc_url = self

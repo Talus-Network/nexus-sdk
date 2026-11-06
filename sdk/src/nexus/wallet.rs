@@ -14,7 +14,7 @@ use {
     tokio::{sync::OnceCell, time::Duration},
 };
 
-/// Clones share the same RPC connection, private key and cached network metadata.
+/// Clones share the same RPC connection, signer and cached network metadata.
 /// Domain clients borrow this authority instead of constructing another wallet.
 #[derive(Clone)]
 pub struct WalletClient {
@@ -77,6 +77,8 @@ impl WalletClient {
         self.signer.address()
     }
 
+    /// The signer that signs this wallet's transactions; its
+    /// [`address`](TransactionSigner::address) is [`Self::owner`].
     pub fn signer(&self) -> &Arc<dyn TransactionSigner> {
         &self.signer
     }

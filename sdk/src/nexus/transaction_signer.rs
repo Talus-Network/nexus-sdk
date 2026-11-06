@@ -15,6 +15,14 @@ pub trait TransactionSigner: Send + Sync + std::fmt::Debug {
     fn address(&self) -> sui::types::Address;
 
     /// Signs the transaction's signing digest.
+    ///
+    /// The signature must come from the key behind [`Self::address`]:
+    /// [`WalletClient::execute_signed_transaction`](super::wallet::WalletClient::execute_signed_transaction)
+    /// rejects a signature whose public key derives a different address.
+    ///
+    /// Implementations must be cancel safe: dropping the returned future at any
+    /// point must leave the signer usable, because callers may wrap it in a
+    /// timeout or `select!`.
     fn sign<'a>(
         &'a self,
         tx: &'a sui::types::Transaction,
