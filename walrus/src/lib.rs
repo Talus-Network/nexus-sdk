@@ -249,7 +249,7 @@ impl WalrusStorage {
             .wallet
             .prepare_transaction(finish_ptb(builder).await?, upload.options.gas_budget_mist)
             .await?;
-        let signature = self.wallet.sign_transaction(&transaction)?;
+        let signature = self.wallet.sign_transaction(&transaction).await?;
         Ok(UploadRegistration {
             network: self.network,
             chain_id: self.wallet.chain_id().await?.into(),

@@ -8,8 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- `TransactionSigner` trait with `NexusClientBuilder::with_signer` and `WalletClient::connect_with_signer`, so a wallet can sign with a key held outside the process; `with_private_key` is unchanged.
+
 #### Changed
 
+- **Breaking:** `WalletClient::sign_transaction` is now async; local-key signatures are unchanged.
 - Updated the advisory policy for upstream-constrained zstd/zstd-safe versions and upgraded locked zstd-sys to 2.1.2; exception reasons record scope, review date, and removal criteria.
 - **Signed HTTP v3.1:** Requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing v3 input and result signature bytes. This protocol revision retains the `signed_http::v3` API module and `X-Nexus-Sig-V: 3` wire header; package versions are unchanged. See the [v3.1 migration guide](sdk/README.md#migrating-from-signed-http-v3-to-v31).
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.

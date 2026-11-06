@@ -5,6 +5,7 @@ use {
         nexus::{
             address_balance::{fetch_submission_context, finish_transaction, NonceAllocator},
             error::{NexusError, TransactionError},
+            transaction_signer::TransactionSigner,
         },
         sui::{self, traits::*},
     },
@@ -18,7 +19,7 @@ use {
 #[derive(Clone)]
 pub struct WalletClient {
     client: Arc<sui::grpc::Client>,
-    key: Arc<sui::crypto::Ed25519PrivateKey>,
+    signer: Arc<dyn TransactionSigner>,
     rpc_url: String,
     network_info: Arc<OnceCell<NetworkInfo>>,
     transaction_timeout: Duration,
@@ -41,15 +42,34 @@ impl WalletClient {
         Ok(wallet)
     }
 
+    /// Connects a wallet that signs through any [`TransactionSigner`].
+    pub async fn connect_with_signer(
+        rpc_url: &str,
+        signer: Arc<dyn TransactionSigner>,
+    ) -> Result<Self, NexusError> {
+        let client = Arc::new(sui::grpc::client(rpc_url).map_err(NexusError::Rpc)?);
+        let wallet = Self::from_signer(client, signer, Duration::from_secs(60));
+        wallet.chain_id().await?;
+        Ok(wallet)
+    }
+
     pub(crate) fn from_client(
         client: Arc<sui::grpc::Client>,
         key: sui::crypto::Ed25519PrivateKey,
         transaction_timeout: Duration,
     ) -> Self {
+        Self::from_signer(client, Arc::new(key), transaction_timeout)
+    }
+
+    pub(crate) fn from_signer(
+        client: Arc<sui::grpc::Client>,
+        signer: Arc<dyn TransactionSigner>,
+        transaction_timeout: Duration,
+    ) -> Self {
         let rpc_url = client.uri().to_string();
         Self {
             client,
-            key: Arc::new(key),
+            signer,
             rpc_url,
             network_info: Arc::new(OnceCell::new()),
             transaction_timeout,
@@ -57,7 +77,11 @@ impl WalletClient {
     }
 
     pub fn owner(&self) -> sui::types::Address {
-        self.key.public_key().derive_address()
+        self.signer.address()
+    }
+
+    pub fn signer(&self) -> &Arc<dyn TransactionSigner> {
+        &self.signer
     }
 
     pub fn rpc_url(&self) -> &str {
@@ -134,13 +158,11 @@ impl WalletClient {
         Arc::clone(&self.client)
     }
 
-    pub fn sign_transaction(
+    pub async fn sign_transaction(
         &self,
         tx: &sui::types::Transaction,
     ) -> Result<sui::types::UserSignature, NexusError> {
-        self.key
-            .sign_transaction(tx)
-            .map_err(|error| NexusError::Wallet(error.into()))
+        self.signer.sign(tx).await
     }
 
     /// Completes a PTB with address balance gas using the process nonce authority.
@@ -179,7 +201,7 @@ impl WalletClient {
         &self,
         tx: sui::types::Transaction,
     ) -> Result<sui::grpc::ExecutedTransaction, NexusError> {
-        let signature = self.sign_transaction(&tx)?;
+        let signature = self.sign_transaction(&tx).await?;
         self.execute_signed_transaction(tx, signature).await
     }
 
@@ -190,15 +212,39 @@ impl WalletClient {
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
     ) -> Result<sui::grpc::ExecutedTransaction, NexusError> {
-        use sui::crypto::SuiVerifier as _;
         if tx.sender != self.owner() {
             return Err(NexusError::Wallet(anyhow::anyhow!(
                 "transaction sender differs from this wallet"
             )));
         }
-        sui::crypto::ed25519::Ed25519VerifyingKey::new(&self.key.public_key())
-            .and_then(|key| key.verify_transaction(&tx, &signature))
+        use sui::crypto::SuiVerifier as _;
+        sui::crypto::UserSignatureVerifier::new()
+            .verify_transaction(&tx, &signature)
             .map_err(|error| NexusError::Wallet(error.into()))?;
+        let signer_address = match &signature {
+            sui::types::UserSignature::Simple(sui::types::SimpleSignature::Ed25519 {
+                public_key,
+                ..
+            }) => public_key.derive_address(),
+            sui::types::UserSignature::Simple(sui::types::SimpleSignature::Secp256k1 {
+                public_key,
+                ..
+            }) => public_key.derive_address(),
+            sui::types::UserSignature::Simple(sui::types::SimpleSignature::Secp256r1 {
+                public_key,
+                ..
+            }) => public_key.derive_address(),
+            _ => {
+                return Err(NexusError::Wallet(anyhow::anyhow!(
+                    "unsupported signature scheme for this wallet"
+                )))
+            }
+        };
+        if signer_address != self.owner() {
+            return Err(NexusError::Wallet(anyhow::anyhow!(
+                "signature was not produced by this wallet"
+            )));
+        }
         let (response, digest, checkpoint) = self
             .execute_tx_and_wait_for_checkpoint(tx, signature)
             .await?;
@@ -378,7 +424,7 @@ mod tests {
             },
             1,
         );
-        let signature = wallet.sign_transaction(&tx).unwrap();
+        let signature = wallet.sign_transaction(&tx).await.unwrap();
         tx.gas_payment.budget += 1;
         assert!(matches!(
             wallet
@@ -387,7 +433,62 @@ mod tests {
             Err(NexusError::Wallet(_))
         ));
         tx.sender = sui::types::Address::TWO;
-        let signature = wallet.sign_transaction(&tx).unwrap();
+        let signature = wallet.sign_transaction(&tx).await.unwrap();
+        assert!(matches!(
+            wallet.execute_signed_transaction(tx, signature).await,
+            Err(NexusError::Wallet(_))
+        ));
+    }
+
+    fn test_transaction(sender: sui::types::Address) -> sui::types::Transaction {
+        crate::nexus::address_balance::finish_transaction(
+            sui::types::ProgrammableTransaction {
+                inputs: vec![],
+                commands: vec![],
+            },
+            sender,
+            1_000_000,
+            crate::nexus::address_balance::SubmissionContext {
+                reference_gas_price: 1,
+                epoch: 1,
+                chain: sui::types::Digest::new([9; 32]),
+            },
+            1,
+        )
+    }
+
+    #[tokio::test]
+    async fn with_signer_and_with_private_key_are_equivalent() {
+        use {super::WalletClient, crate::nexus::transaction_signer::TransactionSigner};
+        let client = std::sync::Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
+        let from_key = WalletClient::from_client(
+            client.clone(),
+            sui::crypto::Ed25519PrivateKey::new([17; 32]),
+            Duration::from_secs(1),
+        );
+        let signer: std::sync::Arc<dyn TransactionSigner> =
+            std::sync::Arc::new(sui::crypto::Ed25519PrivateKey::new([17; 32]));
+        let from_signer = WalletClient::from_signer(client, signer, Duration::from_secs(1));
+        assert_eq!(from_key.owner(), from_signer.owner());
+        let tx = test_transaction(from_key.owner());
+        assert_eq!(
+            from_key.sign_transaction(&tx).await.unwrap(),
+            from_signer.sign_transaction(&tx).await.unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_signed_transaction_rejects_signature_from_other_key() {
+        use super::WalletClient;
+        let client = std::sync::Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
+        let wallet = WalletClient::from_client(
+            client,
+            sui::crypto::Ed25519PrivateKey::new([17; 32]),
+            Duration::from_secs(1),
+        );
+        let tx = test_transaction(wallet.owner());
+        let other = sui::crypto::Ed25519PrivateKey::new([18; 32]);
+        let signature = sui::crypto::SuiSigner::sign_transaction(&other, &tx).unwrap();
         assert!(matches!(
             wallet.execute_signed_transaction(tx, signature).await,
             Err(NexusError::Wallet(_))

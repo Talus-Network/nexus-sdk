@@ -143,7 +143,7 @@ impl AddressBalanceGas {
 #[derive(Default)]
 pub struct NexusClientBuilder {
     wallet: Option<super::wallet::WalletClient>,
-    pk: Option<sui::crypto::Ed25519PrivateKey>,
+    signer: Option<Arc<dyn super::transaction_signer::TransactionSigner>>,
     rpc_url: Option<String>,
     state_catalog_rpc_url: Option<String>,
     gas_coins: Vec<sui::types::ObjectReference>,
@@ -160,8 +160,17 @@ impl NexusClientBuilder {
     }
 
     /// Add a private key to the builder.
-    pub fn with_private_key(mut self, pk: sui::crypto::Ed25519PrivateKey) -> Self {
-        self.pk = Some(pk);
+    pub fn with_private_key(self, pk: sui::crypto::Ed25519PrivateKey) -> Self {
+        self.with_signer(Arc::new(pk))
+    }
+
+    /// Sign with any [`TransactionSigner`](super::transaction_signer::TransactionSigner),
+    /// for example a key held outside the process.
+    pub fn with_signer(
+        mut self,
+        signer: Arc<dyn super::transaction_signer::TransactionSigner>,
+    ) -> Self {
+        self.signer = Some(signer);
         self
     }
 
@@ -239,7 +248,7 @@ impl NexusClientBuilder {
     /// Returns [`NexusError::MissingPrivateKey`] when a gas source is
     /// configured without a signing key.
     pub async fn build(self) -> Result<NexusClient, NexusError> {
-        if self.wallet.is_some() && self.pk.is_some() {
+        if self.wallet.is_some() && self.signer.is_some() {
             return Err(NexusError::Configuration(
                 "provide either a wallet or a private key".into(),
             ));
@@ -284,7 +293,7 @@ impl NexusClientBuilder {
             (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
             (false, None) => None,
         };
-        if gas_source.is_some() && self.pk.is_none() && self.wallet.is_none() {
+        if gas_source.is_some() && self.signer.is_none() && self.wallet.is_none() {
             return Err(NexusError::MissingPrivateKey);
         }
 
@@ -293,10 +302,10 @@ impl NexusClientBuilder {
             None => Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?),
         };
         let wallet = self.wallet.or_else(|| {
-            self.pk.map(|pk| {
-                super::wallet::WalletClient::from_client(
+            self.signer.map(|signer| {
+                super::wallet::WalletClient::from_signer(
                     Arc::clone(&client),
-                    pk,
+                    signer,
                     self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
                 )
             })
