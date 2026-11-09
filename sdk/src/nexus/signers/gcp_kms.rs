@@ -534,22 +534,33 @@ fn validate_proxy_url(proxy_url: &str) -> Result<(), NexusError> {
     if host.is_empty() {
         return Err(proxy_url_error("must have a host"));
     }
-    if !host
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
-    {
+    // The URL parser reads a host whose last label starts with a digit as
+    // IPv4, so it must be a strict dotted quad; anything else is a DNS name.
+    let last_label = host.rsplit('.').next().unwrap_or_default();
+    let host_ok = if last_label.starts_with(|c: char| c.is_ascii_digit()) {
+        host.parse::<std::net::Ipv4Addr>().is_ok()
+    } else {
+        host.split('.').all(|label| {
+            (1..=63).contains(&label.len())
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        })
+    };
+    if !host_ok {
         return Err(proxy_url_error(
             "host must be a DNS name or an IPv4 address",
         ));
     }
     if let Some(port) = port {
-        let digits_only = !port.is_empty() && port.chars().all(|c| c.is_ascii_digit());
+        let digits_only =
+            !port.is_empty() && !port.starts_with('0') && port.chars().all(|c| c.is_ascii_digit());
         if !digits_only || !matches!(port.parse::<u16>(), Ok(1..)) {
             return Err(proxy_url_error("port must be 1-65535"));
         }
     }
-    // A bare `/` counts as no path.
-    if !path.is_empty() && path != "/" {
+    // The path is empty or `/segment(/segment)*`; it never ends in `/`.
+    if !path.is_empty() {
         let canonical = path[1..].split('/').all(|segment| {
             !segment.is_empty()
                 && segment
@@ -1047,6 +1058,18 @@ mod tests {
             "http://kms-proxy:8790/a/../s3cret-tok3n",
             "http://kms-proxy:8790/./s3cret-tok3n",
             "http://kms-proxy:8790/s3cret-tok3n/",
+            "http://kms-proxy/",
+            "http://1.2.3.999:8790/s3cret-tok3n",
+            "http://1.2.3.4.5:8790/s3cret-tok3n",
+            "http://256.0.0.1:8790/s3cret-tok3n",
+            "http://999:8790/s3cret-tok3n",
+            "http://0x7f.1:8790/s3cret-tok3n",
+            "http://a..b:8790/s3cret-tok3n",
+            "http://-a:8790/s3cret-tok3n",
+            "http://a-:8790/s3cret-tok3n",
+            "http://.:8790/s3cret-tok3n",
+            "http://kms-proxy.:8790/s3cret-tok3n",
+            "http://kms-proxy:08790/s3cret-tok3n",
             "http://kms-proxy:8790//s3cret-tok3n",
             "http://kms-proxy:8790/{s3cret-tok3n}",
             "http://kms-proxy:8790/s3cret-tok\u{f6}n",
@@ -1070,7 +1093,6 @@ mod tests {
             "http://127.0.0.1:8790/tok3n",
             "https://kms-proxy.internal/a/b_c~d",
             "http://kms-proxy",
-            "http://kms-proxy/",
             "http://kms-proxy:65535",
         ] {
             assert!(validate_proxy_url(good).is_ok(), "{good}");
