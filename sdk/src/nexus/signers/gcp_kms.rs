@@ -13,6 +13,8 @@
 //! Credentials come from Application Default Credentials (for example a
 //! Workload Identity Federation `external_account` file referenced by
 //! `GOOGLE_APPLICATION_CREDENTIALS`), handled by the Google client library.
+//! Where the process cannot obtain credentials itself, [`GcpKmsSigner::via_proxy`]
+//! sends the same calls, without credentials, to a proxy that authenticates them.
 //! Requests and responses are protected with CRC32C checks, and every
 //! signature is verified locally before it is returned.
 
@@ -111,25 +113,68 @@ fn install_default_crypto_provider() {
 /// The real KMS client, built once and shared by all signing calls.
 struct GoogleKms {
     client: google_cloud_kms_v1::client::KeyManagementService,
+    /// Strings that must never appear in an error (the proxy URL carries a
+    /// secret path token); the client's own errors can quote the request URL.
+    secrets: Vec<String>,
+}
+
+/// Replaces every occurrence of each of `secrets` in `text` with a placeholder.
+fn redact_secrets(secrets: &[String], text: String) -> String {
+    secrets
+        .iter()
+        .filter(|secret| !secret.is_empty())
+        .fold(text, |text, secret| text.replace(secret, "<redacted>"))
+}
+
+/// Where the KMS client sends its calls and how it authenticates them.
+enum KmsTarget {
+    /// Cloud KMS with Application Default Credentials.
+    DirectWithApplicationDefaultCredentials,
+    /// An authenticating proxy at this base URL; no credentials are sent.
+    AuthenticatingProxy(String),
 }
 
 impl GoogleKms {
-    /// Builds the client with Application Default Credentials, or `credentials`.
+    /// Builds the client for `target`. With `credentials` they replace
+    /// Application Default Credentials; an authenticating proxy always gets
+    /// anonymous credentials.
     async fn connect(
+        target: KmsTarget,
         credentials: Option<google_cloud_auth::credentials::Credentials>,
     ) -> Result<Self, NexusError> {
         install_default_crypto_provider();
         let builder = google_cloud_kms_v1::client::KeyManagementService::builder();
+        let (builder, secrets, description) = match target {
+            KmsTarget::DirectWithApplicationDefaultCredentials => {
+                (builder, Vec::new(), "Application Default Credentials")
+            }
+            KmsTarget::AuthenticatingProxy(proxy_url) => {
+                let path = proxy_url_path(&proxy_url).to_owned();
+                let anonymous = google_cloud_auth::credentials::anonymous::Builder::new().build();
+                (
+                    builder
+                        .with_endpoint(proxy_url.clone())
+                        .with_credentials(anonymous),
+                    vec![proxy_url, path],
+                    "KMS proxy",
+                )
+            }
+        };
         let builder = match credentials {
             Some(credentials) => builder.with_credentials(credentials),
             None => builder,
         };
         let client = builder.build().await.map_err(|error| {
             NexusError::Configuration(format!(
-                "could not create the Cloud KMS client (Application Default Credentials): {error}"
+                "could not create the Cloud KMS client ({description}): {}",
+                redact_secrets(&secrets, error.to_string())
             ))
         })?;
-        Ok(Self { client })
+        Ok(Self { client, secrets })
+    }
+
+    fn error(&self, context: &str, error: impl std::fmt::Display) -> NexusError {
+        kms_error(context, redact_secrets(&self.secrets, error.to_string()))
     }
 }
 
@@ -151,7 +196,7 @@ impl KmsApi for GoogleKms {
                 .with_attempt_timeout(KMS_ATTEMPT_TIMEOUT)
                 .send()
                 .await
-                .map_err(|error| kms_error("GetPublicKey failed", error))?;
+                .map_err(|error| self.error("GetPublicKey failed", error))?;
             let algorithm = if response.algorithm == Algorithm::EcSignEd25519 {
                 KmsAlgorithm::Ed25519
             } else if response.algorithm == Algorithm::EcSignP256Sha256 {
@@ -201,7 +246,7 @@ impl KmsApi for GoogleKms {
             let response = request
                 .send()
                 .await
-                .map_err(|error| kms_error("AsymmetricSign failed", error))?;
+                .map_err(|error| self.error("AsymmetricSign failed", error))?;
             Ok(SignResp {
                 name: response.name,
                 signature: response.signature.to_vec(),
@@ -251,7 +296,35 @@ impl GcpKmsSigner {
     pub async fn new(key_version: impl Into<String>) -> Result<Self, NexusError> {
         let key_version = key_version.into();
         validate_key_version(&key_version)?;
-        let api = GoogleKms::connect(None).await?;
+        let api =
+            GoogleKms::connect(KmsTarget::DirectWithApplicationDefaultCredentials, None).await?;
+        Self::with_api(key_version, Arc::new(api)).await
+    }
+
+    /// Like [`Self::new`], but sends the Cloud KMS REST calls to an
+    /// authenticating proxy at `proxy_url` instead of `cloudkms.googleapis.com`,
+    /// and sends no credentials itself.
+    ///
+    /// The proxy must forward the `GetPublicKey` (`GET /v1/<key_version>/publicKey`)
+    /// and `AsymmetricSign` (`POST /v1/<key_version>:asymmetricSign`) calls to
+    /// Cloud KMS unchanged and add the credentials. Everything else behaves as
+    /// in [`Self::new`]: the public key is fetched and CRC32C-checked once, and
+    /// every signature is verified locally against that pinned key, so a proxy
+    /// cannot make the signer return a signature from a different key.
+    ///
+    /// `proxy_url` is a base URL, `http://` or `https://` with a host, with no
+    /// query or fragment. It may carry a path prefix (for example a secret path
+    /// token, `http://kms-proxy:8790/<token>`); the client appends `/v1/...` to
+    /// it. The URL is never included in errors, logs or `Debug` output.
+    pub async fn via_proxy(
+        key_version: impl Into<String>,
+        proxy_url: impl Into<String>,
+    ) -> Result<Self, NexusError> {
+        let key_version = key_version.into();
+        validate_key_version(&key_version)?;
+        let proxy_url = proxy_url.into();
+        validate_proxy_url(&proxy_url)?;
+        let api = GoogleKms::connect(KmsTarget::AuthenticatingProxy(proxy_url), None).await?;
         Self::with_api(key_version, Arc::new(api)).await
     }
 
@@ -401,6 +474,45 @@ impl TransactionSigner for GcpKmsSigner {
 }
 
 /// Accepts only a pinned key version, never a key (which would follow rotation).
+/// The path part of an already validated proxy URL (empty when there is none).
+fn proxy_url_path(proxy_url: &str) -> &str {
+    let after_scheme = proxy_url
+        .split_once("://")
+        .map_or(proxy_url, |(_, rest)| rest);
+    after_scheme
+        .find('/')
+        .map_or("", |index| &after_scheme[index..])
+}
+
+/// Accepts `http(s)://host[:port][/path]` only. Error texts never echo the URL.
+fn validate_proxy_url(proxy_url: &str) -> Result<(), NexusError> {
+    let Some((scheme, rest)) = proxy_url.split_once("://") else {
+        return Err(NexusError::Configuration(
+            "KMS proxy URL must be http or https".into(),
+        ));
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return Err(NexusError::Configuration(
+            "KMS proxy URL must be http or https".into(),
+        ));
+    }
+    if proxy_url.contains(['?', '#']) {
+        return Err(NexusError::Configuration(
+            "KMS proxy URL must not have a query or fragment".into(),
+        ));
+    }
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if host.is_empty() || host.starts_with(':') || proxy_url.contains(char::is_whitespace) {
+        return Err(NexusError::Configuration(
+            "KMS proxy URL must have a host".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_key_version(name: &str) -> Result<(), NexusError> {
     let parts: Vec<&str> = name.split('/').collect();
     let segment_ok = |s: &str| {
@@ -452,6 +564,8 @@ mod tests {
 
     const VECTORS: &str = include_str!("../../../tests/fixtures/kms_sui_keytool_vectors.json");
     const KEY_VERSION: &str = "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1";
+    /// `CryptoKeyVersionAlgorithm::EC_SIGN_ED25519` as the REST client's int enum encoding.
+    const EC_SIGN_ED25519_INT: i32 = 40;
     const P256_ORDER_HALF: [u8; 32] = [
         0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xde, 0x73, 0x7d, 0x56, 0xd3, 0x8b, 0xcf, 0x42, 0x79, 0xdc, 0xe5, 0x61, 0x7e, 0x31,
@@ -778,8 +892,154 @@ mod tests {
     #[tokio::test]
     async fn connect_builds_https_client_without_bundled_provider() {
         let credentials = google_cloud_auth::credentials::anonymous::Builder::new().build();
-        assert!(GoogleKms::connect(Some(credentials)).await.is_ok());
+        assert!(GoogleKms::connect(
+            KmsTarget::DirectWithApplicationDefaultCredentials,
+            Some(credentials)
+        )
+        .await
+        .is_ok());
         assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
+
+    /// Sign body the Google REST client sends for `AsymmetricSign` with data.
+    fn sign_request_matcher(digest: &[u8]) -> mockito::Matcher {
+        use base64::Engine as _;
+        // The client repeats `name` in the body as well as in the path.
+        mockito::Matcher::Json(serde_json::json!({
+            "name": KEY_VERSION,
+            "data": base64::engine::general_purpose::STANDARD.encode(digest),
+            "dataCrc32c": crc(digest).to_string(),
+        }))
+    }
+
+    #[tokio::test]
+    async fn via_proxy_signs_through_proxy_path_without_credentials() {
+        use base64::Engine as _;
+        let kms = FakeKms::ed25519();
+        let tx = fixture_tx();
+        let digest = tx.signing_digest();
+        let pem = kms.key.pem();
+        let signature = kms.key.sign(&SignInput::Data(digest.to_vec()), false);
+        let b64 = base64::engine::general_purpose::STANDARD;
+
+        let mut server = mockito::Server::new_async().await;
+        let query = mockito::Matcher::Regex(r"(?i)alt=json.*enum-encoding(=|%3D)int".into());
+        let public_key = server
+            .mock("GET", format!("/tok3n/v1/{KEY_VERSION}/publicKey").as_str())
+            .match_query(query.clone())
+            .match_header("authorization", mockito::Matcher::Missing)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "pem": pem,
+                    "pemCrc32c": crc(pem.as_bytes()).to_string(),
+                    "algorithm": EC_SIGN_ED25519_INT,
+                    "name": KEY_VERSION,
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let sign = server
+            .mock(
+                "POST",
+                format!("/tok3n/v1/{KEY_VERSION}:asymmetricSign").as_str(),
+            )
+            .match_query(query)
+            .match_header("authorization", mockito::Matcher::Missing)
+            .match_body(sign_request_matcher(&digest))
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "name": KEY_VERSION,
+                    "signature": b64.encode(&signature),
+                    "signatureCrc32c": crc(&signature).to_string(),
+                    "verifiedDataCrc32c": true,
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let signer = GcpKmsSigner::via_proxy(KEY_VERSION, format!("{}/tok3n", server.url()))
+            .await
+            .unwrap();
+        let user_signature = TransactionSigner::sign(&signer, &tx).await.unwrap();
+        assert_eq!(
+            user_signature.to_base64(),
+            vector_str("ed25519", "kat_keytool_signature_b64")
+        );
+        public_key.assert_async().await;
+        sign.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn via_proxy_rejects_bad_urls() {
+        for bad in [
+            "ftp://kms-proxy:8790/s3cret-tok3n",
+            "http:///s3cret-tok3n",
+            "http://:8790/s3cret-tok3n",
+            "kms-proxy:8790/s3cret-tok3n",
+            "http://kms-proxy:8790/s3cret-tok3n?x=1",
+            "http://kms-proxy:8790/s3cret-tok3n#frag",
+            "",
+        ] {
+            let error = GcpKmsSigner::via_proxy(KEY_VERSION, bad).await.unwrap_err();
+            assert!(matches!(error, NexusError::Configuration(_)), "{bad}");
+            let text = format!("{error} {error:?}");
+            assert!(!text.contains("s3cret-tok3n"), "{bad}: {text}");
+            assert!(!text.contains("kms-proxy"), "{bad}: {text}");
+        }
+    }
+
+    #[tokio::test]
+    async fn via_proxy_debug_and_errors_hide_url() {
+        // Nothing listens on this port, so the call fails at the transport.
+        let url = "http://127.0.0.1:9/s3cret-tok3n";
+        let error = GcpKmsSigner::via_proxy(KEY_VERSION, url).await.unwrap_err();
+        assert!(!format!("{error} {error:?}").contains("s3cret-tok3n"));
+    }
+
+    #[tokio::test]
+    async fn via_proxy_debug_hides_url() {
+        let mut server = mockito::Server::new_async().await;
+        let kms = FakeKms::ed25519();
+        let pem = kms.key.pem();
+        let _public_key = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "pem": pem,
+                    "pemCrc32c": crc(pem.as_bytes()).to_string(),
+                    "algorithm": EC_SIGN_ED25519_INT,
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+        let signer = GcpKmsSigner::via_proxy(KEY_VERSION, format!("{}/s3cret-tok3n", server.url()))
+            .await
+            .unwrap();
+        let rendered = format!("{signer:?}");
+        assert!(!rendered.contains("s3cret-tok3n"));
+        assert!(rendered.contains(KEY_VERSION));
+    }
+
+    #[test]
+    fn redact_secrets_replaces_every_occurrence() {
+        let secrets = vec![
+            "http://h:1/s3cret-tok3n".to_owned(),
+            "/s3cret-tok3n".to_owned(),
+        ];
+        let text = redact_secrets(
+            &secrets,
+            "error for url (http://h:1/s3cret-tok3n/v1/x) at /s3cret-tok3n".into(),
+        );
+        assert!(!text.contains("s3cret-tok3n"));
     }
 
     #[test]
