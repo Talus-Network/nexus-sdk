@@ -544,6 +544,8 @@ fn validate_proxy_url(proxy_url: &str) -> Result<(), NexusError> {
             (1..=63).contains(&label.len())
                 && !label.starts_with('-')
                 && !label.ends_with('-')
+                // Internationalized (punycode) labels are not accepted.
+                && !label.to_ascii_lowercase().starts_with("xn--")
                 && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         })
     };
@@ -1070,6 +1072,9 @@ mod tests {
             "http://.:8790/s3cret-tok3n",
             "http://kms-proxy.:8790/s3cret-tok3n",
             "http://kms-proxy:08790/s3cret-tok3n",
+            "http://xn--a:8790/s3cret-tok3n",
+            "http://XN--a:8790/s3cret-tok3n",
+            "http://a.xn--a.b:8790/s3cret-tok3n",
             "http://kms-proxy:8790//s3cret-tok3n",
             "http://kms-proxy:8790/{s3cret-tok3n}",
             "http://kms-proxy:8790/s3cret-tok\u{f6}n",
