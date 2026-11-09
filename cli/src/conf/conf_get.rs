@@ -30,6 +30,7 @@ mod tests {
         let sui_conf = SuiConf {
             pk: Some("123".to_string().into()),
             rpc_url: Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap()),
+            kms_key_version: None,
         };
 
         let tools = HashMap::new();

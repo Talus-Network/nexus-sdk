@@ -50,7 +50,9 @@ mockito.workspace = true
 nexus-sdk = { workspace = true, features = ["walrus"] }
 rcgen = "0.13"
 reqwest = { version = "0.12.14", default-features = false, features = ["json", "rustls-tls"] }
-rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+# ring, like every other rustls user here: a second provider in the workspace
+# test build makes `rustls::ClientConfig::builder()` panic.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tempfile.workspace = true
 tokio = { version = "1.44.1", features = ["macros"] }
 warp = { workspace = true, features = ["test"] }

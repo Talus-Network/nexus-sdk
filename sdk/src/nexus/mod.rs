@@ -15,9 +15,12 @@ pub mod registered_key;
 pub mod registry;
 pub mod scheduler;
 pub mod signer;
+#[cfg(feature = "gcp-kms")]
+pub mod signers;
 pub mod state;
 pub mod tap;
 pub mod tool;
 pub mod transaction;
+pub mod transaction_signer;
 pub mod wallet;
 pub mod workflow;

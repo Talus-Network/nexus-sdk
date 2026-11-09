@@ -51,13 +51,12 @@ async fn run(command: WalrusCommand) -> AnyResult<()> {
     let settings = Settings::load(&conf).await?;
     match command {
         WalrusCommand::Status => {
-            let owner = if conf.sui.pk.is_some() || std::env::var_os("SUI_PK").is_some() {
-                Some(
-                    crate::sui::get_signing_key(&conf)
-                        .await?
-                        .public_key()
-                        .derive_address(),
-                )
+            let owner = if conf.sui.pk.is_some()
+                || conf.sui.kms_key_version.is_some()
+                || std::env::var_os("SUI_PK").is_some()
+                || std::env::var_os("SUI_KMS_KEY_VERSION").is_some()
+            {
+                Some(crate::sui::get_signer(&conf).await?.address())
             } else {
                 None
             };
