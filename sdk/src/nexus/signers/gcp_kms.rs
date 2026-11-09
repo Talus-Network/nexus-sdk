@@ -111,70 +111,81 @@ fn install_default_crypto_provider() {
 }
 
 /// The real KMS client, built once and shared by all signing calls.
+///
+/// No `Debug`: the client's `Debug` prints its endpoint, which for a proxy
+/// carries a secret path token.
 struct GoogleKms {
     client: google_cloud_kms_v1::client::KeyManagementService,
-    /// Strings that must never appear in an error (the proxy URL carries a
-    /// secret path token); the client's own errors can quote the request URL.
-    secrets: Vec<String>,
+    /// Path of the proxy URL, a secret token that must never appear in an
+    /// error; the client's own errors quote the request URL. `None` when the
+    /// calls go straight to Cloud KMS.
+    secret_proxy_path: Option<String>,
 }
 
-/// Replaces every occurrence of each of `secrets` in `text` with a placeholder.
-fn redact_secrets(secrets: &[String], text: String) -> String {
-    secrets
-        .iter()
-        .filter(|secret| !secret.is_empty())
-        .fold(text, |text, secret| text.replace(secret, "<redacted>"))
+/// Replaces every occurrence of `secret_path` in `text` with a placeholder.
+/// A canonical proxy path is sent exactly as configured, so a plain
+/// replacement is complete. An empty path is nothing to hide.
+fn redact_secret_path(secret_path: Option<&str>, text: String) -> String {
+    match secret_path {
+        Some(path) if !path.is_empty() => text.replace(path, "<redacted>"),
+        _ => text,
+    }
 }
 
 /// Where the KMS client sends its calls and how it authenticates them.
 enum KmsTarget {
-    /// Cloud KMS with Application Default Credentials.
-    DirectWithApplicationDefaultCredentials,
-    /// An authenticating proxy at this base URL; no credentials are sent.
-    AuthenticatingProxy(String),
+    /// Cloud KMS itself, authenticated with Application Default Credentials,
+    /// or with `credentials_instead_of_adc` when set (tests only).
+    DirectToCloudKms {
+        credentials_instead_of_adc: Option<google_cloud_auth::credentials::Credentials>,
+    },
+    /// An authenticating proxy at this validated base URL. The client sends
+    /// no credentials; the proxy adds them.
+    AuthenticatingProxy { proxy_url: String },
 }
 
 impl GoogleKms {
-    /// Builds the client for `target`. With `credentials` they replace
-    /// Application Default Credentials; an authenticating proxy always gets
-    /// anonymous credentials.
-    async fn connect(
-        target: KmsTarget,
-        credentials: Option<google_cloud_auth::credentials::Credentials>,
-    ) -> Result<Self, NexusError> {
+    /// Builds the client for `target`.
+    async fn connect(target: KmsTarget) -> Result<Self, NexusError> {
         install_default_crypto_provider();
         let builder = google_cloud_kms_v1::client::KeyManagementService::builder();
-        let (builder, secrets, description) = match target {
-            KmsTarget::DirectWithApplicationDefaultCredentials => {
-                (builder, Vec::new(), "Application Default Credentials")
+        let (builder, secret_proxy_path, description) = match target {
+            KmsTarget::DirectToCloudKms {
+                credentials_instead_of_adc,
+            } => {
+                let builder = match credentials_instead_of_adc {
+                    Some(credentials) => builder.with_credentials(credentials),
+                    None => builder,
+                };
+                (builder, None, "Application Default Credentials")
             }
-            KmsTarget::AuthenticatingProxy(proxy_url) => {
+            KmsTarget::AuthenticatingProxy { proxy_url } => {
                 let path = proxy_url_path(&proxy_url).to_owned();
                 let anonymous = google_cloud_auth::credentials::anonymous::Builder::new().build();
                 (
-                    builder
-                        .with_endpoint(proxy_url.clone())
-                        .with_credentials(anonymous),
-                    vec![proxy_url, path],
+                    builder.with_endpoint(proxy_url).with_credentials(anonymous),
+                    Some(path),
                     "KMS proxy",
                 )
             }
         };
-        let builder = match credentials {
-            Some(credentials) => builder.with_credentials(credentials),
-            None => builder,
-        };
         let client = builder.build().await.map_err(|error| {
             NexusError::Configuration(format!(
                 "could not create the Cloud KMS client ({description}): {}",
-                redact_secrets(&secrets, error.to_string())
+                redact_secret_path(secret_proxy_path.as_deref(), error.to_string())
             ))
         })?;
-        Ok(Self { client, secrets })
+        Ok(Self {
+            client,
+            secret_proxy_path,
+        })
     }
 
     fn error(&self, context: &str, error: impl std::fmt::Display) -> NexusError {
-        kms_error(context, redact_secrets(&self.secrets, error.to_string()))
+        kms_error(
+            context,
+            redact_secret_path(self.secret_proxy_path.as_deref(), error.to_string()),
+        )
     }
 }
 
@@ -261,7 +272,7 @@ impl KmsApi for GoogleKms {
 
 /// Signs Sui transactions with a Cloud KMS asymmetric key version.
 ///
-/// The public key is fetched once in [`Self::new`] and the address derived from
+/// The public key is fetched once in [`Self::new`] or [`Self::via_proxy`] and the address derived from
 /// it; the KMS client is built once and shared by concurrent signing calls.
 pub struct GcpKmsSigner {
     key_version: String,
@@ -296,8 +307,10 @@ impl GcpKmsSigner {
     pub async fn new(key_version: impl Into<String>) -> Result<Self, NexusError> {
         let key_version = key_version.into();
         validate_key_version(&key_version)?;
-        let api =
-            GoogleKms::connect(KmsTarget::DirectWithApplicationDefaultCredentials, None).await?;
+        let api = GoogleKms::connect(KmsTarget::DirectToCloudKms {
+            credentials_instead_of_adc: None,
+        })
+        .await?;
         Self::with_api(key_version, Arc::new(api)).await
     }
 
@@ -312,10 +325,17 @@ impl GcpKmsSigner {
     /// every signature is verified locally against that pinned key, so a proxy
     /// cannot make the signer return a signature from a different key.
     ///
-    /// `proxy_url` is a base URL, `http://` or `https://` with a host, with no
-    /// query or fragment. It may carry a path prefix (for example a secret path
-    /// token, `http://kms-proxy:8790/<token>`); the client appends `/v1/...` to
-    /// it. The URL is never included in errors, logs or `Debug` output.
+    /// `proxy_url` is a canonical base URL, and anything else is rejected with
+    /// [`NexusError::Configuration`]: a lowercase `http` or `https` scheme; a
+    /// host that is a DNS name (`[A-Za-z0-9.-]`) or a dotted IPv4 address; an
+    /// optional port 1-65535; no userinfo, query, fragment or whitespace; and a
+    /// path that is empty or made of `/segment`s with segments of
+    /// `[A-Za-z0-9_~-]+`. The path may be a secret token
+    /// (`http://kms-proxy:8790/<token>`); the client appends `/v1/...` to it.
+    ///
+    /// This SDK keeps the URL out of its own errors and `Debug` output. The
+    /// Google client's opt-in tracing (`GOOGLE_CLOUD_RUST_LOGGING=true`)
+    /// records request URLs, so keep it off where the URL carries a token.
     pub async fn via_proxy(
         key_version: impl Into<String>,
         proxy_url: impl Into<String>,
@@ -324,7 +344,7 @@ impl GcpKmsSigner {
         validate_key_version(&key_version)?;
         let proxy_url = proxy_url.into();
         validate_proxy_url(&proxy_url)?;
-        let api = GoogleKms::connect(KmsTarget::AuthenticatingProxy(proxy_url), None).await?;
+        let api = GoogleKms::connect(KmsTarget::AuthenticatingProxy { proxy_url }).await?;
         Self::with_api(key_version, Arc::new(api)).await
     }
 
@@ -473,7 +493,6 @@ impl TransactionSigner for GcpKmsSigner {
     }
 }
 
-/// Accepts only a pinned key version, never a key (which would follow rotation).
 /// The path part of an already validated proxy URL (empty when there is none).
 fn proxy_url_path(proxy_url: &str) -> &str {
     let after_scheme = proxy_url
@@ -484,35 +503,69 @@ fn proxy_url_path(proxy_url: &str) -> &str {
         .map_or("", |index| &after_scheme[index..])
 }
 
-/// Accepts `http(s)://host[:port][/path]` only. Error texts never echo the URL.
+fn proxy_url_error(rule: &str) -> NexusError {
+    NexusError::Configuration(format!("KMS proxy URL {rule}"))
+}
+
+/// Accepts only the canonical form `http(s)://host[:port][/segment...]`, so
+/// that what is configured is exactly what the HTTP client sends. Error texts
+/// name the rule broken and never echo the URL.
 fn validate_proxy_url(proxy_url: &str) -> Result<(), NexusError> {
     let Some((scheme, rest)) = proxy_url.split_once("://") else {
-        return Err(NexusError::Configuration(
-            "KMS proxy URL must be http or https".into(),
-        ));
+        return Err(proxy_url_error("must be http or https"));
     };
-    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
-        return Err(NexusError::Configuration(
-            "KMS proxy URL must be http or https".into(),
-        ));
+    if scheme != "http" && scheme != "https" {
+        return Err(proxy_url_error("must be http or https"));
+    }
+    if proxy_url.contains(char::is_whitespace) {
+        return Err(proxy_url_error("must not contain whitespace"));
     }
     if proxy_url.contains(['?', '#']) {
-        return Err(NexusError::Configuration(
-            "KMS proxy URL must not have a query or fragment".into(),
+        return Err(proxy_url_error("must not have a query or fragment"));
+    }
+    let (authority, path) = rest.find('/').map_or((rest, ""), |i| rest.split_at(i));
+    if authority.contains('@') {
+        return Err(proxy_url_error("must not contain credentials"));
+    }
+    let (host, port) = match authority.split_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (authority, None),
+    };
+    if host.is_empty() {
+        return Err(proxy_url_error("must have a host"));
+    }
+    if !host
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        return Err(proxy_url_error(
+            "host must be a DNS name or an IPv4 address",
         ));
     }
-    let authority = rest.split('/').next().unwrap_or_default();
-    let host = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_, host)| host);
-    if host.is_empty() || host.starts_with(':') || proxy_url.contains(char::is_whitespace) {
-        return Err(NexusError::Configuration(
-            "KMS proxy URL must have a host".into(),
-        ));
+    if let Some(port) = port {
+        let digits_only = !port.is_empty() && port.chars().all(|c| c.is_ascii_digit());
+        if !digits_only || !matches!(port.parse::<u16>(), Ok(1..)) {
+            return Err(proxy_url_error("port must be 1-65535"));
+        }
+    }
+    // A bare `/` counts as no path.
+    if !path.is_empty() && path != "/" {
+        let canonical = path[1..].split('/').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '~' | '-'))
+        });
+        if !path.starts_with('/') || !canonical {
+            return Err(proxy_url_error(
+                "path must be segments of letters, digits, '_', '~' or '-'",
+            ));
+        }
     }
     Ok(())
 }
 
+/// Accepts only a pinned key version, never a key (which would follow rotation).
 fn validate_key_version(name: &str) -> Result<(), NexusError> {
     let parts: Vec<&str> = name.split('/').collect();
     let segment_ok = |s: &str| {
@@ -892,10 +945,9 @@ mod tests {
     #[tokio::test]
     async fn connect_builds_https_client_without_bundled_provider() {
         let credentials = google_cloud_auth::credentials::anonymous::Builder::new().build();
-        assert!(GoogleKms::connect(
-            KmsTarget::DirectWithApplicationDefaultCredentials,
-            Some(credentials)
-        )
+        assert!(GoogleKms::connect(KmsTarget::DirectToCloudKms {
+            credentials_instead_of_adc: Some(credentials),
+        })
         .await
         .is_ok());
         assert!(rustls::crypto::CryptoProvider::get_default().is_some());
@@ -979,27 +1031,80 @@ mod tests {
     async fn via_proxy_rejects_bad_urls() {
         for bad in [
             "ftp://kms-proxy:8790/s3cret-tok3n",
+            "HTTP://kms-proxy:8790/s3cret-tok3n",
             "http:///s3cret-tok3n",
             "http://:8790/s3cret-tok3n",
             "kms-proxy:8790/s3cret-tok3n",
             "http://kms-proxy:8790/s3cret-tok3n?x=1",
             "http://kms-proxy:8790/s3cret-tok3n#frag",
+            "http://kms-proxy:99999/s3cret-tok3n",
+            "http://kms-proxy:0/s3cret-tok3n",
+            "http://kms-proxy:/s3cret-tok3n",
+            "http://kms-proxy:8x/s3cret-tok3n",
+            "http://user:pw@kms-proxy:8790/s3cret-tok3n",
+            "http://[::1]:8790/s3cret-tok3n",
+            "http://kms_proxy:8790/s3cret-tok3n",
+            "http://kms-proxy:8790/a/../s3cret-tok3n",
+            "http://kms-proxy:8790/./s3cret-tok3n",
+            "http://kms-proxy:8790/s3cret-tok3n/",
+            "http://kms-proxy:8790//s3cret-tok3n",
+            "http://kms-proxy:8790/{s3cret-tok3n}",
+            "http://kms-proxy:8790/s3cret-tok\u{f6}n",
+            "http://kms-proxy:8790/s3cret-to%6Bn",
+            "http://kms-proxy:8790/s3cret tok3n",
             "",
         ] {
             let error = GcpKmsSigner::via_proxy(KEY_VERSION, bad).await.unwrap_err();
             assert!(matches!(error, NexusError::Configuration(_)), "{bad}");
             let text = format!("{error} {error:?}");
-            assert!(!text.contains("s3cret-tok3n"), "{bad}: {text}");
+            assert!(!text.contains("s3cret"), "{bad}: {text}");
             assert!(!text.contains("kms-proxy"), "{bad}: {text}");
+            assert!(!text.contains("pw"), "{bad}: {text}");
         }
     }
 
+    #[test]
+    fn via_proxy_accepts_canonical_urls() {
+        for good in [
+            "http://kms-proxy:8790/s3cret-tok3n",
+            "http://127.0.0.1:8790/tok3n",
+            "https://kms-proxy.internal/a/b_c~d",
+            "http://kms-proxy",
+            "http://kms-proxy/",
+            "http://kms-proxy:65535",
+        ] {
+            assert!(validate_proxy_url(good).is_ok(), "{good}");
+        }
+    }
+
+    /// A proxy answering with a non-retryable error that echoes the request
+    /// path (as a 404 from a router might) must not leak the token path.
     #[tokio::test]
-    async fn via_proxy_debug_and_errors_hide_url() {
-        // Nothing listens on this port, so the call fails at the transport.
-        let url = "http://127.0.0.1:9/s3cret-tok3n";
-        let error = GcpKmsSigner::via_proxy(KEY_VERSION, url).await.unwrap_err();
-        assert!(!format!("{error} {error:?}").contains("s3cret-tok3n"));
+    async fn via_proxy_errors_hide_url() {
+        let mut server = mockito::Server::new_async().await;
+        let _echo = server
+            .mock("GET", mockito::Matcher::Any)
+            .match_query(mockito::Matcher::Any)
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body_from_request(|request| {
+                serde_json::json!({"error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "message": format!("no route for {}", request.path()),
+                }})
+                .to_string()
+                .into_bytes()
+            })
+            .create_async()
+            .await;
+        let error = GcpKmsSigner::via_proxy(KEY_VERSION, format!("{}/s3cret-tok3n", server.url()))
+            .await
+            .unwrap_err();
+        let text = format!("{error} {error:?}");
+        assert!(text.contains("no route for"), "{text}");
+        assert!(text.contains("<redacted>"), "{text}");
+        assert!(!text.contains("s3cret-tok3n"), "{text}");
     }
 
     #[tokio::test]
@@ -1030,16 +1135,14 @@ mod tests {
     }
 
     #[test]
-    fn redact_secrets_replaces_every_occurrence() {
-        let secrets = vec![
-            "http://h:1/s3cret-tok3n".to_owned(),
-            "/s3cret-tok3n".to_owned(),
-        ];
-        let text = redact_secrets(
-            &secrets,
-            "error for url (http://h:1/s3cret-tok3n/v1/x) at /s3cret-tok3n".into(),
+    fn redact_secret_path_replaces_every_occurrence_and_skips_empty() {
+        let text = redact_secret_path(
+            Some("/s3cret-tok3n"),
+            "for url (http://h:1/s3cret-tok3n/v1/x) at /s3cret-tok3n".into(),
         );
         assert!(!text.contains("s3cret-tok3n"));
+        assert_eq!(redact_secret_path(Some(""), "a/b".into()), "a/b");
+        assert_eq!(redact_secret_path(None, "a/b".into()), "a/b");
     }
 
     #[test]
