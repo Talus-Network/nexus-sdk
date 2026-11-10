@@ -988,10 +988,13 @@ mod tests {
         let b64 = base64::engine::general_purpose::STANDARD;
 
         let mut server = mockito::Server::new_async().await;
-        let query = mockito::Matcher::Regex(r"(?i)alt=json.*enum-encoding(=|%3D)int".into());
+        // The exact raw queries the client sends. The shepherd kms-proxy allows only these
+        // strings, so a client change that alters them must fail here, not in production.
+        let public_key_query = "publicKeyFormat=0&%24alt=json%3Benum-encoding%3Dint";
+        let sign_query = "%24alt=json%3Benum-encoding%3Dint";
         let public_key = server
             .mock("GET", format!("/tok3n/v1/{KEY_VERSION}/publicKey").as_str())
-            .match_query(query.clone())
+            .match_query(mockito::Matcher::Exact(public_key_query.into()))
             .match_header("authorization", mockito::Matcher::Missing)
             .with_header("content-type", "application/json")
             .with_body(
@@ -1011,7 +1014,7 @@ mod tests {
                 "POST",
                 format!("/tok3n/v1/{KEY_VERSION}:asymmetricSign").as_str(),
             )
-            .match_query(query)
+            .match_query(mockito::Matcher::Exact(sign_query.into()))
             .match_header("authorization", mockito::Matcher::Missing)
             .match_body(sign_request_matcher(&digest))
             .with_header("content-type", "application/json")
