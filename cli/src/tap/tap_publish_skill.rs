@@ -135,6 +135,7 @@ mod tests {
         home: Option<OsString>,
         rpc: Option<OsString>,
         pk: Option<OsString>,
+        sk: Option<OsString>,
     }
 
     impl EnvGuard {
@@ -143,10 +144,12 @@ mod tests {
                 home: std::env::var_os("HOME"),
                 rpc: std::env::var_os("SUI_RPC_URL"),
                 pk: std::env::var_os("SUI_PK"),
+                sk: std::env::var_os("SUI_SK"),
             };
             std::env::set_var("HOME", path);
             std::env::remove_var("SUI_RPC_URL");
             std::env::remove_var("SUI_PK");
+            std::env::remove_var("SUI_SK");
             guard
         }
     }
@@ -164,6 +167,10 @@ mod tests {
             match self.pk.take() {
                 Some(value) => std::env::set_var("SUI_PK", value),
                 None => std::env::remove_var("SUI_PK"),
+            }
+            match self.sk.take() {
+                Some(value) => std::env::set_var("SUI_SK", value),
+                None => std::env::remove_var("SUI_SK"),
             }
         }
     }

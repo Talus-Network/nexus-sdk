@@ -7,7 +7,7 @@ use {
 /// Set the Nexus CLI configuration from the provided arguments.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn set_nexus_conf(
-    sui_pk: Option<String>,
+    sui_sk: Option<String>,
     sui_kms_key_version: Option<String>,
     sui_rpc_url: Option<reqwest::Url>,
     nexus_objects_path: Option<PathBuf>,
@@ -43,7 +43,7 @@ pub(crate) async fn set_nexus_conf(
         conf.nexus = Some(objects);
     }
 
-    conf.sui.pk = sui_pk.map(SecretValue::from).or(conf.sui.pk);
+    conf.sui.sk = sui_sk.map(SecretValue::from).or(conf.sui.sk);
     conf.sui.kms_key_version = sui_kms_key_version.or(conf.sui.kms_key_version);
     conf.sui.rpc_url = sui_rpc_url.or(conf.sui.rpc_url);
 
@@ -131,7 +131,7 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some("123".to_string().into()));
+        assert_eq!(conf.sui.sk, Some("123".to_string().into()));
         assert_eq!(
             conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://mainnet.sui.io").unwrap())
@@ -166,7 +166,7 @@ mod tests {
         let conf = CliConf::load_from_path(&path).await.unwrap();
         let objects = conf.nexus.unwrap();
 
-        assert_eq!(conf.sui.pk, Some("123".to_string().into()));
+        assert_eq!(conf.sui.sk, Some("123".to_string().into()));
         assert_eq!(
             conf.sui.rpc_url,
             Some(reqwest::Url::parse("https://testnet.sui.io").unwrap())

@@ -41,7 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Opt-in Cloud KMS signing: set `SUI_KMS_KEY_VERSION` or `nexus conf set --sui.kms-key-version` to a pinned `.../cryptoKeyVersions/N` resource to sign with a Google Cloud KMS key through Application Default Credentials (`roles/cloudkms.signerVerifier`); an empty value counts as unset. Configuring it together with `SUI_PK`/`sui.pk` is an error; without it the CLI behaves as before.
+- Opt-in Cloud KMS signing: set `SUI_KMS_KEY_VERSION` or `nexus conf set --sui.kms-key-version` to a pinned `.../cryptoKeyVersions/N` resource to sign with a Google Cloud KMS key through Application Default Credentials (`roles/cloudkms.signerVerifier`); an empty value counts as unset. Configuring it together with `SUI_SK`/`sui.sk` or the legacy `SUI_PK`/`sui.pk` is an error; without it the CLI behaves as before.
+- Local signing accepts the Ed25519 `suiprivkey` format produced by `sui keytool export`, as well as legacy Base64 keys. Configure it using `SUI_SK` or `--sui.sk`; existing `SUI_PK`, `--sui.pk`, and saved `sui.pk` settings remain supported. The CLI warns when `SUI_PK` is used or conflicts with `SUI_SK`.
 
 #### Fixed
 

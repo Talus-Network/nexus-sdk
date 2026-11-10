@@ -51,8 +51,9 @@ async fn run(command: WalrusCommand) -> AnyResult<()> {
     let settings = Settings::load(&conf).await?;
     match command {
         WalrusCommand::Status => {
-            let owner = if conf.sui.pk.is_some()
+            let owner = if conf.sui.sk.is_some()
                 || conf.sui.kms_key_version.is_some()
+                || std::env::var_os("SUI_SK").is_some()
                 || std::env::var_os("SUI_PK").is_some()
                 || std::env::var_os("SUI_KMS_KEY_VERSION").is_some()
             {

@@ -64,6 +64,7 @@ sui-move-natives.workspace = true
 sui-package-alt.workspace = true
 sui-protocol-config.workspace = true
 sui-types.workspace = true
+sui-crypto = { version = "0.4", features = ["bech32"] }
 
 [dependencies.nexus-sdk]
 workspace = true

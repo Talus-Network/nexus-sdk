@@ -173,13 +173,14 @@ mod tests {
     impl CliEnv {
         fn new(conf_path: &std::path::Path) -> Self {
             let guard = Self(
-                [CLI_CONF_PATH_ENV, "SUI_RPC_URL", "SUI_PK"]
+                [CLI_CONF_PATH_ENV, "SUI_RPC_URL", "SUI_SK", "SUI_PK"]
                     .into_iter()
                     .map(|name| (name, std::env::var_os(name)))
                     .collect(),
             );
             std::env::set_var(CLI_CONF_PATH_ENV, conf_path);
             std::env::remove_var("SUI_RPC_URL");
+            std::env::remove_var("SUI_SK");
             std::env::remove_var("SUI_PK");
             guard
         }
@@ -193,6 +194,75 @@ mod tests {
                     None => std::env::remove_var(name),
                 }
             }
+        }
+    }
+
+    #[test]
+    fn secret_key_cli_option_accepts_new_and_legacy_names() {
+        for option in ["--sui.sk", "--sui.pk"] {
+            let cli = Cli::try_parse_from(["nexus", "conf", "set", option, "test-key"]).unwrap();
+            assert!(matches!(
+                cli.command,
+                Command::Conf(conf::ConfCommand::Set { sui_sk: Some(key), .. }) if key == "test-key"
+            ));
+        }
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn secret_key_environment_uses_keytool_export_and_takes_precedence() {
+        let temp = tempfile::tempdir().unwrap();
+        let _env = CliEnv::new(&temp.path().join("conf.toml"));
+        let expected = sui::crypto::Ed25519PrivateKey::new([42; 32]);
+        std::env::set_var("SUI_SK", expected.to_suiprivkey().unwrap());
+        std::env::set_var("SUI_PK", "invalid legacy key");
+        let key = crate::sui::get_signing_key(&CliConf::default())
+            .await
+            .unwrap();
+        assert_eq!(key.public_key(), expected.public_key());
+    }
+
+    #[test]
+    fn secret_key_legacy_environment_warns_on_stderr() {
+        const CHILD: &str = "NEXUS_TEST_LEGACY_KEY_WARNING_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            assert!(runtime
+                .block_on(crate::sui::get_signing_key(&CliConf::default()))
+                .is_err());
+            return;
+        }
+
+        for (sk, expected_warning) in [
+            (None, Some("SUI_PK is deprecated; use SUI_SK")),
+            (Some("invalid-secret-value"), None),
+            (
+                Some("invalid-preferred-value"),
+                Some("SUI_PK is deprecated and conflicts with SUI_SK; using SUI_SK"),
+            ),
+        ] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "tests::secret_key_legacy_environment_warns_on_stderr",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .env("SUI_PK", "invalid-secret-value")
+                .env_remove("SUI_SK");
+            if let Some(sk) = sk {
+                command.env("SUI_SK", sk);
+            }
+            let output = command.output().unwrap();
+            assert!(output.status.success());
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            match expected_warning {
+                Some(warning) => assert!(stderr.contains(warning), "{stderr}"),
+                None => assert!(!stderr.contains("Warning:"), "{stderr}"),
+            }
+            assert!(!stderr.contains("invalid-secret-value"));
+            assert!(!stderr.contains("invalid-preferred-value"));
         }
     }
 
@@ -226,7 +296,7 @@ mod tests {
                         let mut conf = CliConf {
                             sui: SuiConf {
                                 rpc_url: Some(rpc_url.parse().unwrap()),
-                                pk: None,
+                                sk: None,
                                 kms_key_version: None,
                             },
                             nexus: Some(sui_mocks::mock_nexus_objects()),
@@ -365,7 +435,7 @@ mod tests {
         let conf = CliConf {
             sui: SuiConf {
                 rpc_url: Some(rpc_url.parse().unwrap()),
-                pk: None,
+                sk: None,
                 kms_key_version: None,
             },
             ..Default::default()
