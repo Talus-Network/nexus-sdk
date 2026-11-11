@@ -15,6 +15,7 @@ COPY cli cli
 COPY sdk sdk
 COPY toolkit-rust toolkit-rust
 COPY walrus walrus
+COPY gcp-kms gcp-kms
 
 COPY Cargo.lock Cargo.lock
 COPY Cargo.toml Cargo.toml
