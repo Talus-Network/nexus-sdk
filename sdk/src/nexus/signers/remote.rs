@@ -49,9 +49,12 @@
 //! the token replaced by `<redacted>`; a service that echoes only part of the
 //! token cannot be scrubbed.
 //!
-//! TLS is rustls with the bundled Mozilla roots plus
-//! [`RemoteSignerConfig::extra_root_ca_pem`]; a private or corporate CA must be
-//! supplied there.
+//! TLS is rustls. It trusts reqwest's built-in roots (the bundled Mozilla
+//! roots, plus the platform's native roots when the final binary enables
+//! reqwest's native-roots feature, which also honors `SSL_CERT_FILE` /
+//! `SSL_CERT_DIR`) and [`RemoteSignerConfig::extra_root_ca_pem`]. Supply a
+//! private or corporate CA through `extra_root_ca_pem` rather than relying on
+//! the platform store.
 
 use {
     crate::{
@@ -97,8 +100,8 @@ pub struct RemoteSignerConfig {
     pub bearer_token: Option<String>,
     /// The Sui address the service's key must derive; pinned by the caller.
     pub expected_address: sui::types::Address,
-    /// PEM certificate(s) trusted in addition to the default roots (the bundled
-    /// Mozilla roots), for a service under a private or corporate CA. Must
+    /// PEM certificate(s) trusted in addition to the built-in roots (see the
+    /// module docs), for a service under a private or corporate CA. Must
     /// contain at least one certificate.
     pub extra_root_ca_pem: Option<Vec<u8>>,
 }
