@@ -49,8 +49,9 @@
 //! the token replaced by `<redacted>`; a service that echoes only part of the
 //! token cannot be scrubbed.
 //!
-//! The default trusted roots are the bundled Mozilla roots; a private or
-//! corporate CA must be supplied as [`RemoteSignerConfig::extra_root_ca_pem`].
+//! TLS is rustls with the bundled Mozilla roots plus
+//! [`RemoteSignerConfig::extra_root_ca_pem`]; a private or corporate CA must be
+//! supplied there.
 
 use {
     crate::{
@@ -273,6 +274,9 @@ fn bearer_header(token: &str) -> Result<reqwest::header::HeaderValue, NexusError
 
 fn build_client(config: &RemoteSignerConfig) -> Result<reqwest::Client, NexusError> {
     let mut builder = reqwest::Client::builder()
+        // TLS is pinned to rustls: reqwest's backends unify across a dependency
+        // tree, and the choice must not depend on the consumer.
+        .use_rustls_tls()
         .redirect(reqwest::redirect::Policy::none())
         // The token must go to `url` and nowhere else, whatever the environment says.
         .no_proxy()
@@ -1151,6 +1155,35 @@ mod tests {
             );
             assert!(error.to_string().contains("extra root CA"), "{error}");
         }
+    }
+
+    /// A throwaway self-signed certificate; only parsed, never trusted for a real host.
+    const TEST_ROOT_CA_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIIBfzCCASWgAwIBAgIUSi+X09Pdh6dGRwG9VVi7dC8Tt7AwCgYIKoZIzj0EAwIw
+FDESMBAGA1UEAwwJdGVzdC1yb290MCAXDTI2MTExMTExMDg1MFoYDzIxMjYxMDE4
+MTEwODUwWjAUMRIwEAYDVQQDDAl0ZXN0LXJvb3QwWTATBgcqhkjOPQIBBggqhkjO
+PQMBBwNCAAT+iBWHeNnTXpx2AS55YgolU66kovYhHOWSPuRdXvCX3Y8qFz6PN9Sr
+yj6q+7PrqseFaRqH6sYF7udI82nuNkNzo1MwUTAdBgNVHQ4EFgQUY3BvJYQDUvjq
+SvA7T8mYa+LHAp8wHwYDVR0jBBgwFoAUY3BvJYQDUvjqSvA7T8mYa+LHAp8wDwYD
+VR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA5p3EVOZsgiIp4f3AdxS1
+igsSatp9goI3KScVp6cBoA8CIHsBMMX6vTqe4FpDNQIsFPrkgn0RII8N/uF4du+q
+JD6f
+-----END CERTIFICATE-----
+";
+
+    #[test]
+    fn client_builds_with_an_extra_root_ca() {
+        let key = TestKey::ed25519(7);
+        let build = |pem: Option<&str>| {
+            build_client(&RemoteSignerConfig {
+                url: "https://127.0.0.1:1".into(),
+                bearer_token: None,
+                expected_address: key.address(),
+                extra_root_ca_pem: pem.map(|pem| pem.as_bytes().to_vec()),
+            })
+        };
+        build(None).unwrap();
+        build(Some(TEST_ROOT_CA_PEM)).unwrap();
     }
 
     #[tokio::test]

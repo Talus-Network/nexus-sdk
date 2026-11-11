@@ -76,31 +76,11 @@ binding_codegen = [
 # integration with the Walrus decentralized blob storage system.
 walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
-# Google Cloud KMS signer (`GcpKmsSigner`): signs Sui transactions with a Cloud KMS
-# Ed25519 or P-256 key version, authenticating through Application Default
-# Credentials (the KMS client uses `google-cloud-auth`). Off by default.
-# The Google crates are built without their default rustls provider (aws-lc-rs):
-# enabling both ring and aws-lc-rs makes `rustls::ClientConfig::builder()` panic
-# in every other TLS client of the process. `GcpKmsSigner::new` installs ring,
-# the provider rustls already selects in builds without this feature.
-gcp-kms = [
-    "nexus",
-    "google-cloud-kms-v1",
-    "google-cloud-gax",
-    "google-cloud-auth",
-    "rustls",
-    "p256",
-    "crc32c",
-    "sha2",
-    "base64",
-    "hex",
-    "bcs",
-]
-
 # Remote signer (`RemoteSigner`): signs Sui transactions through any HTTP service
 # implementing the two-call JSON signing protocol documented on
 # `nexus::signers::remote`. It uses reqwest with rustls (ring) and no Google crates,
-# so it never pulls a second rustls crypto provider. Off by default.
+# so it never pulls a second rustls crypto provider. Off by default. The Google
+# Cloud KMS signer is the separate `nexus-gcp-kms` crate.
 remote-signer = [
     "nexus",
     "reqwest",
@@ -328,36 +308,11 @@ optional = true
 workspace = true
 optional = true
 
-# === GCP KMS signer ===
-[dependencies.google-cloud-kms-v1]
-version = "1.9"
-default-features = false
-optional = true
-
-[dependencies.google-cloud-gax]
-version = "1.10"
-default-features = false
-optional = true
-
-[dependencies.google-cloud-auth]
-version = "1.10"
-default-features = false
-optional = true
-
-[dependencies.rustls]
-version = "0.23.46"
-default-features = false
-features = ["ring", "std"]
-optional = true
-
+# === Remote signer ===
 [dependencies.p256]
 version = "0.13"
 default-features = false
 features = ["ecdsa", "pem", "std"]
-optional = true
-
-[dependencies.crc32c]
-version = "0.6"
 optional = true
 
 # === Move binding ===

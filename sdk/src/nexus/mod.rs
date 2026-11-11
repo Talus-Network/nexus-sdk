@@ -15,7 +15,7 @@ pub mod registered_key;
 pub mod registry;
 pub mod scheduler;
 pub mod signer;
-#[cfg(any(feature = "gcp-kms", feature = "remote-signer"))]
+#[cfg(feature = "remote-signer")]
 pub mod signers;
 pub mod state;
 pub mod tap;
