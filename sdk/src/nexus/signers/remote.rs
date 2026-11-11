@@ -1365,20 +1365,47 @@ JD6f
 
     #[tokio::test]
     async fn client_error_with_unreadable_body_is_not_retried() {
-        // A 4xx must be final even when its body cannot be read.
+        // A 4xx must be final even when its body cannot be read. A raw server
+        // sends the complete status line and headers before cutting the body,
+        // so the client always sees the 403 (mockito's aborted chunked body
+        // could close the connection before the status line was read).
+        use {
+            std::sync::{
+                atomic::{AtomicUsize, Ordering},
+                Arc,
+            },
+            tokio::io::{AsyncReadExt, AsyncWriteExt},
+        };
         let key = TestKey::ed25519(7);
-        let mut server = Server::new_async().await;
-        let denied = server
-            .mock("GET", "/v1/public-key")
-            .with_status(403)
-            .with_chunked_body(|_| Err(std::io::Error::other("body cut")))
-            .expect(1)
-            .create_async()
-            .await;
-        let error = RemoteSigner::connect(config(&server, &key, None))
-            .await
-            .unwrap_err();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let counter = accepted.clone();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                counter.fetch_add(1, Ordering::SeqCst);
+                let mut request = [0u8; 4096];
+                let _ = socket.read(&mut request).await;
+                let _ = socket
+                    .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 100\r\n\r\npartial")
+                    .await;
+                let _ = socket.flush().await;
+                drop(socket);
+            }
+        });
+        let error = RemoteSigner::connect(RemoteSignerConfig {
+            url: format!("http://127.0.0.1:{port}"),
+            bearer_token: None,
+            expected_address: key.address(),
+            extra_root_ca_pem: None,
+        })
+        .await
+        .unwrap_err();
         assert!(error.to_string().contains("403"), "{error}");
-        denied.assert_async().await;
+        assert_eq!(
+            accepted.load(Ordering::SeqCst),
+            1,
+            "a 4xx must not be retried"
+        );
     }
 }
