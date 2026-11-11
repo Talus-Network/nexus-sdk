@@ -7,8 +7,9 @@
 //!
 //! # Wire protocol v1
 //!
-//! All bodies are UTF-8 JSON (`Content-Type: application/json`). The base URL is
-//! `http(s)://host[:port]` with no path. Authentication is optional:
+//! All bodies are UTF-8 JSON (`Content-Type: application/json`). Every `<base64>`
+//! value is the standard alphabet (RFC 4648 section 4) **with** padding. The base
+//! URL is `http(s)://host[:port]` with no path. Authentication is optional:
 //! `Authorization: Bearer <token>`; the service decides whether it requires it.
 //!
 //! 1. `GET /v1/public-key`
@@ -16,6 +17,8 @@
 //!    - `public_key` is the raw Sui public key: 32 bytes for `ed25519`, the
 //!      33-byte compressed SEC1 point for `secp256r1`.
 //! 2. `POST /v1/sign` with the body `{"digest": "<base64 of the 32-byte Sui signing digest>"}`
+//!    - The service must sign any 32 bytes: the connect challenge is random, not
+//!      a transaction digest.
 //!    - `200`: `{"signature": "<base64>"}`, a raw 64-byte signature:
 //!      - `ed25519`: PureEdDSA over the 32 digest bytes;
 //!      - `secp256r1`: `r || s`, ECDSA P-256 with SHA-256 over the 32 digest
@@ -25,6 +28,9 @@
 //!    request). The SDK reports the status code and at most a short sanitized
 //!    prefix of the body. It retries only connect errors, timeouts and `5xx`:
 //!    3 attempts in total, each limited to 10 seconds.
+//! 4. Redirects are not followed (a 3xx is a failure), responses are read up to
+//!    16 KiB, and environment proxies (`HTTP_PROXY` and friends) are not used:
+//!    the SDK always talks to the service directly.
 //!
 //! # Trust
 //!
@@ -38,7 +44,13 @@
 //! travels in cleartext, so use `https` (with
 //! [`RemoteSignerConfig::extra_root_ca_pem`] for a private CA) anywhere the
 //! network is not trusted. The token never appears in `Debug` output, errors
-//! or logs, and the header is marked sensitive.
+//! or logs, and the header is marked sensitive. Error messages quote at most a
+//! short prefix of a failing response body with control characters removed and
+//! the token replaced by `<redacted>`; a service that echoes only part of the
+//! token cannot be scrubbed.
+//!
+//! The default trusted roots are the bundled Mozilla roots; a private or
+//! corporate CA must be supplied as [`RemoteSignerConfig::extra_root_ca_pem`].
 
 use {
     crate::{
@@ -84,8 +96,9 @@ pub struct RemoteSignerConfig {
     pub bearer_token: Option<String>,
     /// The Sui address the service's key must derive; pinned by the caller.
     pub expected_address: sui::types::Address,
-    /// PEM certificate(s) trusted in addition to the default roots, for a
-    /// service under a private CA.
+    /// PEM certificate(s) trusted in addition to the default roots (the bundled
+    /// Mozilla roots), for a service under a private or corporate CA. Must
+    /// contain at least one certificate.
     pub extra_root_ca_pem: Option<Vec<u8>>,
 }
 
@@ -144,7 +157,7 @@ impl Key {
         let bytes = <[u8; 64]>::try_from(signature).ok()?;
         match self {
             Key::Ed25519(key) => key
-                .verify(digest, &ed25519_dalek::Signature::from_bytes(&bytes))
+                .verify_strict(digest, &ed25519_dalek::Signature::from_bytes(&bytes))
                 .ok()
                 .map(|_| bytes),
             Key::Secp256r1(key) => {
@@ -210,7 +223,7 @@ impl std::fmt::Debug for RemoteSigner {
 }
 
 fn remote_error(step: &str, error: impl std::fmt::Display) -> NexusError {
-    NexusError::Wallet(anyhow::anyhow!("remote signer {step}: {error}"))
+    NexusError::RemoteSigner(format!("{step}: {error}"))
 }
 
 fn validate_url(url: &str) -> Result<reqwest::Url, NexusError> {
@@ -240,52 +253,81 @@ fn validate_url(url: &str) -> Result<reqwest::Url, NexusError> {
     Ok(parsed)
 }
 
+/// The `Authorization` header for `token`, marked sensitive so it is never
+/// printed by reqwest or http.
+fn bearer_header(token: &str) -> Result<reqwest::header::HeaderValue, NexusError> {
+    if token.trim().is_empty() {
+        return Err(NexusError::Configuration(
+            "remote signer bearer token is empty; use None for no token".into(),
+        ));
+    }
+    let mut value =
+        reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| {
+            NexusError::Configuration(
+                "remote signer bearer token is not a valid HTTP header value".into(),
+            )
+        })?;
+    value.set_sensitive(true);
+    Ok(value)
+}
+
 fn build_client(config: &RemoteSignerConfig) -> Result<reqwest::Client, NexusError> {
     let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        // The token must go to `url` and nowhere else, whatever the environment says.
+        .no_proxy()
         .timeout(ATTEMPT_TIMEOUT);
     if let Some(token) = &config.bearer_token {
-        let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
-            .map_err(|_| {
-                NexusError::Configuration(
-                    "remote signer bearer token is not a valid HTTP header value".into(),
-                )
-            })?;
-        value.set_sensitive(true);
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(reqwest::header::AUTHORIZATION, value);
+        headers.insert(reqwest::header::AUTHORIZATION, bearer_header(token)?);
         builder = builder.default_headers(headers);
     }
     if let Some(pem) = &config.extra_root_ca_pem {
-        let certificate = reqwest::Certificate::from_pem(pem).map_err(|error| {
-            NexusError::Configuration(format!(
-                "remote signer extra root CA is not valid PEM: {error}"
-            ))
-        })?;
-        builder = builder.add_root_certificate(certificate);
+        let bad = |problem: String| {
+            NexusError::Configuration(format!("remote signer extra root CA: {problem}"))
+        };
+        let certificates = reqwest::Certificate::from_pem_bundle(pem)
+            .map_err(|error| bad(format!("not valid PEM ({})", error_chain(error))))?;
+        if certificates.is_empty() {
+            return Err(bad("no PEM certificate found".into()));
+        }
+        for certificate in certificates {
+            builder = builder.add_root_certificate(certificate);
+        }
     }
     builder.build().map_err(|error| {
-        // reqwest parses the PEM lazily, so a bad extra root CA surfaces here.
-        let hint = if config.extra_root_ca_pem.is_some() {
-            " (check the extra root CA PEM)"
-        } else {
-            ""
-        };
-        NexusError::Configuration(format!("remote signer HTTP client{hint}: {error}"))
+        NexusError::Configuration(format!("remote signer HTTP client: {}", error_chain(error)))
     })
 }
 
-/// At most [`MAX_ERROR_BODY_CHARS`] printable characters of `body`, with the
-/// token (should the service echo it) removed.
+/// `error` and its sources, `a: b: c`. reqwest's own `Display` is only "error
+/// sending request"; the cause (refused, DNS, TLS) is in the sources. The URL is
+/// removed and no request headers are part of these errors.
+fn error_chain(error: reqwest::Error) -> String {
+    let error = error.without_url();
+    let mut text = error.to_string();
+    let mut source = std::error::Error::source(&error);
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    text
+}
+
+/// At most [`MAX_ERROR_BODY_CHARS`] printable characters of `body`. Control
+/// characters are removed first, then the token (should the service echo it) is
+/// replaced, so a token split by a control character is still caught. A partial
+/// echo of the token cannot be scrubbed.
 fn sanitized_prefix(body: &[u8], token: Option<&str>) -> String {
-    let mut text = String::from_utf8_lossy(body).into_owned();
+    let mut text: String = String::from_utf8_lossy(body)
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect();
     if let Some(token) = token.filter(|token| !token.is_empty()) {
         text = text.replace(token, "<redacted>");
     }
-    text.chars()
-        .filter(|c| !c.is_control())
-        .take(MAX_ERROR_BODY_CHARS)
-        .collect()
+    text.chars().take(MAX_ERROR_BODY_CHARS).collect()
 }
 
 fn decode_b64(step: &str, field: &str, value: &serde_json::Value) -> Result<Vec<u8>, NexusError> {
@@ -427,20 +469,27 @@ impl Transport {
             let mut response = match request.send().await {
                 Ok(response) => response,
                 Err(error) if error.is_connect() || error.is_timeout() => {
-                    last_error = format!("{}", error.without_url());
+                    last_error = error_chain(error);
                     continue;
                 }
-                Err(error) => return Err(remote_error(step, error.without_url())),
+                Err(error) => {
+                    return Err(remote_error(step, error_chain(error)));
+                }
             };
             let status = response.status();
-            let (bytes, truncated_or_failed) = match read_body(&mut response).await {
+            let (bytes, read_error) = match read_body(&mut response).await {
                 Ok(read) => (read, None),
-                Err(error) if error.is_timeout() => {
-                    last_error = format!("{}", error.without_url());
-                    continue;
-                }
-                Err(error) => (Vec::new(), Some(error.without_url().to_string())),
+                Err(error) => (Vec::new(), Some(error)),
             };
+            // Retry only what may be transient: a 5xx, or a timeout on a 2xx.
+            // A 4xx is final even if its body cannot be read.
+            if read_error.as_ref().is_some_and(|error| {
+                status.is_server_error() || (status.is_success() && error.is_timeout())
+            }) {
+                let error = read_error.expect("checked above");
+                last_error = format!("status {status}: {}", error_chain(error));
+                continue;
+            }
             if status.is_server_error() {
                 last_error = format!(
                     "status {status}: {}",
@@ -457,8 +506,8 @@ impl Transport {
                     ),
                 ));
             }
-            if let Some(error) = truncated_or_failed {
-                return Err(remote_error(step, error));
+            if let Some(error) = read_error {
+                return Err(remote_error(step, error_chain(error)));
             }
             return Ok(bytes);
         }
@@ -469,8 +518,8 @@ impl Transport {
     }
 }
 
-/// Reads at most [`MAX_BODY_BYTES`] of the body; a longer body is an error for
-/// the caller to parse (it will not be valid JSON) rather than unbounded memory.
+/// Reads at most [`MAX_BODY_BYTES`] of the body and silently drops the rest; a
+/// longer body then usually fails to parse, instead of using unbounded memory.
 async fn read_body(response: &mut reqwest::Response) -> Result<Vec<u8>, reqwest::Error> {
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await? {
@@ -511,10 +560,8 @@ fn parse_public_key(step: &str, bytes: &[u8]) -> Result<Key, NexusError> {
                 .map(Key::Secp256r1)
                 .map_err(|_| bad("not a valid compressed secp256r1 key"))
         }
-        other => Err(bad(&format!(
-            "unsupported scheme {:?}; supported: ed25519, secp256r1",
-            sanitized_prefix(other.as_bytes(), None)
-        ))),
+        // The value is not echoed: it is service-controlled text.
+        _ => Err(bad("unsupported scheme; supported: ed25519, secp256r1")),
     }
 }
 
@@ -863,10 +910,9 @@ mod tests {
             serde_json::json!({"scheme": "rsa", "public_key": b64(&key.public_key())}),
             serde_json::json!({"scheme": "ed25519", "public_key": b64(&key.public_key()[..31])}),
             serde_json::json!({"scheme": "ed25519", "public_key": b64(&[key.public_key(), vec![0]].concat())}),
-            // A secp256r1 scheme with an ed25519-length key, and an uncompressed one.
+            // A secp256r1 scheme with an ed25519-length key, and a truncated one.
             serde_json::json!({"scheme": "secp256r1", "public_key": b64(&key.public_key())}),
             serde_json::json!({"scheme": "secp256r1", "public_key": b64(&p256.public_key()[..32])}),
-            serde_json::json!({"scheme": "secp256r1", "public_key": b64(&[2u8; 33])}),
             serde_json::json!({"scheme": "ed25519"}),
             serde_json::json!({"scheme": "ed25519", "public_key": "!!not base64!!"}),
         ];
@@ -884,6 +930,43 @@ mod tests {
                 .await;
             let result = RemoteSigner::connect(config(&server, &key, None)).await;
             assert!(result.is_err(), "accepted {case}");
+            sign.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_bad_secp256r1_keys_by_the_right_check() {
+        let key = TestKey::p256(5);
+        let TestKey::P256(signing) = &key else {
+            unreachable!()
+        };
+        let uncompressed = signing.verifying_key().to_encoded_point(false);
+        assert_eq!(uncompressed.as_bytes().len(), 65);
+        // 33 bytes, but x is not a field element, so it is no point at all.
+        let mut off_curve = vec![0x02];
+        off_curve.extend_from_slice(&[0xff; 32]);
+        for (public_key, expected) in [
+            (uncompressed.as_bytes().to_vec(), "must be 33 bytes"),
+            (off_curve, "not a valid compressed secp256r1 key"),
+        ] {
+            let mut server = Server::new_async().await;
+            server
+                .mock("GET", "/v1/public-key")
+                .with_body(
+                    serde_json::json!({"scheme": "secp256r1", "public_key": b64(&public_key)})
+                        .to_string(),
+                )
+                .create_async()
+                .await;
+            let sign = server
+                .mock("POST", "/v1/sign")
+                .expect(0)
+                .create_async()
+                .await;
+            let error = RemoteSigner::connect(config(&server, &key, None))
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(expected), "{expected}: {error}");
             sign.assert_async().await;
         }
     }
@@ -1045,17 +1128,224 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn extra_root_ca_bad_pem_is_rejected() {
+    async fn extra_root_ca_without_a_certificate_is_rejected() {
+        let key = TestKey::ed25519(7);
+        for pem in [
+            b"".to_vec(),
+            b"not pem at all".to_vec(),
+            vec![0x30, 0x82, 0x01, 0x00], // DER, not PEM
+            b"-----BEGIN CERTIFICATE-----\nnot a cert\n".to_vec(),
+            b"-----BEGIN CERTIFICATE-----\n!!!!\n-----END CERTIFICATE-----\n".to_vec(),
+        ] {
+            let error = RemoteSigner::connect(RemoteSignerConfig {
+                url: "https://127.0.0.1:1".into(),
+                bearer_token: None,
+                expected_address: key.address(),
+                extra_root_ca_pem: Some(pem.clone()),
+            })
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(error, NexusError::Configuration(_)),
+                "{pem:?}: {error:?}"
+            );
+            assert!(error.to_string().contains("extra root CA"), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn alternate_format_prints_each_cause_once() {
+        let key = TestKey::ed25519(7);
+        let mut server = Server::new_async().await;
+        server
+            .mock("GET", "/v1/public-key")
+            .with_status(403)
+            .with_body("uniquemarker")
+            .create_async()
+            .await;
+        let error = RemoteSigner::connect(config(&server, &key, None))
+            .await
+            .unwrap_err();
+        assert_eq!(format!("{error:#}").matches("uniquemarker").count(), 1);
+    }
+
+    #[tokio::test]
+    async fn refused_connection_reports_the_cause() {
         let key = TestKey::ed25519(7);
         let error = RemoteSigner::connect(RemoteSignerConfig {
-            url: "https://127.0.0.1:1".into(),
-            bearer_token: None,
+            url: "http://127.0.0.1:1".into(),
+            bearer_token: Some(TOKEN.into()),
             expected_address: key.address(),
-            extra_root_ca_pem: Some(b"-----BEGIN CERTIFICATE-----\nnot a cert\n".to_vec()),
+            extra_root_ca_pem: None,
         })
         .await
         .unwrap_err();
-        assert!(matches!(error, NexusError::Configuration(_)), "{error:?}");
-        assert!(error.to_string().contains("root CA"), "{error}");
+        let rendered = error.to_string();
+        assert!(rendered.contains("3 attempts"), "{rendered}");
+        assert!(rendered.to_lowercase().contains("refused"), "{rendered}");
+        assert!(!rendered.contains(TOKEN), "{rendered}");
+    }
+
+    #[tokio::test]
+    async fn tls_failure_is_distinguishable_from_refused() {
+        // https against a plain-http server: the handshake fails, nothing is refused.
+        let key = TestKey::ed25519(7);
+        let server = Server::new_async().await;
+        let url = server.url().replace("http://", "https://");
+        let error = RemoteSigner::connect(RemoteSignerConfig {
+            url,
+            bearer_token: None,
+            expected_address: key.address(),
+            extra_root_ca_pem: None,
+        })
+        .await
+        .unwrap_err();
+        let rendered = error.to_string();
+        assert!(!rendered.to_lowercase().contains("refused"), "{rendered}");
+        assert!(rendered.len() > "remote signer public-key request: failed after 3 attempts, last error: error sending request".len(), "{rendered}");
+    }
+
+    #[tokio::test]
+    async fn scheme_value_is_not_echoed() {
+        let key = TestKey::ed25519(7);
+        let mut server = Server::new_async().await;
+        server
+            .mock("GET", "/v1/public-key")
+            .with_body(
+                serde_json::json!({"scheme": format!("Bearer {TOKEN}"), "public_key": b64(&key.public_key())})
+                    .to_string(),
+            )
+            .create_async()
+            .await;
+        let error = RemoteSigner::connect(config(&server, &key, Some(TOKEN)))
+            .await
+            .unwrap_err();
+        let rendered = error.to_string();
+        assert!(rendered.contains("unsupported scheme"), "{rendered}");
+        assert!(!rendered.contains(TOKEN), "{rendered}");
+    }
+
+    #[tokio::test]
+    async fn token_split_by_a_control_character_is_still_scrubbed() {
+        let key = TestKey::ed25519(7);
+        let mut server = Server::new_async().await;
+        let (head, tail) = TOKEN.split_at(6);
+        server
+            .mock("GET", "/v1/public-key")
+            .with_status(403)
+            .with_body(format!("bad\u{7}\n\tcredential {head}\u{7}{tail}!"))
+            .create_async()
+            .await;
+        let error = RemoteSigner::connect(config(&server, &key, Some(TOKEN)))
+            .await
+            .unwrap_err();
+        let rendered = error.to_string();
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(!rendered.contains(TOKEN), "{rendered}");
+        assert!(!rendered.contains(head), "{rendered}");
+        assert!(!rendered.chars().any(char::is_control), "{rendered}");
+    }
+
+    #[test]
+    fn bearer_header_is_sensitive() {
+        assert!(bearer_header(TOKEN).unwrap().is_sensitive());
+        assert_eq!(
+            bearer_header(TOKEN).unwrap(),
+            format!("Bearer {TOKEN}").as_str()
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_or_blank_token_is_rejected() {
+        let key = TestKey::ed25519(7);
+        for token in ["", " ", "\t "] {
+            let error = RemoteSigner::connect(RemoteSignerConfig {
+                url: "http://127.0.0.1:1".into(),
+                bearer_token: Some(token.into()),
+                expected_address: key.address(),
+                extra_root_ca_pem: None,
+            })
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(error, NexusError::Configuration(_)),
+                "{token:?}: {error:?}"
+            );
+            assert!(error.to_string().contains("empty"), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn redirects_are_not_followed() {
+        let key = TestKey::ed25519(7);
+        let mut server = Server::new_async().await;
+        server
+            .mock("GET", "/v1/public-key")
+            .with_status(302)
+            .with_header("location", "/elsewhere")
+            .expect(1)
+            .create_async()
+            .await;
+        let elsewhere = server
+            .mock("GET", "/elsewhere")
+            .expect(0)
+            .create_async()
+            .await;
+        let error = RemoteSigner::connect(config(&server, &key, Some(TOKEN)))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("302"), "{error}");
+        elsewhere.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn challenge_is_fresh_and_random() {
+        let key = TestKey::ed25519(7);
+        let mut server = Server::new_async().await;
+        mock_public_key(&mut server, &key).await;
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<Vec<u8>>::new()));
+        let recorder = seen.clone();
+        let signing = key.clone();
+        server
+            .mock("POST", "/v1/sign")
+            .expect(2)
+            .with_body_from_request(move |request| {
+                let digest = digest_of_request(request);
+                recorder.lock().unwrap().push(digest.clone());
+                serde_json::json!({ "signature": b64(&signing.sign(&digest, false)) })
+                    .to_string()
+                    .into_bytes()
+            })
+            .create_async()
+            .await;
+        for _ in 0..2 {
+            RemoteSigner::connect(config(&server, &key, None))
+                .await
+                .unwrap();
+        }
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0].len(), 32);
+        assert_ne!(seen[0], seen[1]);
+        assert!(seen.iter().all(|digest| digest.iter().any(|b| *b != 0)));
+    }
+
+    #[tokio::test]
+    async fn client_error_with_unreadable_body_is_not_retried() {
+        // A 4xx must be final even when its body cannot be read.
+        let key = TestKey::ed25519(7);
+        let mut server = Server::new_async().await;
+        let denied = server
+            .mock("GET", "/v1/public-key")
+            .with_status(403)
+            .with_chunked_body(|_| Err(std::io::Error::other("body cut")))
+            .expect(1)
+            .create_async()
+            .await;
+        let error = RemoteSigner::connect(config(&server, &key, None))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("403"), "{error}");
+        denied.assert_async().await;
     }
 }

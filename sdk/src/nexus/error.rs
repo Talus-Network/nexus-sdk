@@ -236,6 +236,11 @@ pub enum NexusError {
     Wallet(#[source] anyhow::Error),
     #[error("Client configuration error: {0}")]
     Configuration(String),
+    /// A remote signing service failed or returned an unusable answer. Holds the
+    /// full message instead of wrapping a source, so alternate formatting
+    /// (`{:#}`) prints it once.
+    #[error("Remote signer error: {0}")]
+    RemoteSigner(String),
     #[error("a gas source is already configured")]
     GasSourceAlreadyConfigured,
     #[error("Transaction building error: {0}")]
