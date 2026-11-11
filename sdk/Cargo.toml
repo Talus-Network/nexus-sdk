@@ -78,7 +78,8 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # Google Cloud KMS signer (`GcpKmsSigner`): signs Sui transactions with a Cloud KMS
 # Ed25519 or P-256 key version, authenticating through Application Default
-# Credentials (the KMS client uses `google-cloud-auth`). Off by default.
+# Credentials by default, or with caller-supplied credentials against a chosen
+# endpoint (the KMS client uses `google-cloud-auth`). Off by default.
 # The Google crates are built without their default rustls provider (aws-lc-rs):
 # enabling both ring and aws-lc-rs makes `rustls::ClientConfig::builder()` panic
 # in every other TLS client of the process. `GcpKmsSigner::new` installs ring,

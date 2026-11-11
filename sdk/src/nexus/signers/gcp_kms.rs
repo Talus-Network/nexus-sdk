@@ -313,6 +313,12 @@ impl GcpKmsSigner {
     /// for which key the signer uses. Use [`Self::check_signs_as`] to check
     /// that the key has the address the caller expects.
     ///
+    /// The headers `credentials` produce are sent to `endpoint`, in cleartext
+    /// when the scheme is `http`. Do not pass credentials that should only ever
+    /// reach Google, such as Application Default Credentials, to an endpoint you
+    /// do not trust with them. The client sends the `Host` header without the
+    /// port.
+    ///
     /// `endpoint` is `http` or `https`, a host (DNS name or dotted IPv4) and an
     /// optional port 1-65535, with no userinfo, path, query, fragment or
     /// whitespace; anything else is rejected with [`NexusError::Configuration`].
@@ -406,9 +412,9 @@ impl GcpKmsSigner {
     /// derived from the loaded public key is not `expected`. Otherwise it signs
     /// 32 fresh random bytes through the same KMS call as transactions and
     /// verifies the signature locally against the loaded public key. The bytes
-    /// are random and chosen locally, so they can never be a meaningful Sui
-    /// transaction digest. It costs one KMS sign call. It works for signers
-    /// from [`Self::new`] and from [`Self::with_endpoint`].
+    /// are random and chosen locally, so they cannot practically be a
+    /// meaningful Sui transaction digest. It costs one KMS sign call. It works
+    /// for signers from [`Self::new`] and from [`Self::with_endpoint`].
     pub async fn check_signs_as(&self, expected: sui::types::Address) -> Result<(), NexusError> {
         if self.address != expected {
             return Err(NexusError::Configuration(format!(
@@ -1199,7 +1205,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn check_signs_as_normalizes_high_s() {
+    async fn check_signs_as_accepts_high_s() {
         let mut kms = FakeKms::p256();
         kms.switches.high_s = true;
         let signer = kms.signer().await.unwrap();
