@@ -1161,18 +1161,8 @@ mod tests {
     }
 
     /// A throwaway self-signed certificate; only parsed, never trusted for a real host.
-    const TEST_ROOT_CA_PEM: &str = "-----BEGIN CERTIFICATE-----
-MIIBfzCCASWgAwIBAgIUSi+X09Pdh6dGRwG9VVi7dC8Tt7AwCgYIKoZIzj0EAwIw
-FDESMBAGA1UEAwwJdGVzdC1yb290MCAXDTI2MTExMTExMDg1MFoYDzIxMjYxMDE4
-MTEwODUwWjAUMRIwEAYDVQQDDAl0ZXN0LXJvb3QwWTATBgcqhkjOPQIBBggqhkjO
-PQMBBwNCAAT+iBWHeNnTXpx2AS55YgolU66kovYhHOWSPuRdXvCX3Y8qFz6PN9Sr
-yj6q+7PrqseFaRqH6sYF7udI82nuNkNzo1MwUTAdBgNVHQ4EFgQUY3BvJYQDUvjq
-SvA7T8mYa+LHAp8wHwYDVR0jBBgwFoAUY3BvJYQDUvjqSvA7T8mYa+LHAp8wDwYD
-VR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA5p3EVOZsgiIp4f3AdxS1
-igsSatp9goI3KScVp6cBoA8CIHsBMMX6vTqe4FpDNQIsFPrkgn0RII8N/uF4du+q
-JD6f
------END CERTIFICATE-----
-";
+    const TEST_ROOT_CA_PEM: &str =
+        include_str!("../../../tests/fixtures/remote_signer_test_root_ca.pem");
 
     #[test]
     fn client_builds_with_an_extra_root_ca() {
