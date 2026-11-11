@@ -10,13 +10,9 @@
 //!   The DER signature is converted to `r || s` and normalized to low-S, which
 //!   Sui requires.
 //!
-//! Credentials come from Application Default Credentials by default (for
-//! example a Workload Identity Federation `external_account` file referenced by
+//! Credentials come from Application Default Credentials (for example a
+//! Workload Identity Federation `external_account` file referenced by
 //! `GOOGLE_APPLICATION_CREDENTIALS`), handled by the Google client library.
-//! [`GcpKmsSigner::with_endpoint`] instead sends the same calls to an endpoint
-//! of the caller's choice, authenticated with credentials the caller supplies.
-//! [`GcpKmsSigner::check_signs_as`] lets the caller verify at startup that the
-//! signer's key has the expected address and that the endpoint signs with it.
 //! Requests and responses are protected with CRC32C checks, and every
 //! signature is verified locally before it is returned.
 
@@ -117,49 +113,20 @@ struct GoogleKms {
     client: google_cloud_kms_v1::client::KeyManagementService,
 }
 
-/// Where the KMS client sends its calls and how it authenticates them.
-enum KmsTarget {
-    /// Cloud KMS itself, authenticated with Application Default Credentials,
-    /// or with `credentials_instead_of_adc` when set (tests only).
-    DirectToCloudKms {
-        credentials_instead_of_adc: Option<google_cloud_auth::credentials::Credentials>,
-    },
-    /// A caller-chosen endpoint (already validated), authenticated with
-    /// caller-supplied credentials.
-    CustomEndpoint {
-        endpoint: String,
-        credentials: google_cloud_auth::credentials::Credentials,
-    },
-}
-
 impl GoogleKms {
-    /// Builds the client for `target`.
-    async fn connect(target: KmsTarget) -> Result<Self, NexusError> {
+    /// Builds the client with Application Default Credentials, or `credentials`.
+    async fn connect(
+        credentials: Option<google_cloud_auth::credentials::Credentials>,
+    ) -> Result<Self, NexusError> {
         install_default_crypto_provider();
         let builder = google_cloud_kms_v1::client::KeyManagementService::builder();
-        let (builder, description) = match target {
-            KmsTarget::DirectToCloudKms {
-                credentials_instead_of_adc,
-            } => {
-                let builder = match credentials_instead_of_adc {
-                    Some(credentials) => builder.with_credentials(credentials),
-                    None => builder,
-                };
-                (builder, "Application Default Credentials")
-            }
-            KmsTarget::CustomEndpoint {
-                endpoint,
-                credentials,
-            } => (
-                builder
-                    .with_endpoint(endpoint)
-                    .with_credentials(credentials),
-                "custom endpoint",
-            ),
+        let builder = match credentials {
+            Some(credentials) => builder.with_credentials(credentials),
+            None => builder,
         };
         let client = builder.build().await.map_err(|error| {
             NexusError::Configuration(format!(
-                "could not create the Cloud KMS client ({description}): {error}"
+                "could not create the Cloud KMS client (Application Default Credentials): {error}"
             ))
         })?;
         Ok(Self { client })
@@ -249,7 +216,7 @@ impl KmsApi for GoogleKms {
 
 /// Signs Sui transactions with a Cloud KMS asymmetric key version.
 ///
-/// The public key is fetched once in [`Self::new`] or [`Self::with_endpoint`] and the address derived from
+/// The public key is fetched once in [`Self::new`] and the address derived from
 /// it; the KMS client is built once and shared by concurrent signing calls.
 pub struct GcpKmsSigner {
     key_version: String,
@@ -284,58 +251,7 @@ impl GcpKmsSigner {
     pub async fn new(key_version: impl Into<String>) -> Result<Self, NexusError> {
         let key_version = key_version.into();
         validate_key_version(&key_version)?;
-        let api = GoogleKms::connect(KmsTarget::DirectToCloudKms {
-            credentials_instead_of_adc: None,
-        })
-        .await?;
-        Self::with_api(key_version, Arc::new(api)).await
-    }
-
-    /// Like [`Self::new`], but sends the Cloud KMS REST calls to `endpoint`
-    /// instead of `https://cloudkms.googleapis.com`, authenticated with
-    /// `credentials` instead of Application Default Credentials.
-    ///
-    /// Use it for a private endpoint, an emulator, or a service that forwards
-    /// the calls to Cloud KMS. The endpoint must serve the `GetPublicKey`
-    /// (`GET /v1/<key_version>/publicKey`) and `AsymmetricSign`
-    /// (`POST /v1/<key_version>:asymmetricSign`) REST calls. `credentials` is
-    /// whatever the caller chooses: anonymous credentials, a bearer token
-    /// through a custom `CredentialsProvider`, or any other
-    /// `google_cloud_auth` credentials. The parent `signers` module re-exports
-    /// that crate as `signers::google_cloud_auth`, so credentials are built
-    /// with the same version the signer uses.
-    ///
-    /// Everything else behaves as in [`Self::new`]: the key version is
-    /// validated, the public key is fetched and CRC32C-checked once, and every
-    /// signature is verified locally against that key.
-    ///
-    /// The public key comes from `endpoint`, so the caller trusts the endpoint
-    /// for which key the signer uses. Use [`Self::check_signs_as`] to check
-    /// that the key has the address the caller expects.
-    ///
-    /// The headers `credentials` produce are sent to `endpoint`, in cleartext
-    /// when the scheme is `http`. Do not pass credentials that should only ever
-    /// reach Google, such as Application Default Credentials, to an endpoint you
-    /// do not trust with them. The client sends the `Host` header without the
-    /// port.
-    ///
-    /// `endpoint` is `http` or `https`, a host (DNS name or dotted IPv4) and an
-    /// optional port 1-65535, with no userinfo, path, query, fragment or
-    /// whitespace; anything else is rejected with [`NexusError::Configuration`].
-    pub async fn with_endpoint(
-        key_version: impl Into<String>,
-        endpoint: impl Into<String>,
-        credentials: google_cloud_auth::credentials::Credentials,
-    ) -> Result<Self, NexusError> {
-        let key_version = key_version.into();
-        validate_key_version(&key_version)?;
-        let endpoint = endpoint.into();
-        validate_endpoint(&endpoint)?;
-        let api = GoogleKms::connect(KmsTarget::CustomEndpoint {
-            endpoint,
-            credentials,
-        })
-        .await?;
+        let api = GoogleKms::connect(None).await?;
         Self::with_api(key_version, Arc::new(api)).await
     }
 
@@ -402,64 +318,11 @@ impl GcpKmsSigner {
         &self.key_version
     }
 
-    /// Checks that the key behind this signer has the address `expected` and
-    /// that the endpoint signs with it.
-    ///
-    /// Proves at startup that the endpoint signs with the key whose address is
-    /// `expected`. Useful when the endpoint is not Cloud KMS itself (see
-    /// [`Self::with_endpoint`]), since the public key then comes from that
-    /// endpoint. It fails with [`NexusError::Configuration`] if the address
-    /// derived from the loaded public key is not `expected`. Otherwise it signs
-    /// 32 fresh random bytes through the same KMS call as transactions and
-    /// verifies the signature locally against the loaded public key. The bytes
-    /// are random and chosen locally, so they cannot practically be a
-    /// meaningful Sui transaction digest. It costs one KMS sign call. It works
-    /// for signers from [`Self::new`] and from [`Self::with_endpoint`].
-    pub async fn check_signs_as(&self, expected: sui::types::Address) -> Result<(), NexusError> {
-        if self.address != expected {
-            return Err(NexusError::Configuration(format!(
-                "KMS key address {} does not match the expected {expected}",
-                self.address
-            )));
-        }
-        use rand::RngCore as _;
-        let mut challenge = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut challenge);
-        let raw = self.sign_digest(&challenge).await?;
-        let verifies = match &self.public_key {
-            PublicKey::Ed25519(public_key) => {
-                ed25519_dalek::VerifyingKey::from_bytes(public_key.inner())
-                    .and_then(|key| {
-                        key.verify_strict(&challenge, &ed25519_dalek::Signature::from_bytes(&raw))
-                    })
-                    .is_ok()
-            }
-            PublicKey::Secp256r1(public_key) => {
-                use p256::ecdsa::signature::hazmat::PrehashVerifier as _;
-                let digest = Sha256::digest(challenge);
-                p256::ecdsa::VerifyingKey::from_sec1_bytes(public_key.inner())
-                    .and_then(|key| {
-                        p256::ecdsa::Signature::from_slice(&raw)
-                            .and_then(|signature| key.verify_prehash(&digest, &signature))
-                    })
-                    .is_ok()
-            }
-        };
-        if verifies {
-            Ok(())
-        } else {
-            Err(kms_error(
-                "AsymmetricSign response",
-                "the endpoint's signature of the check challenge does not verify against the key",
-            ))
-        }
-    }
-
-    /// Signs the 32-byte `digest` through KMS (Ed25519 signs it as data, P-256
-    /// signs its SHA-256), runs the response integrity checks and returns the
-    /// raw 64-byte signature (`r || s`, low-S for P-256). It does not verify
-    /// the signature against the public key.
-    async fn sign_digest(&self, digest: &[u8; 32]) -> Result<[u8; 64], NexusError> {
+    async fn sign_transaction(
+        &self,
+        tx: &sui::types::Transaction,
+    ) -> Result<sui::types::UserSignature, NexusError> {
+        let digest = tx.signing_digest();
         let input = match self.algorithm {
             KmsAlgorithm::Ed25519 => SignInput::Data(digest.to_vec()),
             _ => SignInput::Sha256Digest(Sha256::digest(digest).into()),
@@ -487,33 +350,27 @@ impl GcpKmsSigner {
                 "signature is missing its CRC32C or failed the integrity check",
             ));
         }
-        match &self.public_key {
-            PublicKey::Ed25519(_) => <[u8; 64]>::try_from(response.signature.as_slice())
-                .map_err(|_| kms_error("AsymmetricSign response", "malformed Ed25519 signature")),
-            PublicKey::Secp256r1(_) => {
+        let signature = match &self.public_key {
+            PublicKey::Ed25519(public_key) => {
+                let bytes = <[u8; 64]>::try_from(response.signature.as_slice()).map_err(|_| {
+                    kms_error("AsymmetricSign response", "malformed Ed25519 signature")
+                })?;
+                sui::types::SimpleSignature::Ed25519 {
+                    signature: sui::types::Ed25519Signature::new(bytes),
+                    public_key: *public_key,
+                }
+            }
+            PublicKey::Secp256r1(public_key) => {
                 let parsed = p256::ecdsa::Signature::from_der(&response.signature)
                     .map_err(|_| kms_error("AsymmetricSign response", "malformed DER signature"))?;
                 // Sui rejects high-S signatures.
                 let parsed = parsed.normalize_s().unwrap_or(parsed);
-                Ok(parsed.to_bytes().into())
+                let bytes: [u8; 64] = parsed.to_bytes().into();
+                sui::types::SimpleSignature::Secp256r1 {
+                    signature: sui::types::Secp256r1Signature::new(bytes),
+                    public_key: *public_key,
+                }
             }
-        }
-    }
-
-    async fn sign_transaction(
-        &self,
-        tx: &sui::types::Transaction,
-    ) -> Result<sui::types::UserSignature, NexusError> {
-        let raw = self.sign_digest(&tx.signing_digest()).await?;
-        let signature = match &self.public_key {
-            PublicKey::Ed25519(public_key) => sui::types::SimpleSignature::Ed25519 {
-                signature: sui::types::Ed25519Signature::new(raw),
-                public_key: *public_key,
-            },
-            PublicKey::Secp256r1(public_key) => sui::types::SimpleSignature::Secp256r1 {
-                signature: sui::types::Secp256r1Signature::new(raw),
-                public_key: *public_key,
-            },
         };
         let signature = sui::types::UserSignature::Simple(signature);
         // Never return a signature Sui would reject (wrong key, wrong digest, bit flips).
@@ -541,69 +398,6 @@ impl TransactionSigner for GcpKmsSigner {
     ) -> BoxFuture<'a, Result<sui::types::UserSignature, NexusError>> {
         self.sign_transaction(tx).boxed()
     }
-}
-
-fn endpoint_error(rule: &str) -> NexusError {
-    NexusError::Configuration(format!("KMS endpoint {rule}"))
-}
-
-/// Accepts only `http(s)://host[:port]`, so that what is configured is exactly
-/// what the HTTP client sends and the client library cannot panic on it (it
-/// does on a bad port, an IPv4-like host that is not IPv4, punycode labels
-/// and a bare trailing slash). Error texts name the rule broken and never
-/// echo the endpoint.
-fn validate_endpoint(endpoint: &str) -> Result<(), NexusError> {
-    let Some((scheme, rest)) = endpoint.split_once("://") else {
-        return Err(endpoint_error("must be http or https"));
-    };
-    if scheme != "http" && scheme != "https" {
-        return Err(endpoint_error("must be http or https"));
-    }
-    if endpoint.contains(char::is_whitespace) {
-        return Err(endpoint_error("must not contain whitespace"));
-    }
-    if endpoint.contains(['?', '#']) {
-        return Err(endpoint_error("must not have a query or fragment"));
-    }
-    if rest.contains('/') {
-        return Err(endpoint_error("must not have a path"));
-    }
-    if rest.contains('@') {
-        return Err(endpoint_error("must not contain credentials"));
-    }
-    let (host, port) = match rest.split_once(':') {
-        Some((host, port)) => (host, Some(port)),
-        None => (rest, None),
-    };
-    if host.is_empty() {
-        return Err(endpoint_error("must have a host"));
-    }
-    // The URL parser reads a host whose last label starts with a digit as
-    // IPv4, so it must be a strict dotted quad; anything else is a DNS name.
-    let last_label = host.rsplit('.').next().unwrap_or_default();
-    let host_ok = if last_label.starts_with(|c: char| c.is_ascii_digit()) {
-        host.parse::<std::net::Ipv4Addr>().is_ok()
-    } else {
-        host.split('.').all(|label| {
-            (1..=63).contains(&label.len())
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                // Internationalized (punycode) labels are not accepted.
-                && !label.to_ascii_lowercase().starts_with("xn--")
-                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-        })
-    };
-    if !host_ok {
-        return Err(endpoint_error("host must be a DNS name or an IPv4 address"));
-    }
-    if let Some(port) = port {
-        let digits_only =
-            !port.is_empty() && !port.starts_with('0') && port.chars().all(|c| c.is_ascii_digit());
-        if !digits_only || !matches!(port.parse::<u16>(), Ok(1..)) {
-            return Err(endpoint_error("port must be 1-65535"));
-        }
-    }
-    Ok(())
 }
 
 /// Accepts only a pinned key version, never a key (which would follow rotation).
@@ -658,8 +452,6 @@ mod tests {
 
     const VECTORS: &str = include_str!("../../../tests/fixtures/kms_sui_keytool_vectors.json");
     const KEY_VERSION: &str = "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1";
-    /// `CryptoKeyVersionAlgorithm::EC_SIGN_ED25519` as the REST client's int enum encoding.
-    const EC_SIGN_ED25519_INT: i32 = 40;
     const P256_ORDER_HALF: [u8; 32] = [
         0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xde, 0x73, 0x7d, 0x56, 0xd3, 0x8b, 0xcf, 0x42, 0x79, 0xdc, 0xe5, 0x61, 0x7e, 0x31,
@@ -757,7 +549,6 @@ mod tests {
         switches: Switches,
         public_key_calls: AtomicUsize,
         sign_calls: AtomicUsize,
-        signed_inputs: std::sync::Mutex<Vec<Vec<u8>>>,
     }
 
     impl FakeKms {
@@ -768,7 +559,6 @@ mod tests {
                 switches: Switches::default(),
                 public_key_calls: AtomicUsize::new(0),
                 sign_calls: AtomicUsize::new(0),
-                signed_inputs: std::sync::Mutex::new(Vec::new()),
             }
         }
 
@@ -825,10 +615,6 @@ mod tests {
             assert_eq!(name, KEY_VERSION);
             assert_eq!(input_crc32c, crc(input.bytes()), "request crc must match");
             self.sign_calls.fetch_add(1, Ordering::SeqCst);
-            self.signed_inputs
-                .lock()
-                .unwrap()
-                .push(input.bytes().to_vec());
             let signer = self.other_key.as_ref().unwrap_or(&self.key);
             let signature = signer.sign(&input, self.switches.high_s);
             let mut signature_crc32c = crc(&signature);
@@ -992,272 +778,8 @@ mod tests {
     #[tokio::test]
     async fn connect_builds_https_client_without_bundled_provider() {
         let credentials = google_cloud_auth::credentials::anonymous::Builder::new().build();
-        assert!(GoogleKms::connect(KmsTarget::DirectToCloudKms {
-            credentials_instead_of_adc: Some(credentials),
-        })
-        .await
-        .is_ok());
+        assert!(GoogleKms::connect(Some(credentials)).await.is_ok());
         assert!(rustls::crypto::CryptoProvider::get_default().is_some());
-    }
-
-    /// Sign body the Google REST client sends for `AsymmetricSign` with data.
-    fn sign_request_matcher(digest: &[u8]) -> mockito::Matcher {
-        use base64::Engine as _;
-        // The client repeats `name` in the body as well as in the path.
-        mockito::Matcher::Json(serde_json::json!({
-            "name": KEY_VERSION,
-            "data": base64::engine::general_purpose::STANDARD.encode(digest),
-            "dataCrc32c": crc(digest).to_string(),
-        }))
-    }
-
-    /// Test credentials that add a fixed bearer token, as a caller would.
-    #[derive(Debug)]
-    struct BearerCredentials;
-
-    impl crate::nexus::signers::google_cloud_auth::credentials::CredentialsProvider
-        for BearerCredentials
-    {
-        async fn headers(
-            &self,
-            _extensions: http::Extensions,
-        ) -> Result<
-            crate::nexus::signers::google_cloud_auth::credentials::CacheableResource<
-                http::HeaderMap,
-            >,
-            crate::nexus::signers::google_cloud_auth::errors::CredentialsError,
-        > {
-            let mut headers = http::HeaderMap::new();
-            headers.insert(
-                http::header::AUTHORIZATION,
-                http::HeaderValue::from_static("Bearer test-token"),
-            );
-            Ok(
-                crate::nexus::signers::google_cloud_auth::credentials::CacheableResource::New {
-                    entity_tag: Default::default(),
-                    data: headers,
-                },
-            )
-        }
-
-        async fn universe_domain(&self) -> Option<String> {
-            None
-        }
-    }
-
-    /// Mocks the endpoint for one public key fetch and one sign, each
-    /// requiring `authorization` to match `authorization`, with the exact raw
-    /// queries the client sends.
-    async fn with_endpoint_signs(
-        credentials: google_cloud_auth::credentials::Credentials,
-        authorization: mockito::Matcher,
-    ) {
-        use base64::Engine as _;
-        let kms = FakeKms::ed25519();
-        let tx = fixture_tx();
-        let digest = tx.signing_digest();
-        let pem = kms.key.pem();
-        let signature = kms.key.sign(&SignInput::Data(digest.to_vec()), false);
-        let b64 = base64::engine::general_purpose::STANDARD;
-
-        let mut server = mockito::Server::new_async().await;
-        let public_key_query = "publicKeyFormat=0&%24alt=json%3Benum-encoding%3Dint";
-        let sign_query = "%24alt=json%3Benum-encoding%3Dint";
-        let public_key = server
-            .mock("GET", format!("/v1/{KEY_VERSION}/publicKey").as_str())
-            .match_query(mockito::Matcher::Exact(public_key_query.into()))
-            .match_header("authorization", authorization.clone())
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "pem": pem,
-                    "pemCrc32c": crc(pem.as_bytes()).to_string(),
-                    "algorithm": EC_SIGN_ED25519_INT,
-                    "name": KEY_VERSION,
-                })
-                .to_string(),
-            )
-            .expect(1)
-            .create_async()
-            .await;
-        // The client repeats `name` in the sign body as well as in the path.
-        let sign = server
-            .mock("POST", format!("/v1/{KEY_VERSION}:asymmetricSign").as_str())
-            .match_query(mockito::Matcher::Exact(sign_query.into()))
-            .match_header("authorization", authorization)
-            .match_body(sign_request_matcher(&digest))
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "name": KEY_VERSION,
-                    "signature": b64.encode(&signature),
-                    "signatureCrc32c": crc(&signature).to_string(),
-                    "verifiedDataCrc32c": true,
-                })
-                .to_string(),
-            )
-            .expect(1)
-            .create_async()
-            .await;
-
-        let signer = GcpKmsSigner::with_endpoint(KEY_VERSION, server.url(), credentials)
-            .await
-            .unwrap();
-        let user_signature = TransactionSigner::sign(&signer, &tx).await.unwrap();
-        assert_eq!(
-            user_signature.to_base64(),
-            vector_str("ed25519", "kat_keytool_signature_b64")
-        );
-        public_key.assert_async().await;
-        sign.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn with_endpoint_signs_through_endpoint_with_given_credentials() {
-        with_endpoint_signs(
-            BearerCredentials.into(),
-            mockito::Matcher::Exact("Bearer test-token".into()),
-        )
-        .await;
-    }
-
-    #[tokio::test]
-    async fn with_endpoint_anonymous_sends_no_authorization() {
-        with_endpoint_signs(
-            google_cloud_auth::credentials::anonymous::Builder::new().build(),
-            mockito::Matcher::Missing,
-        )
-        .await;
-    }
-
-    #[tokio::test]
-    async fn with_endpoint_rejects_bad_urls() {
-        for bad in [
-            "ftp://kms:8790",
-            "HTTP://kms:8790",
-            "http:///",
-            "http://:8790",
-            "kms:8790",
-            "http://kms:8790?x=1",
-            "http://kms:8790#frag",
-            "http://kms:99999",
-            "http://kms:0",
-            "http://kms:",
-            "http://kms:8x",
-            "http://user:pw@kms:8790",
-            "http://[::1]:8790",
-            "http://kms_x:8790",
-            "http://kms:8790/",
-            "http://kms/",
-            "http://kms:8790/tok3n",
-            "http://kms:8790/a/b",
-            "http://1.2.3.999:8790",
-            "http://1.2.3.4.5:8790",
-            "http://256.0.0.1:8790",
-            "http://999:8790",
-            "http://0x7f.1:8790",
-            "http://a..b:8790",
-            "http://-a:8790",
-            "http://a-:8790",
-            "http://.:8790",
-            "http://kms.:8790",
-            "http://kms:08790",
-            "http://xn--a:8790",
-            "http://XN--a:8790",
-            "http://a.xn--a.b:8790",
-            "http://kms :8790",
-            "",
-        ] {
-            let credentials = google_cloud_auth::credentials::anonymous::Builder::new().build();
-            let error = GcpKmsSigner::with_endpoint(KEY_VERSION, bad, credentials)
-                .await
-                .unwrap_err();
-            assert!(matches!(error, NexusError::Configuration(_)), "{bad}");
-            let text = format!("{error} {error:?}");
-            assert!(!text.contains("kms:"), "{bad}: {text}");
-            assert!(!text.contains("pw"), "{bad}: {text}");
-        }
-    }
-
-    #[test]
-    fn with_endpoint_accepts_plain_endpoints() {
-        for good in [
-            "http://kms:8790",
-            "http://127.0.0.1:8790",
-            "https://kms.internal",
-            "http://kms",
-            "http://kms:65535",
-        ] {
-            assert!(validate_endpoint(good).is_ok(), "{good}");
-        }
-    }
-
-    #[tokio::test]
-    async fn check_signs_as_accepts_matching_key() {
-        for kms in [FakeKms::ed25519(), FakeKms::p256()] {
-            let kms = Arc::new(kms);
-            let signer = GcpKmsSigner::with_api(KEY_VERSION, kms.clone())
-                .await
-                .unwrap();
-            signer.check_signs_as(signer.address()).await.unwrap();
-            assert_eq!(kms.sign_calls.load(Ordering::SeqCst), 1);
-        }
-    }
-
-    #[tokio::test]
-    async fn check_signs_as_accepts_high_s() {
-        let mut kms = FakeKms::p256();
-        kms.switches.high_s = true;
-        let signer = kms.signer().await.unwrap();
-        signer.check_signs_as(signer.address()).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn check_signs_as_rejects_wrong_address() {
-        let kms = Arc::new(FakeKms::ed25519());
-        let signer = GcpKmsSigner::with_api(KEY_VERSION, kms.clone())
-            .await
-            .unwrap();
-        let other = sui::types::Address::new([9; 32]);
-        let error = signer.check_signs_as(other).await.unwrap_err();
-        assert!(matches!(error, NexusError::Configuration(_)));
-        let text = error.to_string();
-        assert!(text.contains(&signer.address().to_string()), "{text}");
-        assert!(text.contains(&other.to_string()), "{text}");
-        assert!(text.contains("does not match the expected"), "{text}");
-        assert_eq!(kms.sign_calls.load(Ordering::SeqCst), 0);
-    }
-
-    #[tokio::test]
-    async fn check_signs_as_rejects_signature_from_another_key() {
-        let mut kms = FakeKms::ed25519();
-        kms.other_key = Some(Key::Ed25519(ed25519_dalek::SigningKey::from_bytes(
-            &[5; 32],
-        )));
-        let signer = kms.signer().await.unwrap();
-        let error = signer.check_signs_as(signer.address()).await.unwrap_err();
-        assert!(error.to_string().contains("does not verify"), "{error}");
-
-        let mut kms = FakeKms::p256();
-        kms.other_key = Some(Key::P256(
-            p256::ecdsa::SigningKey::from_slice(&[5; 32]).unwrap(),
-        ));
-        let signer = kms.signer().await.unwrap();
-        assert!(signer.check_signs_as(signer.address()).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn check_signs_as_uses_fresh_challenges() {
-        let kms = Arc::new(FakeKms::ed25519());
-        let signer = GcpKmsSigner::with_api(KEY_VERSION, kms.clone())
-            .await
-            .unwrap();
-        signer.check_signs_as(signer.address()).await.unwrap();
-        signer.check_signs_as(signer.address()).await.unwrap();
-        let inputs = kms.signed_inputs.lock().unwrap();
-        assert_eq!(inputs.len(), 2);
-        assert_eq!(inputs[0].len(), 32);
-        assert_ne!(inputs[0], inputs[1]);
     }
 
     #[test]

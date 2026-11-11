@@ -12,8 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `TransactionSigner` trait with `NexusClientBuilder::with_signer` and `WalletClient::connect_with_signer`, so a wallet can sign with a key held outside the process; `with_private_key` is unchanged.
 - `gcp-kms` feature with `GcpKmsSigner`, a `TransactionSigner` backed by a Google Cloud KMS Ed25519 or P-256 key version, authenticated through Application Default Credentials; `GcpKmsSigner::new` installs rustls' ring provider as the process default when none is installed.
-- `GcpKmsSigner::with_endpoint` sends the Cloud KMS calls to a caller-chosen endpoint with caller-supplied credentials; `GcpKmsSigner::new` is unchanged.
-- `GcpKmsSigner::check_signs_as` checks that the signer's key has the expected address and that the endpoint signs a fresh random challenge with it.
+- `RemoteSigner` (feature `remote-signer`) signs transactions through any HTTP signing service implementing a two-call JSON protocol (`GET /v1/public-key`, `POST /v1/sign`); every signature is verified locally against the caller-pinned address, and `connect` proves the service holds that key with a fresh random challenge.
 
 #### Changed
 
