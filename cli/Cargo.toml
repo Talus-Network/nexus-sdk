@@ -35,6 +35,7 @@ humantime.workspace = true
 indicatif.workspace = true
 log.workspace = true
 minijinja.workspace = true
+nexus-gcp-kms.workspace = true
 nexus-walrus.workspace = true
 move-binary-format.workspace = true
 move-bytecode-verifier.workspace = true
@@ -68,7 +69,7 @@ sui-crypto = { version = "0.4", features = ["bech32"] }
 
 [dependencies.nexus-sdk]
 workspace = true
-features = ["full", "move_publish", "gcp-kms"]
+features = ["full", "move_publish"]
 
 [dev-dependencies]
 assert_matches = "1.5.0"

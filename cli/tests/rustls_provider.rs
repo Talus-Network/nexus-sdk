@@ -1,6 +1,6 @@
 //! The CLI's TLS clients (walrus, jsonrpsee, hyper-rustls) call
 //! `rustls::ClientConfig::builder()`, which panics when more than one rustls
-//! crypto provider is compiled in and none is installed. `gcp-kms` must not
+//! crypto provider is compiled in and none is installed. `nexus-gcp-kms` must not
 //! add a second provider next to ring.
 //!
 //! This file is its own test binary, so the process starts with no provider

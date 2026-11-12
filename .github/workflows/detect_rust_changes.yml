@@ -16,6 +16,7 @@ jobs:
         sdk/**
         toolkit-rust/**
         walrus/**
+        gcp-kms/**
         **/*.rs
         **/Cargo.toml
         **/Cargo.lock

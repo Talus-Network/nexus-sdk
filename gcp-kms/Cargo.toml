@@ -1,0 +1,43 @@
+[package]
+name = "nexus-gcp-kms"
+description = "Google Cloud KMS transaction signer for Nexus (implements nexus-sdk's TransactionSigner)."
+publish = false
+
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+futures.workspace = true
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem", "std"] }
+crc32c = "0.6"
+sha2 = "0.10"
+
+# The Google crates are built without their default rustls provider (aws-lc-rs):
+# enabling both ring and aws-lc-rs makes `rustls::ClientConfig::builder()` panic
+# in every other TLS client of the process. `GcpKmsSigner::new` installs ring,
+# the provider rustls already selects when nothing else is configured.
+google-cloud-kms-v1 = { version = "1.9", default-features = false }
+google-cloud-gax = { version = "1.10", default-features = false }
+google-cloud-auth = { version = "1.10", default-features = false }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
+
+# A workspace path dependency, not a registry one like nexus-walrus: the leader
+# consumes nexus-sdk and this crate over git at one revision, and the path keeps
+# both on the same nexus-sdk package, so the `TransactionSigner` types unify.
+nexus-sdk = { workspace = true, features = ["nexus"] }
+
+[dev-dependencies]
+bcs.workspace = true
+ed25519-dalek = "2"
+hex.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -3,10 +3,10 @@
 use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
+    nexus_gcp_kms::GcpKmsSigner,
     nexus_sdk::{
         nexus::{
             client::{AddressBalanceGas, GasSource, NexusClient},
-            signers::GcpKmsSigner,
             transaction_signer::TransactionSigner,
         },
         sui,

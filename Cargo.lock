@@ -6478,6 +6478,7 @@ dependencies = [
  "move-unit-test",
  "move-vm-config",
  "move-vm-runtime",
+ "nexus-gcp-kms",
  "nexus-sdk",
  "nexus-toolkit",
  "nexus-walrus",
@@ -6511,6 +6512,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "nexus-gcp-kms"
+version = "2.1.1"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "bcs",
+ "crc32c",
+ "ed25519-dalek",
+ "futures",
+ "google-cloud-auth",
+ "google-cloud-gax",
+ "google-cloud-kms-v1",
+ "hex",
+ "nexus-sdk",
+ "p256",
+ "rustls",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
 name = "nexus-sdk"
 version = "2.1.1"
 dependencies = [
@@ -6520,13 +6543,9 @@ dependencies = [
  "bcs",
  "chrono",
  "convert_case 0.7.1",
- "crc32c",
  "ed25519-dalek",
  "futures",
  "futures-util",
- "google-cloud-auth",
- "google-cloud-gax",
- "google-cloud-kms-v1",
  "hex",
  "http",
  "http-body",
@@ -6543,7 +6562,6 @@ dependencies = [
  "rand 0.8.6",
  "regex",
  "reqwest 0.12.28",
- "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
