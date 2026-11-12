@@ -11,7 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - `TransactionSigner` trait with `NexusClientBuilder::with_signer` and `WalletClient::connect_with_signer`, so a wallet can sign with a key held outside the process; `with_private_key` is unchanged.
-- `gcp-kms` feature with `GcpKmsSigner`, a `TransactionSigner` backed by a Google Cloud KMS Ed25519 or P-256 key version, authenticated through Application Default Credentials; `GcpKmsSigner::new` installs rustls' ring provider as the process default when none is installed.
+- `GcpKmsSigner`, a `TransactionSigner` backed by a Google Cloud KMS Ed25519 or P-256 key version, authenticated through Application Default Credentials, lives in the new `nexus-gcp-kms` crate (`nexus_gcp_kms::GcpKmsSigner`); the SDK has no `gcp-kms` feature. `GcpKmsSigner::new` installs rustls' ring provider as the process default when none is installed.
+- `RemoteSigner` (feature `remote-signer`) signs transactions through any HTTP signing service implementing a two-call JSON protocol (`GET /v1/public-key`, `POST /v1/sign`); every signature is verified locally against the caller-pinned address, and `connect` proves the service holds that key with a fresh random challenge. Its HTTP client always uses rustls with the bundled Mozilla roots plus `extra_root_ca_pem`, whatever TLS backend other crates in the build select.
 
 #### Changed
 
@@ -41,7 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Opt-in Cloud KMS signing: set `SUI_KMS_KEY_VERSION` or `nexus conf set --sui.kms-key-version` to a pinned `.../cryptoKeyVersions/N` resource to sign with a Google Cloud KMS key through Application Default Credentials (`roles/cloudkms.signerVerifier`); an empty value counts as unset. Configuring it together with `SUI_PK`/`sui.pk` is an error; without it the CLI behaves as before.
+- Opt-in Cloud KMS signing (through `nexus-gcp-kms`): set `SUI_KMS_KEY_VERSION` or `nexus conf set --sui.kms-key-version` to a pinned `.../cryptoKeyVersions/N` resource to sign with a Google Cloud KMS key through Application Default Credentials (`roles/cloudkms.signerVerifier`); an empty value counts as unset. Configuring it together with `SUI_PK`/`sui.pk` is an error; without it the CLI behaves as before.
 
 #### Fixed
 

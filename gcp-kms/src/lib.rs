@@ -17,12 +17,12 @@
 //! signature is verified locally before it is returned.
 
 use {
-    crate::{
+    base64::Engine as _,
+    futures::future::{BoxFuture, FutureExt as _},
+    nexus_sdk::{
         nexus::{error::NexusError, transaction_signer::TransactionSigner},
         sui,
     },
-    base64::Engine as _,
-    futures::future::{BoxFuture, FutureExt as _},
     sha2::{Digest as _, Sha256},
     std::sync::Arc,
 };
@@ -102,7 +102,7 @@ fn kms_crc32c(bytes: &[u8]) -> i64 {
 ///
 /// The Google crates are built without a provider of their own, so the KMS
 /// client needs a process default. ring is what rustls selects on its own in
-/// builds without `gcp-kms`, so other TLS clients in the process are unaffected.
+/// builds that do not use this crate, so other TLS clients in the process are unaffected.
 fn install_default_crypto_provider() {
     // `Err` only means another provider is already installed, which is fine.
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -443,14 +443,13 @@ fn pem_to_der(pem: &str) -> Result<Vec<u8>, NexusError> {
 mod tests {
     use {
         super::*,
-        crate::sui,
         ed25519_dalek::Signer as _,
         futures::future::{join_all, ready},
         p256::ecdsa::signature::hazmat::PrehashSigner as _,
         std::sync::atomic::{AtomicUsize, Ordering},
     };
 
-    const VECTORS: &str = include_str!("../../../tests/fixtures/kms_sui_keytool_vectors.json");
+    const VECTORS: &str = include_str!("../tests/fixtures/kms_sui_keytool_vectors.json");
     const KEY_VERSION: &str = "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1";
     const P256_ORDER_HALF: [u8; 32] = [
         0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,

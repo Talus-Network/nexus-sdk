@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["toolkit-rust", "cli", "sdk", "walrus"]
+members = ["toolkit-rust", "cli", "sdk", "walrus", "gcp-kms"]
 
 [workspace.package]
 edition = "2021"
@@ -85,6 +85,7 @@ zeroize = "1.7"
 nexus-toolkit = { version = "2.1.1", path = "toolkit-rust" }
 nexus-sdk = { version = "2.1.1", path = "sdk" }
 nexus-walrus = { path = "walrus" }
+nexus-gcp-kms = { path = "gcp-kms" }
 
 # === Move package build deps ===
 move-binary-format = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.77.2" }

@@ -9,12 +9,13 @@ ARG TARGET_DIR=target/release
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev clang libclang-dev
+RUN apt-get update && apt-get install -y pkg-config libssl-dev clang libclang-dev make
 
 COPY cli cli
 COPY sdk sdk
 COPY toolkit-rust toolkit-rust
 COPY walrus walrus
+COPY gcp-kms gcp-kms
 
 COPY Cargo.lock Cargo.lock
 COPY Cargo.toml Cargo.toml
