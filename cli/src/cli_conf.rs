@@ -83,14 +83,30 @@ impl CliConf {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) struct SuiConf {
-    /// Sui private key base64 encoded bytes.
-    #[serde(default)]
-    pub(crate) pk: Option<SecretValue>,
+    /// Sui secret key in keytool export or legacy Base64 format.
+    #[serde(default, alias = "pk")]
+    pub(crate) sk: Option<SecretValue>,
     #[serde(default)]
     pub(crate) rpc_url: Option<reqwest::Url>,
     /// Pinned Cloud KMS key version used to sign instead of a local key.
     #[serde(default)]
     pub(crate) kms_key_version: Option<String>,
+}
+
+#[cfg(test)]
+mod secret_key_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_key_is_loaded_and_saved_as_sk() {
+        for field in ["pk", "sk"] {
+            let conf: SuiConf = toml::from_str(&format!("{field} = 'test-key'\n")).unwrap();
+            assert_eq!(conf.sk, Some(SecretValue::from("test-key")));
+            let saved = toml::to_string(&conf).unwrap();
+            assert!(saved.contains("sk = "));
+            assert!(!saved.contains("pk = "));
+        }
+    }
 }
 
 /// Local secrets configuration.

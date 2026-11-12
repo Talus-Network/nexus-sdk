@@ -67,7 +67,7 @@ pub(crate) async fn build_sui_grpc_client(
     }
 }
 
-/// Parses an Ed25519 private key from base64.
+/// Parses an Ed25519 private key from a Sui keytool export or base64.
 ///
 /// Tries formats in order (like Sui's keytool import):
 /// 1. Base64 33 bytes (flag + key) - Sui format, flag must be 0x00 (ed25519)
@@ -75,6 +75,11 @@ pub(crate) async fn build_sui_grpc_client(
 fn parse_ed25519_private_key(
     pk_encoded: &str,
 ) -> AnyResult<sui::crypto::Ed25519PrivateKey, String> {
+    if pk_encoded.starts_with("suiprivkey1") {
+        return sui::crypto::Ed25519PrivateKey::from_suiprivkey(pk_encoded)
+            .map_err(|e| format!("Failed to decode Sui private key: {e}"));
+    }
+
     let pk_bytes = BASE64_STANDARD
         .decode(pk_encoded)
         .map_err(|e| format!("Failed to decode Sui private key from base64: {e}"))?;
@@ -109,19 +114,26 @@ pub(crate) async fn get_signing_key(
 ) -> AnyResult<sui::crypto::Ed25519PrivateKey, NexusCliError> {
     let key_handle = loading!("Retrieving Sui signing key...");
 
-    // Try to get the `SUI_PK` from the environment, otherwise use the
-    // configuration. This value is a base64 encoded string of the private key
-    // bytes.
-    let Some(pk_encoded) = std::env::var("SUI_PK")
+    let Some(pk_encoded) = std::env::var("SUI_SK")
         .ok()
-        .or_else(|| conf.sui.pk.clone().map(|pk| pk.peek().to_string()))
+        .inspect(|sk| {
+            if std::env::var("SUI_PK").is_ok_and(|pk| pk != *sk) {
+                eprintln!("Warning: SUI_PK is deprecated and conflicts with SUI_SK; using SUI_SK.");
+            }
+        })
+        .or_else(|| {
+            std::env::var("SUI_PK").ok().inspect(|_| {
+                eprintln!("Warning: SUI_PK is deprecated; use SUI_SK instead.");
+            })
+        })
+        .or_else(|| conf.sui.sk.clone().map(|sk| sk.peek().to_string()))
     else {
         key_handle.error();
 
         return Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}",
             message = "The Sui private key is not configured. Please set it via environment or the CLI configuration.",
-            command = "$ nexus conf set --sui.pk <base64_encoded_key>".to_string().bold(),
+            command = "$ nexus conf set --sui.sk <suiprivkey>".to_string().bold(),
         )));
     };
 
@@ -140,13 +152,13 @@ pub(crate) async fn get_signing_key(
 /// Where the transaction signer comes from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SignerSource {
-    /// Local private key (`SUI_PK` or `[sui].pk`), read by [`get_signing_key`].
+    /// Local secret key (`SUI_SK` or `[sui].sk`), read by [`get_signing_key`].
     LocalKey,
     /// Pinned Cloud KMS key version resource name.
     Kms(String),
 }
 
-/// Pick the signer source. Local key = `SUI_PK` env, else `[sui].pk`. KMS =
+/// Pick the signer source. Local key = `SUI_SK` env, else `[sui].sk`. KMS =
 /// `SUI_KMS_KEY_VERSION` env, else `[sui].kms_key_version`; an empty or
 /// whitespace-only KMS value counts as unset (CI renders unset variables as
 /// ""). Configuring both is ambiguous and rejected.
@@ -155,7 +167,7 @@ pub(crate) fn signer_source(
     env_kms: Option<String>,
     conf: &crate::cli_conf::SuiConf,
 ) -> Result<SignerSource, NexusCliError> {
-    let has_pk = env_pk.is_some() || conf.pk.is_some();
+    let has_pk = env_pk.is_some() || conf.sk.is_some();
     let is_set = |value: &String| !value.trim().is_empty();
     let kms = env_kms
         .filter(is_set)
@@ -163,14 +175,14 @@ pub(crate) fn signer_source(
 
     match (has_pk, kms) {
         (true, Some(_)) => Err(NexusCliError::Any(anyhow!(
-            "Both a local Sui private key (SUI_PK or [sui].pk) and a Cloud KMS key version (SUI_KMS_KEY_VERSION or [sui].kms_key_version) are configured. Configure only one signer."
+            "Both a local Sui private key (SUI_SK, SUI_PK, or [sui].sk) and a Cloud KMS key version (SUI_KMS_KEY_VERSION or [sui].kms_key_version) are configured. Configure only one signer."
         ))),
         (true, None) => Ok(SignerSource::LocalKey),
         (false, Some(kms)) => Ok(SignerSource::Kms(kms)),
         (false, None) => Err(NexusCliError::Any(anyhow!(
             "{message}\n\n{command}\n\n{kms}",
             message = "The Sui private key is not configured. Please set it via environment or the CLI configuration.",
-            command = "$ nexus conf set --sui.pk <base64_encoded_key>".to_string().bold(),
+            command = "$ nexus conf set --sui.sk <suiprivkey>".to_string().bold(),
             kms = "Alternatively, sign with Cloud KMS by setting SUI_KMS_KEY_VERSION.",
         ))),
     }
@@ -182,7 +194,9 @@ pub(crate) async fn get_signer(
     conf: &CliConf,
 ) -> AnyResult<Arc<dyn TransactionSigner>, NexusCliError> {
     let source = signer_source(
-        std::env::var("SUI_PK").ok(),
+        std::env::var("SUI_SK")
+            .ok()
+            .or_else(|| std::env::var("SUI_PK").ok()),
         std::env::var("SUI_KMS_KEY_VERSION").ok(),
         &conf.sui,
     )?;
@@ -648,7 +662,7 @@ mod tests {
 
     fn kms_conf(kms: Option<&str>, pk: Option<&str>) -> crate::cli_conf::SuiConf {
         crate::cli_conf::SuiConf {
-            pk: pk.map(|p| p.to_string().into()),
+            sk: pk.map(|p| p.to_string().into()),
             kms_key_version: kms.map(str::to_string),
             ..Default::default()
         }
@@ -732,7 +746,7 @@ mod tests {
             message.contains("The Sui private key is not configured"),
             "{message}"
         );
-        assert!(message.contains("nexus conf set --sui.pk"), "{message}");
+        assert!(message.contains("nexus conf set --sui.sk"), "{message}");
         assert!(message.contains("SUI_KMS_KEY_VERSION"), "{message}");
     }
 
@@ -1020,6 +1034,29 @@ mod tests {
         const TEST_KEY_BASE64_WITHOUT_FLAG: &str = "O8UhQxGJ5USSobTkwtPyHxBV3XFm5LrEX0oDYS6aMt0=";
         const TEST_KEY_ADDRESS: &str =
             "0x79d85606d67f3d046098d93d51b5de4c4606743267713fa0338846ec1729dce1";
+
+        #[test]
+        fn test_sui_keytool_export() {
+            let key = parse_ed25519_private_key(TEST_KEY_BASE64_WITH_FLAG).unwrap();
+            let exported = key.to_suiprivkey().unwrap();
+            let parsed = parse_ed25519_private_key(&exported).unwrap();
+            assert_eq!(
+                parsed.public_key().derive_address().to_string(),
+                TEST_KEY_ADDRESS
+            );
+        }
+
+        #[test]
+        fn test_sui_keytool_export_rejects_invalid_checksum_and_scheme() {
+            let key = parse_ed25519_private_key(TEST_KEY_BASE64_WITH_FLAG).unwrap();
+            let mut exported = key.to_suiprivkey().unwrap();
+            let last = exported.pop().unwrap();
+            exported.push(if last == 'q' { 'p' } else { 'q' });
+            assert!(parse_ed25519_private_key(&exported).is_err());
+
+            let secp = sui_crypto::secp256r1::Secp256r1PrivateKey::new([1; 32]);
+            assert!(parse_ed25519_private_key(&secp.to_suiprivkey().unwrap()).is_err());
+        }
 
         #[test]
         fn test_33_bytes_sui_format_with_ed25519_flag() {

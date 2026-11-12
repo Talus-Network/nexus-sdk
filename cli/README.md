@@ -71,6 +71,12 @@ Options:
 
 Scheduled work follows `Task -> Schedule -> Occurrence`.
 
+For signing, set `SUI_SK` to the Ed25519 `suiprivkey` value returned by
+`sui keytool export`, or configure it with `nexus conf set --sui.sk <SECRET_KEY>`.
+Legacy Base64 keys, `SUI_PK`, `--sui.pk`, and saved `sui.pk` settings remain
+supported. `SUI_SK` takes precedence over `SUI_PK` and the saved setting.
+The CLI warns on standard error when `SUI_PK` is used or conflicts with `SUI_SK`.
+
 `nexus task create` creates an empty Task for later composition.
 `nexus task schedule` creates a Task and applies a complete nonempty Schedule
 atomically. Task and occurrence inspection read durable object state. Run

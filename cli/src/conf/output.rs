@@ -15,7 +15,7 @@ pub(super) struct ConfOutput<'a> {
 
 #[derive(Serialize)]
 struct SuiConfOutput<'a> {
-    pk: Option<&'static str>,
+    sk: Option<&'static str>,
     rpc_url: &'a Option<reqwest::Url>,
     kms_key_version: &'a Option<String>,
 }
@@ -24,7 +24,7 @@ impl<'a> From<&'a CliConf> for ConfOutput<'a> {
     fn from(conf: &'a CliConf) -> Self {
         Self {
             sui: SuiConfOutput {
-                pk: conf.sui.pk.as_ref().map(|_| REDACTED_SECRET),
+                sk: conf.sui.sk.as_ref().map(|_| REDACTED_SECRET),
                 rpc_url: &conf.sui.rpc_url,
                 kms_key_version: &conf.sui.kms_key_version,
             },
@@ -49,7 +49,7 @@ mod tests {
     fn conf_output_redacts_the_private_key_in_every_format() {
         let conf = CliConf {
             sui: SuiConf {
-                pk: Some(SecretValue::from("actual private key")),
+                sk: Some(SecretValue::from("actual secret/private key")),
                 rpc_url: Some(reqwest::Url::parse("https://rpc.example.com").unwrap()),
                 kms_key_version: None,
             },

@@ -929,6 +929,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
 
 [[package]]
+name = "bech32"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
+
+[[package]]
 name = "beef"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2844,7 +2850,7 @@ dependencies = [
  "auto_ops",
  "base64ct",
  "bcs",
- "bech32",
+ "bech32 0.9.1",
  "bincode",
  "blake2",
  "blst",
@@ -2899,7 +2905,7 @@ dependencies = [
  "auto_ops",
  "base64ct",
  "bcs",
- "bech32",
+ "bech32 0.9.1",
  "bincode",
  "blake2",
  "blst",
@@ -6491,6 +6497,7 @@ dependencies = [
  "serial_test",
  "sha2 0.10.9",
  "sui-adapter-latest",
+ "sui-crypto 0.4.0",
  "sui-move-build",
  "sui-move-natives-latest",
  "sui-package-alt",
@@ -10069,6 +10076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c71cc9ba615bd3960106553d1c6affda579a8587ae0b36ffa199ce94f607fc9"
 dependencies = [
  "base64ct",
+ "bech32 0.11.1",
  "ed25519-dalek",
  "k256 0.13.4",
  "p256",

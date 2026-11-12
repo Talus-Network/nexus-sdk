@@ -29,11 +29,12 @@ pub(crate) enum ConfCommand {
     #[command(about = "Update the Nexus CLI configuration")]
     Set {
         #[arg(
-            long = "sui.pk",
-            help = "Set the Sui private key base64 encoded bytes",
-            value_name = "BASE64"
+            long = "sui.sk",
+            alias = "sui.pk",
+            help = "Set the Sui secret key (sui keytool export or Base64)",
+            value_name = "SECRET_KEY"
         )]
-        sui_pk: Option<String>,
+        sui_sk: Option<String>,
         #[arg(
             long = "sui.kms-key-version",
             help = "Sign with a pinned Cloud KMS key version (projects/.../cryptoKeyVersions/N) instead of a local key",
@@ -112,7 +113,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             Ok(())
         }
         ConfCommand::Set {
-            sui_pk,
+            sui_sk,
             sui_kms_key_version,
             sui_rpc_url,
             nexus_objects_path,
@@ -123,7 +124,7 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
             conf_path,
         } => {
             set_nexus_conf(
-                sui_pk,
+                sui_sk,
                 sui_kms_key_version,
                 sui_rpc_url,
                 nexus_objects_path,
