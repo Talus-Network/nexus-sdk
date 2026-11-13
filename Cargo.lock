@@ -6450,7 +6450,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-cli"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -6513,7 +6513,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-gcp-kms"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -6535,7 +6535,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -6591,7 +6591,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "bcs",
@@ -6625,7 +6625,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-walrus"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "bcs",

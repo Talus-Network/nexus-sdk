@@ -2,9 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
+
+## [`2.2.0`] - 2026-11-13
+
+This release includes incompatible SDK and signed HTTP changes. Coordinate SDK, Toolkit and Leader upgrades. Cargo accepts `2.2.0` for `"2.1.1"` requirements. Pin SDK and Toolkit to `"=2.1.1"` until ready to update.
 
 ### `nexus-sdk`
 
@@ -18,7 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Breaking:** `WalletClient::sign_transaction` is now async; local-key signatures are unchanged.
 - Updated the advisory policy for upstream-constrained zstd/zstd-safe versions and upgraded locked zstd-sys to 2.1.2; exception reasons record scope, review date, and removal criteria.
-- **Signed HTTP v3.1:** Requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing v3 input and result signature bytes. This protocol revision retains the `signed_http::v3` API module and `X-Nexus-Sig-V: 3` wire header; package versions are unchanged. See the [v3.1 migration guide](sdk/README.md#migrating-from-signed-http-v3-to-v31).
+- **Signed HTTP v3.1:** Requests now carry a separate Ed25519 signature over the receiving Tool FQN, invocation nonce, and Unix-millisecond timestamp while preserving existing v3 input and result signature bytes. This protocol revision retains the `signed_http::v3` API module and `X-Nexus-Sig-V: 3` wire header. See the [v3.1 migration guide](sdk/README.md#migrating-from-signed-http-v3-to-v31).
 - **Breaking:** `RecoveryReader::new` now accepts only the RPC URL. `RecoveryReader::read` invokes its callback once within a 30 second deadline and returns failures to the caller, which owns continuation policy.
 - **Breaking:** `EventIngestor::start` reports a connection failure once and closes the receiver. Callers own reconnection, resume from the last delivered checkpoint inclusively, and deduplicate replayed events.
 - Recovery discovery now returns failed reads, invalid responses, and incomplete coverage as errors. Individual requests and stalled response bodies have deadlines, while healthy pagination can continue as its cursor advances.

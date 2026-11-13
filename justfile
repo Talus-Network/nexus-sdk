@@ -20,6 +20,10 @@ mod pre-commit '.pre-commit/.just'
 # Helpers
 mod helpers 'helpers/helpers.just'
 
+# Prepare versions and release notes for review.
+release-prepare version:
+    ./scripts/prepare-release.py {{quote(version)}}
+
 [private]
 _default:
     @just --list

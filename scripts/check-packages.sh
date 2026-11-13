@@ -64,4 +64,6 @@ for package in "${packages[@]}"; do
     fi
 done
 
+./scripts/check-consumers.sh
+
 echo "All package archives passed verification."

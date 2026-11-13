@@ -6,8 +6,8 @@ Add the dependencies:
 
 ```toml
 [dependencies]
-nexus-sdk = { version = "2.1.1", features = ["nexus", "walrus"] }
-nexus-walrus = { git = "https://github.com/Talus-Network/nexus-sdk", tag = "v2.1.1" }
+nexus-sdk = { version = "2.2.0", features = ["nexus", "walrus"] }
+nexus-walrus = { git = "https://github.com/Talus-Network/nexus-sdk", tag = "v2.2.0" }
 ```
 
 Building the adapter requires a C++ compiler and libclang. On Debian or Ubuntu, install `clang` and `libclang-dev` alongside the Rust build tools.

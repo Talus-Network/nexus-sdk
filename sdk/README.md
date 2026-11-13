@@ -10,10 +10,10 @@ Most Nexus Tool projects should use the [Nexus Toolkit][nexus-toolkit-docs], whi
 Applications that need direct RPC, transaction, or protocol type access can add this crate to `Cargo.toml`:
 
 ```toml
-nexus-sdk = { version = "2.1.1", features = ["full", "move_publish"] }
+nexus-sdk = { version = "2.2.0", features = ["full", "move_publish"] }
 ```
 
-Version `2.1.0` includes Rust API changes. Read the [migration guide][migration] before updating from `2.0.0`.
+Review the [release notes][release-notes] before updating from `2.1.1`.
 
 Move package transaction construction requires the `move_publish` feature. It accepts compiled module bytes and dependency package IDs through `MovePackageArtifact`; project compilation remains the responsibility of the caller.
 
@@ -35,10 +35,10 @@ These SDK rules do not change the published Move contracts. Their inline, port, 
 
 ## Walrus storage
 
-Use the [native Walrus adapter](https://github.com/Talus-Network/nexus-sdk/tree/v2.1.1/walrus) for wallet funded uploads and management. The SDK `full` feature includes reading and protocol references. The adapter is distributed through Git because its upstream Walrus dependencies are not published on crates.io:
+Use the [native Walrus adapter](https://github.com/Talus-Network/nexus-sdk/tree/v2.2.0/walrus) for wallet funded uploads and management. The SDK `full` feature includes reading and protocol references. The adapter is distributed through Git because its upstream Walrus dependencies are not published on crates.io:
 
 ```toml
-nexus-walrus = { git = "https://github.com/Talus-Network/nexus-sdk", tag = "v2.1.1" }
+nexus-walrus = { git = "https://github.com/Talus-Network/nexus-sdk", tag = "v2.2.0" }
 ```
 
 `nexus::wallet::WalletClient` owns one signing key and RPC connection. Nexus and Walrus share it; no executable, temporary wallet file, or second key store is needed. An existing `NexusClient` exposes `wallet()`. A standalone application can call `WalletClient::connect(rpc_url, key)` and pass its clone to `NexusClient::builder().with_wallet(wallet)`.
@@ -100,7 +100,7 @@ An insufficient settlement marker records an earlier shortfall. It does not eras
 
 ## Signed HTTP (Leader nodes <-> Tools)
 
-This crate includes **signed HTTP v3.1** for Leader node <=> Tool communication. v3.1 names the protocol revision that adds a signed request context to v3. The Rust API remains under `nexus_sdk::signed_http::v3`, and both requests and responses must still send `X-Nexus-Sig-V: 3`: the implementation strictly checks that value and rejects `3.1`. This documentation revision does not change Cargo package versions.
+This crate includes **signed HTTP v3.1** for Leader node <=> Tool communication. v3.1 names the protocol revision that adds a signed request context to v3. The Rust API remains under `nexus_sdk::signed_http::v3`, and both requests and responses must still send `X-Nexus-Sig-V: 3`: the implementation strictly checks that value and rejects `3.1`.
 
 The protocol preserves the existing input and result signature bytes:
 
@@ -138,4 +138,4 @@ Direct standard TAP payment creation currently follows the Move policy exactly: 
 <!-- List of references -->
 
 [nexus-toolkit-docs]: https://docs.talus.network/talus-documentation/developer-docs/index-1/toolkit-rust
-[migration]: https://github.com/Talus-Network/nexus-sdk/blob/v2.1.0/sdk/MIGRATION.md#upgrading-from-200-to-210
+[release-notes]: https://github.com/Talus-Network/nexus-sdk/releases/tag/v2.2.0

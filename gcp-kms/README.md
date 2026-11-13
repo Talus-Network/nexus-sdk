@@ -4,8 +4,8 @@
 
 ```toml
 [dependencies]
-nexus-sdk = { git = "https://github.com/Talus-Network/nexus-sdk", rev = "<rev>", features = ["nexus"] }
-nexus-gcp-kms = { git = "https://github.com/Talus-Network/nexus-sdk", rev = "<rev>" }
+nexus-sdk = { git = "https://github.com/Talus-Network/nexus-sdk", tag = "v2.2.0", features = ["nexus"] }
+nexus-gcp-kms = { git = "https://github.com/Talus-Network/nexus-sdk", tag = "v2.2.0" }
 ```
 
 Use one revision for both crates so the `TransactionSigner` types are the same.
