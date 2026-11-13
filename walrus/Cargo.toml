@@ -24,7 +24,7 @@ tokio.workspace = true
 
 # A registry dependency keeps Git consumers on the same SDK as their application.
 # The workspace patch selects the local SDK during development.
-nexus-sdk = { version = "2.1.1", features = ["nexus", "walrus"] }
+nexus-sdk = { version = "2.2.0", features = ["nexus", "walrus"] }
 
 [dependencies.walrus-sdk]
 git = "https://github.com/MystenLabs/walrus"

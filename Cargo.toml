@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk", "walrus", "gcp-kms"]
 
 [workspace.package]
 edition = "2021"
-version = "2.1.1"
+version = "2.2.0"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -82,8 +82,8 @@ warp = { version = "0.4.3", features = ["server"] }
 zeroize = "1.7"
 
 # === Nexus deps ===
-nexus-toolkit = { version = "2.1.1", path = "toolkit-rust" }
-nexus-sdk = { version = "2.1.1", path = "sdk" }
+nexus-toolkit = { version = "2.2.0", path = "toolkit-rust" }
+nexus-sdk = { version = "2.2.0", path = "sdk" }
 nexus-walrus = { path = "walrus" }
 nexus-gcp-kms = { path = "gcp-kms" }
 

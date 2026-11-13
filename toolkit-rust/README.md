@@ -25,14 +25,14 @@ You can also manually include the Nexus Toolkit in your existing project.
 Add the following lines to your project's `Cargo.toml`:
 
 ```toml
-nexus-toolkit = "2.1.1"
+nexus-toolkit = "2.2.0"
 ```
 
 ---
 
 ## Authentication
 
-This branch implements **signed HTTP v3.1**, which adds a signed request context while retaining the `X-Nexus-Sig-V: 3` wire header and the SDK's `signed_http::v3` module. The strict version check still rejects `3.1` as a header value. Package versions are unchanged. See [Migrating from signed HTTP v3 to v3.1](../sdk/README.md#migrating-from-signed-http-v3-to-v31) for coordinated Leader and Toolkit upgrades; required mode rejects older requests without context headers.
+The Toolkit supports **signed HTTP v3.1**, which adds a signed request context while retaining the `X-Nexus-Sig-V: 3` wire header and the SDK's `signed_http::v3` module. The strict version check still rejects `3.1` as a header value. See [Migrating from signed HTTP v3 to v3.1](../sdk/README.md#migrating-from-signed-http-v3-to-v31) for coordinated Leader and Toolkit upgrades. Required mode rejects older requests without context headers.
 
 Nexus Tools expose an HTTP API. **HTTPS** protects the connection between a Leader and a Tool. The Toolkit also provides configurable checks for request signatures and TLS client certificates, and can sign Tool results for on-chain verification.
 
@@ -69,7 +69,7 @@ fn encode_output(output: Output) -> anyhow::Result<nexus_sdk::types::OffchainToo
 }
 ```
 
-Inside `invoke`, call `nexus_walrus::WalrusStorage::upload` through the [native Walrus adapter](https://github.com/Talus-Network/nexus-sdk/tree/v2.1.1/walrus) and use the returned `StoredBlob::nexus_data()` for the port. Ordinary outputs retain their existing inline encoding. The runtime validates explicit ports against metadata, then signs the exact canonical reference. Port order must match metadata order.
+Inside `invoke`, call `nexus_walrus::WalrusStorage::upload` through the [native Walrus adapter](https://github.com/Talus-Network/nexus-sdk/tree/v2.2.0/walrus) and use the returned `StoredBlob::nexus_data()` for the port. Ordinary outputs retain their existing inline encoding. The runtime validates explicit ports against metadata, then signs the exact canonical reference. Port order must match metadata order.
 
 The leader uses its aggregator to read referenced output, checks its digest, and resolves it for the next tool. It does not upload or own the blob. The next toolkit runtime checks the signed input commitment before decoding JSON. Compact inline JSON retains the existing transport. Large data and JSON whose formatting would otherwise change travel as base64 bytes to preserve the digest. The runtime accepts both forms. Upgrade receiving tool runtimes before using large references or data that needs the new `bytes` form.
 

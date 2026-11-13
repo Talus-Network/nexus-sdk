@@ -47,6 +47,7 @@ impl ToolTemplate {
                 let name_kebab_case = name.to_case(Case::Kebab);
                 let name_pascal_case = name.to_case(Case::Pascal);
                 let description_literal = serde_json::to_string(description)?;
+                let version = env!("CARGO_PKG_VERSION");
 
                 let mut env = Environment::new();
 
@@ -68,7 +69,7 @@ impl ToolTemplate {
                         "Cargo.toml".to_string(),
                         Some(
                             cargo_template
-                                .render(context! { name_kebab_case, name_pascal_case })?,
+                                .render(context! { name_kebab_case, name_pascal_case, version })?,
                         ),
                     ),
                 ])
