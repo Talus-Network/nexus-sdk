@@ -5,9 +5,12 @@ _default:
     @just --list pre-commit
 
 
-# cargo check --locked --workspace --bins --examples
+# Check workspace targets and independent SDK features.
 cargo-check: _check-cargo
     cargo check --locked --workspace --bins --examples
+    cargo check --locked -p nexus-sdk --lib --no-default-features --features events
+    cargo check --locked -p nexus-sdk --lib --no-default-features --features transactions
+    cargo check --locked -p nexus-sdk --lib --no-default-features --features move_publish
 
 
 # cargo +nightly fmt --all --check

@@ -19,6 +19,7 @@ mod shared_object_ref;
 mod support;
 mod tagged_output;
 mod tap;
+mod verifier;
 mod workflow;
 
 #[cfg(feature = "walrus")]
