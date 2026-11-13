@@ -1,13 +1,18 @@
+//! Nexus event types. Queries also require the `nexus` feature.
+
 use {
     crate::sui,
-    anyhow::{bail, Result},
+    anyhow::Result,
     serde::{Deserialize, Serialize},
     thiserror::Error,
 };
 
+#[cfg(feature = "nexus")]
 mod parsing;
+#[cfg(feature = "nexus")]
 mod query;
 
+#[cfg(feature = "nexus")]
 pub use query::*;
 
 /// Nexus event whose datatype is absent from [`NexusEventKind`].
@@ -35,6 +40,7 @@ pub enum NexusEventDecodeError {
     #[error("Nexus event type is invalid: {0}")]
     EventType(#[from] sui::types::TypeParseError),
     /// The immutable package graph selected by the emitter is invalid.
+    #[cfg(feature = "nexus")]
     #[error("Could not resolve Nexus event emitter package '{package}': {source}")]
     EmitterPackage {
         /// Package recorded as the event emitter.
@@ -214,6 +220,7 @@ macro_rules! events {
 
         // == Parsing from BCS ==
 
+        #[cfg(feature = "nexus")]
         pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> Result<(NexusEventKind, Option<DistributedEventMetadata>)> {
             #[derive(Deserialize)]
             struct Wrapper<T> {
@@ -252,14 +259,16 @@ macro_rules! events {
                         }
                     }
                 )*
-                _ => bail!("Unknown event: {}", name),
+                _ => anyhow::bail!("Unknown event: {}", name),
             }
         }
 
+        #[cfg(feature = "nexus")]
         pub(super) fn supports_event(name: &str) -> bool {
             matches!(name, $($name)|*)
         }
 
+        #[cfg(feature = "nexus")]
         pub(super) fn event_struct_tag(
             context: &crate::types::NexusContext,
             name: &str,

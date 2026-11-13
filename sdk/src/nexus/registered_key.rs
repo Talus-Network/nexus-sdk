@@ -12,7 +12,7 @@ use {
         sui,
         types::{NexusData, NexusValue},
     },
-    anyhow::{bail, Context as _},
+    anyhow::Context as _,
     sha2::{Digest as _, Sha256},
     std::collections::HashMap,
 };
@@ -75,19 +75,7 @@ pub fn registered_key_auxiliary(
 }
 
 pub fn validate_registered_key_auxiliary(auxiliary: &RegisteredKeyAuxiliary) -> anyhow::Result<()> {
-    if auxiliary.input_hash.len() != SHA256_LEN {
-        bail!("RegisteredKey input hash must be {SHA256_LEN} bytes");
-    }
-    if auxiliary.nonce.len() != SHA256_LEN {
-        bail!("RegisteredKey nonce must be {SHA256_LEN} bytes");
-    }
-    if auxiliary.leader_signature.len() != ED25519_SIGNATURE_LEN {
-        bail!("RegisteredKey leader signature must be {ED25519_SIGNATURE_LEN} bytes");
-    }
-    if auxiliary.tool_signature.len() != ED25519_SIGNATURE_LEN {
-        bail!("RegisteredKey tool signature must be {ED25519_SIGNATURE_LEN} bytes");
-    }
-    Ok(())
+    auxiliary.validate()
 }
 
 fn domain_sha256(domain: &[u8], bytes: &[u8]) -> [u8; SHA256_LEN] {

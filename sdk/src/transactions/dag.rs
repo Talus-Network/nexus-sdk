@@ -908,7 +908,7 @@ fn prepare_registered_key_auxiliary(
     tx: &mut move_boundary::NexusPtbBuilder,
     auxiliary: &RegisteredKeyAuxiliary,
 ) -> anyhow::Result<sui::types::Argument> {
-    crate::nexus::registered_key::validate_registered_key_auxiliary(auxiliary)?;
+    auxiliary.validate()?;
     let input_hash = tx.arg(&auxiliary.input_hash)?;
     let nonce = tx.arg(&auxiliary.nonce)?;
     let leader_signature = tx.arg(&auxiliary.leader_signature)?;

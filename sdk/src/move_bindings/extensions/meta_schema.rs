@@ -46,7 +46,8 @@ impl MetaSchema {
         let output_root = serde_json::from_slice::<Value>(output_schema)
             .context("Tool output schema is not valid JSON")?;
         let input_ports = resolved_object_properties(&input_root, &input_root)?
-            .iter()
+            .into_iter()
+            .flatten()
             .map(|(name, schema)| {
                 Ok(PortSchema::new(
                     name.as_bytes().to_vec(),
@@ -590,11 +591,13 @@ fn offchain_output_variant(root: &Value, variant: &Value) -> anyhow::Result<Outp
 fn resolved_object_properties<'a>(
     root: &'a Value,
     schema: &'a Value,
-) -> anyhow::Result<&'a Map<String, Value>> {
-    resolve_local_ref(root, schema)?
-        .get("properties")
-        .and_then(Value::as_object)
-        .ok_or_else(|| anyhow!("input schema must contain object 'properties'"))
+) -> anyhow::Result<Option<&'a Map<String, Value>>> {
+    let schema = resolve_local_ref(root, schema)?;
+    match schema.get("properties") {
+        Some(Value::Object(properties)) => Ok(Some(properties)),
+        None if schema.get("type").and_then(Value::as_str) == Some("object") => Ok(None),
+        _ => bail!("input schema must describe object properties"),
+    }
 }
 
 fn resolve_local_ref<'a>(root: &'a Value, schema: &'a Value) -> anyhow::Result<&'a Value> {
@@ -703,6 +706,45 @@ mod tests {
         assert_eq!(schema.output_variants[0].variant_name, b"Ok");
         assert!(schema.output_variants[0].ports[1].is_many);
         assert_eq!(schema.input_ports[0].value_kind, ValueKind::Data);
+    }
+
+    #[test]
+    fn offchain_json_conversion_accepts_empty_object_inputs() {
+        let output = br#"{"oneOf":[{"const":"ok"}]}"#;
+        for input in [
+            json!({"type": "object", "additionalProperties": false}),
+            json!({"type": "object", "properties": {}}),
+            json!({"$ref": "#/$defs/Input", "$defs": {"Input": {"type": "object"}}}),
+        ] {
+            let schema = MetaSchema::from_offchain_json_schemas(
+                &serde_json::to_vec(&input).unwrap(),
+                output,
+            )
+            .unwrap();
+            assert!(schema.input_ports.is_empty());
+            assert!(schema
+                .resolved_inputs_from_json(&json!({"ports": []}))
+                .unwrap()
+                .is_empty());
+        }
+    }
+
+    #[test]
+    fn offchain_json_conversion_rejects_invalid_input_properties() {
+        let output = br#"{"oneOf":[{"const":"ok"}]}"#;
+        for input in [
+            json!({}),
+            json!({"type": "string"}),
+            json!({"type": "array"}),
+            json!({"type": "object", "properties": []}),
+            json!({"type": "object", "properties": null}),
+        ] {
+            assert!(MetaSchema::from_offchain_json_schemas(
+                &serde_json::to_vec(&input).unwrap(),
+                output,
+            )
+            .is_err());
+        }
     }
 
     #[test]
