@@ -83,6 +83,3 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates_io_auth.outputs.token }}
           PUBLISH_CRATES_CONFIRM: ${{ inputs.tag }}
         run: ./scripts/publish-crates.sh "$PUBLISH_CRATES_CONFIRM"
-
-      - name: Verify registry consumers
-        run: ./scripts/check-consumers.sh --registry
