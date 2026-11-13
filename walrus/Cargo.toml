@@ -14,6 +14,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# Starlark 0.13 requires allocative's hashbrown 0.14 support.
+allocative = "=0.3.4"
 anyhow.workspace = true
 bcs.workspace = true
 hex.workspace = true
