@@ -32,7 +32,7 @@ nexus-toolkit = "2.2.0"
 
 ## Authentication
 
-This branch implements **signed HTTP v3.1**, which adds a signed request context while retaining the `X-Nexus-Sig-V: 3` wire header and the SDK's `signed_http::v3` module. The strict version check still rejects `3.1` as a header value. See [Migrating from signed HTTP v3 to v3.1](../sdk/README.md#migrating-from-signed-http-v3-to-v31) for coordinated Leader and Toolkit upgrades; required mode rejects older requests without context headers.
+The Toolkit supports **signed HTTP v3.1**, which adds a signed request context while retaining the `X-Nexus-Sig-V: 3` wire header and the SDK's `signed_http::v3` module. The strict version check still rejects `3.1` as a header value. See [Migrating from signed HTTP v3 to v3.1](../sdk/README.md#migrating-from-signed-http-v3-to-v31) for coordinated Leader and Toolkit upgrades. Required mode rejects older requests without context headers.
 
 Nexus Tools expose an HTTP API. **HTTPS** protects the connection between a Leader and a Tool. The Toolkit also provides configurable checks for request signatures and TLS client certificates, and can sign Tool results for on-chain verification.
 
