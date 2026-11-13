@@ -11,12 +11,12 @@ One workspace version and one annotated tag identify each release.
 
 ## Prepare
 
-1. Branch from current remote `main` and run `just release-prepare VERSION`.
+1. Branch from current remote `main`. Update the workspace version, internal dependency requirements, lockfile and current installation examples.
 1. Review the version changes and release notes. Record incompatible changes in the changelog.
 1. Open a PR into `main`. Require normal CI and run the `Release` workflow on the PR branch to verify packages and all CLI targets without creating a release.
 1. Merge after review. Create `release/vMAJOR.MINOR.x` at the merged commit, then create and push an annotated `vVERSION` tag at that commit.
 
-The preparation command updates workspace versions, dependency requirements, the lockfile and current installation examples. Rust scaffolds inherit the CLI version. Historical release notes stay unchanged.
+Rust scaffolds inherit the CLI version. Keep historical release notes unchanged.
 
 ## Publish
 
