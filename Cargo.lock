@@ -6627,6 +6627,7 @@ dependencies = [
 name = "nexus-walrus"
 version = "2.2.0"
 dependencies = [
+ "allocative",
  "anyhow",
  "bcs",
  "hex",
