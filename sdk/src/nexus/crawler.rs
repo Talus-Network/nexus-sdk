@@ -844,7 +844,7 @@ impl Crawler {
             .package_client()
             .get_package(request)
             .await
-            .map_err(|e| anyhow!("Could not fetch package '{package_id}': {e}"))?
+            .with_context(|| format!("Could not fetch package '{package_id}'"))?
             .into_inner()
             .package
             .ok_or_else(|| anyhow!("Package '{package_id}' was not returned"))

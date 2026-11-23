@@ -2064,6 +2064,7 @@ mod tests {
             &mut state_service_mock,
             &nexus_objects,
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         sui_mocks::grpc::mock_nexus_package_graph(
             &mut ledger_service_mock,
             &mut package_service_mock,
@@ -2079,7 +2080,7 @@ mod tests {
             vec![wrapped_event(
                 &nexus_objects,
                 package_id(&nexus_objects, crate::types::PackageRole::Interface),
-                "tap",
+                "agent",
                 "AgentCreatedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: crate::move_bindings::interface::agent::AgentCreatedEvent {
@@ -2172,6 +2173,7 @@ mod tests {
             dag_ref.clone(),
             sui::types::Owner::Shared(dag_ref.version()),
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         sui_mocks::grpc::mock_nexus_package_graph(
             &mut ledger_service_mock,
             &mut package_service_mock,
@@ -2188,7 +2190,7 @@ mod tests {
                 wrapped_event(
                     &nexus_objects,
                     package_id(&nexus_objects, crate::types::PackageRole::Interface),
-                    "tap",
+                    "agent",
                     "AgentCreatedEvent",
                     bcs::to_bytes(&Wrapper {
                         event: crate::move_bindings::interface::agent::AgentCreatedEvent {
@@ -2286,6 +2288,7 @@ mod tests {
             dag_ref.clone(),
             sui::types::Owner::Shared(dag_ref.version()),
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         sui_mocks::grpc::mock_nexus_package_graph(
             &mut ledger_service_mock,
             &mut package_service_mock,
@@ -2402,6 +2405,7 @@ mod tests {
             dag_ref.clone(),
             sui::types::Owner::Shared(dag_ref.version()),
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         sui_mocks::grpc::mock_nexus_package_graph(
             &mut ledger_service_mock,
             &mut package_service_mock,

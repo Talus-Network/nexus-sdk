@@ -2,7 +2,7 @@
 
 use {
     crate::sui,
-    anyhow::Result,
+    anyhow::{Context as _, Result},
     serde::{Deserialize, Serialize},
     thiserror::Error,
 };
@@ -63,9 +63,14 @@ fn deserialize_u64_to_datetime<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    let timestamp = u64::deserialize(deserializer)?;
-    chrono::DateTime::from_timestamp_millis(timestamp as i64)
-        .ok_or_else(|| serde::de::Error::custom("datetime out of range"))
+    datetime_from_millis(u64::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+}
+
+fn datetime_from_millis(millis: u64) -> Result<chrono::DateTime<chrono::Utc>> {
+    i64::try_from(millis)
+        .ok()
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .context("datetime out of range")
 }
 
 fn serialize_datetime_to_u64<S>(
@@ -82,8 +87,14 @@ fn deserialize_u64_to_duration<'de, D>(deserializer: D) -> Result<chrono::Durati
 where
     D: serde::Deserializer<'de>,
 {
-    let millis = u64::deserialize(deserializer)?;
-    Ok(chrono::Duration::milliseconds(millis as i64))
+    duration_from_millis(u64::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+}
+
+fn duration_from_millis(millis: u64) -> Result<chrono::Duration> {
+    i64::try_from(millis)
+        .ok()
+        .and_then(chrono::Duration::try_milliseconds)
+        .context("deadline out of range")
 }
 
 fn serialize_duration_to_u64<S>(value: &chrono::Duration, serializer: S) -> Result<S::Ok, S::Error>
@@ -221,42 +232,16 @@ macro_rules! events {
         // == Parsing from BCS ==
 
         #[cfg(feature = "nexus")]
-        pub(super) fn parse_bcs(name: &str, bytes: &[u8]) -> Result<(NexusEventKind, Option<DistributedEventMetadata>)> {
-            #[derive(Deserialize)]
-            struct Wrapper<T> {
-                event: T,
-            }
-
-            #[derive(Deserialize)]
-            struct DistributedWrapper<T> {
-                event: T,
-                deadline_ms: u64,
-                requested_at_ms: u64,
-                task_id: sui::types::Address,
-                leaders: Vec<sui::types::Address>,
-            }
-
+        fn parse_bcs(
+            name: &str,
+            wrapper: parsing::EventWrapper,
+            bytes: &[u8],
+        ) -> Result<(NexusEventKind, Option<DistributedEventMetadata>)> {
             match name {
                 $(
                     $name => {
-                        match bcs::from_bytes::<DistributedWrapper<$event_ty>>(bytes) {
-                            Ok(distributed) => {
-                                let metadata = DistributedEventMetadata {
-                                    deadline: chrono::Duration::milliseconds(distributed.deadline_ms as i64),
-                                    requested_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(distributed.requested_at_ms as i64)
-                                        .ok_or_else(|| anyhow::anyhow!("Invalid timestamp"))?,
-                                    task_id: distributed.task_id,
-                                    leaders: distributed.leaders,
-                                };
-
-                                Ok((NexusEventKind::$variant(distributed.event), Some(metadata)))
-                            }
-                            Err(_) => {
-                                 let obj: Wrapper<$event_ty> = bcs::from_bytes(bytes)?;
-
-                                 Ok((NexusEventKind::$variant(obj.event), None))
-                            }
-                        }
+                        let (event, distribution) = wrapper.decode::<$event_ty>(bytes)?;
+                        Ok((NexusEventKind::$variant(event), distribution))
                     }
                 )*
                 _ => anyhow::bail!("Unknown event: {}", name),

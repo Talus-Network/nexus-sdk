@@ -37,6 +37,13 @@ lazy_static::lazy_static! {
         )
         .unwrap();
 
+    pub(super) static ref REJECTED_EVENTS: prometheus::Counter =
+        prometheus::register_counter!(
+            "poller_rejected_events_total",
+            "Number of events skipped after a query decode error"
+        )
+        .unwrap();
+
     pub(super) static ref EVENTS_PER_PAGE: prometheus::Histogram =
         prometheus::register_histogram!(
             "poller_events_per_page",

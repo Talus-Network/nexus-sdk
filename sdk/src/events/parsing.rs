@@ -2,8 +2,9 @@
 
 use crate::{
     events::{
+        event_struct_tag,
         parse_bcs,
-        supports_event,
+        DistributedEventMetadata,
         NexusEvent,
         NexusEventCandidate,
         NexusEventDecodeError,
@@ -17,32 +18,48 @@ use crate::{
     types::NexusContext,
 };
 
-struct NexusEventType<'a> {
-    tag: &'a sui::types::StructTag,
-    name: &'a str,
+pub(super) enum EventWrapper {
+    Direct,
+    Distributed,
 }
 
-impl<'a> NexusEventType<'a> {
-    fn resolve(wrapper_type: &'a sui::types::StructTag, context: &NexusContext) -> Option<Self> {
-        if !is_event_wrapper(wrapper_type, context) {
-            return None;
+impl EventWrapper {
+    fn resolve(tag: &sui::types::StructTag, context: &NexusContext) -> Option<Self> {
+        use crate::move_bindings::struct_tag_matches;
+        if struct_tag_matches::<event_move::EventWrapper<MoveNexusData>>(context, tag) {
+            Some(Self::Direct)
+        } else if struct_tag_matches::<distributed_event_move::DistributedEventWrapper<MoveNexusData>>(
+            context, tag,
+        ) {
+            Some(Self::Distributed)
+        } else {
+            None
         }
+    }
 
-        let tag = wrapper_type
-            .type_params()
-            .first()
-            .and_then(|tag| match tag {
-                sui::types::TypeTag::Struct(struct_tag) => Some(struct_tag),
-                _ => None,
-            })?;
-        if !is_nexus_package(*tag.address(), context) {
-            return None;
+    pub(super) fn decode<T: serde::de::DeserializeOwned>(
+        self,
+        bytes: &[u8],
+    ) -> anyhow::Result<(T, Option<DistributedEventMetadata>)> {
+        match self {
+            Self::Direct => Ok((
+                bcs::from_bytes::<event_move::EventWrapper<T>>(bytes)?.event,
+                None,
+            )),
+            Self::Distributed => {
+                let wrapped: distributed_event_move::DistributedEventWrapper<T> =
+                    bcs::from_bytes(bytes)?;
+                Ok((
+                    wrapped.event,
+                    Some(DistributedEventMetadata {
+                        deadline: super::duration_from_millis(wrapped.deadline_ms)?,
+                        requested_at: super::datetime_from_millis(wrapped.requested_at_ms)?,
+                        task_id: wrapped.task_id.address(),
+                        leaders: wrapped.leaders.into_iter().map(|id| id.address()).collect(),
+                    }),
+                ))
+            }
         }
-
-        Some(Self {
-            tag,
-            name: tag.name().as_str(),
-        })
     }
 }
 
@@ -54,43 +71,50 @@ pub(super) fn classify_nexus_event(
     wrapper_type: &sui::types::StructTag,
     context: &NexusContext,
 ) -> Result<Option<NexusEventCandidate>, NexusEventDecodeError> {
-    let Some(event_type) = NexusEventType::resolve(wrapper_type, context) else {
+    let Some(wrapper) = EventWrapper::resolve(wrapper_type, context) else {
         return Ok(None);
     };
-    if !supports_event(event_type.name) {
+    let [sui::types::TypeTag::Struct(tag)] = wrapper_type.type_params() else {
+        return Ok(None);
+    };
+    let name = tag.name().as_str();
+    let Some(expected) = event_struct_tag(context, name) else {
+        if !name.ends_with("Event")
+            || !context.packages().all().any(|package| {
+                package
+                    .type_origins
+                    .get(tag.module().as_str())
+                    .and_then(|types| types.get(name))
+                    == Some(tag.address())
+            })
+        {
+            return Ok(None);
+        }
         return Ok(Some(NexusEventCandidate::Unsupported(
             UnsupportedNexusEvent {
                 id: (digest, index),
                 source_package: emitting_package,
-                event_type: Box::new(event_type.tag.clone()),
+                event_type: tag.clone(),
             },
         )));
+    };
+    if tag.address() != expected.address()
+        || tag.module() != expected.module()
+        || tag.type_params().len() != expected.type_params().len()
+    {
+        return Ok(None);
     }
-    let (data, distribution) = parse_bcs(event_type.name, contents).map_err(|error| {
-        NexusEventDecodeError::Contents(
-            error.context(format!("Could not decode {}", event_type.name)),
-        )
+    let (data, distribution) = parse_bcs(name, wrapper, contents).map_err(|error| {
+        NexusEventDecodeError::Contents(error.context(format!("Could not decode {tag}")))
     })?;
 
     Ok(Some(NexusEventCandidate::Supported(Box::new(NexusEvent {
         id: (digest, index),
         emitting_package,
-        generics: event_type.tag.type_params().to_vec(),
+        generics: tag.type_params().to_vec(),
         data,
         distribution,
     }))))
-}
-
-fn is_nexus_package(address: sui::types::Address, context: &NexusContext) -> bool {
-    context.packages().contains_package(address)
-}
-
-fn is_event_wrapper(tag: &sui::types::StructTag, context: &NexusContext) -> bool {
-    crate::move_bindings::struct_tag_matches::<event_move::EventWrapper<MoveNexusData>>(
-        context, tag,
-    ) || crate::move_bindings::struct_tag_matches::<
-        distributed_event_move::DistributedEventWrapper<MoveNexusData>,
-    >(context, tag)
 }
 
 #[cfg(all(test, feature = "test_utils"))]
@@ -104,16 +128,49 @@ mod tests {
                 sui_framework::object::ID,
             },
         },
-        serde::Serialize,
     };
-
-    #[derive(Serialize)]
-    struct Wrapper<T> {
-        event: T,
-    }
 
     fn address(value: &'static str) -> sui::types::Address {
         sui::types::Address::from_static(value)
+    }
+
+    #[test]
+    fn distribution_metadata_uses_the_same_checked_times_in_bcs_and_json() {
+        let task = address("0x41");
+        let leaders = vec![address("0x42")];
+        let max = i64::MAX as u64;
+        for (deadline, timestamp, valid) in [
+            (0, 0, true),
+            (max, 1, true),
+            (max + 1, 0, false),
+            (u64::MAX, 0, false),
+            (0, u64::MAX, false),
+        ] {
+            let bytes = bcs::to_bytes(&(7u8, deadline, timestamp, task, &leaders)).unwrap();
+            let bcs = EventWrapper::Distributed
+                .decode::<u8>(&bytes)
+                .map(|(event, metadata)| {
+                    assert_eq!(event, 7);
+                    metadata.unwrap()
+                });
+            let json = serde_json::from_value::<DistributedEventMetadata>(serde_json::json!({
+                "deadline_ms": deadline, "requested_at_ms": timestamp, "task_id": task, "leaders": leaders,
+            }));
+            for metadata in [bcs.ok(), json.ok()] {
+                assert_eq!(
+                    metadata.is_some(),
+                    valid,
+                    "deadline {deadline}, timestamp {timestamp}"
+                );
+                if let Some(metadata) = metadata {
+                    assert_eq!(metadata.deadline.num_milliseconds() as u64, deadline);
+                    assert_eq!(metadata.requested_at.timestamp_millis() as u64, timestamp);
+                    assert_eq!(metadata.task_id, task);
+                    assert_eq!(metadata.leaders, leaders);
+                }
+            }
+        }
+        assert!(EventWrapper::Distributed.decode::<u8>(&[7]).is_err());
     }
 
     #[test]
@@ -127,9 +184,10 @@ mod tests {
             ID::new(address("0x43")),
             7,
         );
-        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
+        let bytes = bcs::to_bytes(&event_move::EventWrapper { event }).expect("event serializes");
 
-        let (event, distribution) = parse_bcs("TaskCreatedEvent", &bytes).expect("event parses");
+        let (event, distribution) =
+            parse_bcs("TaskCreatedEvent", EventWrapper::Direct, &bytes).expect("event parses");
 
         assert!(distribution.is_none());
         assert!(matches!(event, NexusEventKind::TaskCreated(_)));
@@ -173,31 +231,39 @@ mod tests {
             ID::new(address("0x43")),
             7,
         );
-        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
+        let bytes = bcs::to_bytes(&event_move::EventWrapper { event }).expect("event serializes");
         let inner = crate::move_bindings::struct_tag::<TaskCreatedEvent>(&context);
         let wrapper =
             crate::move_bindings::struct_tag::<event_move::EventWrapper<MoveNexusData>>(&context);
-        let wrapper = sui::types::StructTag::new(
-            *wrapper.address(),
-            wrapper.module().clone(),
-            wrapper.name().clone(),
-            vec![sui::types::TypeTag::Struct(Box::new(inner))],
-        );
-
         let scheduler = context
             .require_package(crate::types::PackageRole::Scheduler)
             .unwrap();
-        let emitter = scheduler.storage_id;
-        let candidate = classify_nexus_event(
-            0,
-            sui::types::Digest::ZERO,
-            emitter,
-            &bytes,
-            &wrapper,
-            &context,
-        )
-        .expect("event decoding succeeds")
-        .expect("event is recognized");
+        let classify = |inner, contents: &[u8]| {
+            let tag = sui::types::StructTag::new(
+                *wrapper.address(),
+                wrapper.module().clone(),
+                wrapper.name().clone(),
+                vec![sui::types::TypeTag::Struct(Box::new(inner))],
+            );
+            classify_nexus_event(
+                0,
+                sui::types::Digest::ZERO,
+                scheduler.storage_id,
+                contents,
+                &tag,
+                &context,
+            )
+        };
+        let unrelated = sui::types::StructTag::new(
+            *inner.address(),
+            sui::types::Identifier::from_static("unrelated"),
+            inner.name().clone(),
+            vec![],
+        );
+        assert!(classify(unrelated, &[]).unwrap().is_none());
+        let candidate = classify(inner, &bytes)
+            .expect("event decoding succeeds")
+            .expect("event is recognized");
         let decoded = candidate
             .into_supported()
             .expect("known event should be supported");

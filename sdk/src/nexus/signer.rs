@@ -28,25 +28,28 @@ pub struct ExecutedTransaction {
 pub struct Signer {
     pub(super) client: Arc<sui::grpc::Client>,
     wallet: super::wallet::WalletClient,
-    event_decoder: NexusEventDecoder,
+    event_decoder: Option<NexusEventDecoder>,
 }
 
 impl Signer {
+    /// A decoder includes the deployment's Nexus events in receipts. During
+    /// package publication, pass `None` to read effects and objects before a
+    /// deployment exists.
     pub fn new(
         client: Arc<sui::grpc::Client>,
         pk: sui::crypto::Ed25519PrivateKey,
         transaction_timeout: Duration,
-        event_decoder: NexusEventDecoder,
+        event_decoder: impl Into<Option<NexusEventDecoder>>,
     ) -> Self {
         Self::with_wallet(
             super::wallet::WalletClient::from_client(client, pk, transaction_timeout),
-            event_decoder,
+            event_decoder.into(),
         )
     }
 
     pub(crate) fn with_wallet(
         wallet: super::wallet::WalletClient,
-        event_decoder: NexusEventDecoder,
+        event_decoder: Option<NexusEventDecoder>,
     ) -> Self {
         Self {
             client: wallet.grpc_client(),
@@ -137,22 +140,18 @@ impl Signer {
             .into());
         }
 
-        // Deserialize events.
-        let Ok(events) = sui::types::TransactionEvents::try_from(response.events()) else {
-            return Err(NexusError::Wallet(anyhow::anyhow!(
-                "Failed to read transaction events."
-            )));
-        };
-
         let mut nexus_events = Vec::new();
-        for (index, event) in events.0.iter().enumerate() {
-            if let Some(event) = self
-                .event_decoder
-                .decode_sui_event(index as u64, digest, event)
-                .await
-                .map_err(|error| NexusError::Parsing(error.into()))?
-            {
-                nexus_events.push(event);
+        if let Some(decoder) = &self.event_decoder {
+            let events = sui::types::TransactionEvents::try_from(response.events())
+                .map_err(|error| NexusError::Wallet(error.into()))?;
+            for (index, event) in events.0.iter().enumerate() {
+                if let Some(event) = decoder
+                    .decode_sui_event(index as u64, digest, event)
+                    .await
+                    .map_err(|error| NexusError::Parsing(error.into()))?
+                {
+                    nexus_events.push(event);
+                }
             }
         }
 

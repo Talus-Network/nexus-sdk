@@ -663,12 +663,34 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let decode_started = Instant::now();
         let decoded = self.query.decode(event).await;
         EVENT_PARSE_DURATION.observe(decode_started.elapsed().as_secs_f64());
-        let event = decoded.map_err(|source| EventIngestionError::Decode {
-            checkpoint: event_checkpoint,
-            transaction_digest,
-            event_index,
-            source: anyhow::Error::new(source),
-        })?;
+        let event = match decoded {
+            Ok(event) => event,
+            Err(error) => {
+                let skip = (self.skip_decode_error)(&error);
+                let source = anyhow::Error::new(error);
+                if let Some(status) = source
+                    .chain()
+                    .find_map(|cause| cause.downcast_ref::<tonic::Status>())
+                {
+                    return Err(EventIngestionError::rpc(
+                        "decoding an event",
+                        status.clone(),
+                    ));
+                }
+                if !skip {
+                    return Err(EventIngestionError::Decode {
+                        checkpoint: event_checkpoint,
+                        transaction_digest,
+                        event_index,
+                        source,
+                    });
+                }
+                REJECTED_EVENTS.inc();
+                tracing::warn!(checkpoint = event_checkpoint, %transaction_digest, event_index, error = ?source,
+                    "Skipping an undecodable event");
+                None
+            }
+        };
         Ok((event, event_checkpoint))
     }
 
