@@ -717,6 +717,7 @@ mod tests {
                 0,
             );
         }
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service, objects, false);
         sui_mocks::grpc::mock_nexus_package_graph(
             &mut ledger_service,
             &mut package_service,

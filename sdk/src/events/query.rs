@@ -14,7 +14,7 @@ use {
             interface::distributed_event as distributed_event_move,
             primitives::{data::NexusData as MoveNexusData, event as event_move},
         },
-        nexus::state::StateResolver,
+        nexus::{error::NexusError, state::StateResolver},
         sui::{
             self,
             events::{EventIngestor, EventQuery},
@@ -23,7 +23,15 @@ use {
     },
     std::sync::Arc,
     sui_rpc::{field::FieldMaskUtil as _, proto::sui::rpc::v2::filter::event as event_filter},
+    tokio::sync::OnceCell,
 };
+
+lazy_static::lazy_static! {
+    static ref SOURCE_REJECTIONS: prometheus::Counter = prometheus::register_counter!(
+        "nexus_event_source_rejections_total",
+        "Events rejected because their emitter package is incompatible",
+    ).unwrap();
+}
 
 /// Known direct events ordered by their measured frequency in execution
 /// workloads. A filtered consumer can exclude the first eight events it does
@@ -43,18 +51,32 @@ const DIRECT_FILTER_EXCLUSION_CANDIDATES: [&str; 8] = [
 
 /// Decodes events using the immutable package graph selected by each emitter.
 ///
-/// This value does not resolve live object authority. It uses emitter package
-/// metadata only to select the historical event layout.
+/// The runtime authority identifies the deployment's package families. Each
+/// emitter's linkage selects historical versions within those families.
 #[derive(Clone)]
 pub struct NexusEventDecoder {
     resolver: StateResolver,
     objects: Arc<NexusObjects>,
+    deployment: Arc<OnceCell<Arc<NexusContext>>>,
 }
 
 impl NexusEventDecoder {
     /// Creates a decoder backed by `resolver` and stable environment identity.
     pub fn new(resolver: StateResolver, objects: Arc<NexusObjects>) -> Self {
-        Self { resolver, objects }
+        Self {
+            resolver,
+            objects,
+            deployment: Arc::default(),
+        }
+    }
+
+    /// Uses the package lineages of an already resolved deployment.
+    pub fn for_context(resolver: StateResolver, deployment: Arc<NexusContext>) -> Self {
+        Self {
+            resolver,
+            objects: deployment.shared_objects(),
+            deployment: Arc::new(OnceCell::new_with(Some(deployment))),
+        }
     }
 
     /// Decodes one Sui transaction event using its emitter package graph.
@@ -72,24 +94,27 @@ impl NexusEventDecoder {
         digest: sui::types::Digest,
         event: &sui::types::Event,
     ) -> Result<Option<NexusEvent>, NexusEventDecodeError> {
-        self.decode_parts(
+        self.classify(
             index,
             digest,
             event.package_id,
             &event.type_,
             &event.contents,
         )
-        .await
+        .await?
+        .map(NexusEventCandidate::into_supported)
+        .transpose()
+        .map_err(NexusEventDecodeError::from)
     }
 
-    async fn decode_parts(
+    async fn classify(
         &self,
         index: u64,
         digest: sui::types::Digest,
         emitting_package: sui::types::Address,
         wrapper_type: &sui::types::StructTag,
         contents: &[u8],
-    ) -> Result<Option<NexusEvent>, NexusEventDecodeError> {
+    ) -> Result<Option<NexusEventCandidate>, NexusEventDecodeError> {
         if !crate::move_bindings::struct_shape_matches::<event_move::EventWrapper<MoveNexusData>>(
             wrapper_type,
         ) && !crate::move_bindings::struct_shape_matches::<
@@ -98,28 +123,45 @@ impl NexusEventDecoder {
         {
             return Ok(None);
         }
-        let context = self
-            .resolver
-            .resolve_emitter_context(Arc::clone(&self.objects), emitting_package)
+        let resolution_error = |source| NexusEventDecodeError::EmitterPackage {
+            package: emitting_package,
+            source,
+        };
+        let deployment = self
+            .deployment
+            .get_or_try_init(|| async {
+                self.resolver
+                    .resolve_routing_context(Arc::clone(&self.objects), &[])
+                    .await
+                    .map(Arc::new)
+            })
             .await
-            .map_err(|source| NexusEventDecodeError::EmitterPackage {
-                package: emitting_package,
-                source,
-            })?;
-        match classify_parts(
-            &context,
+            .map_err(resolution_error)?;
+        let context = match self
+            .resolver
+            .resolve_emitter_context_in(deployment, emitting_package)
+            .await
+        {
+            Ok(Some(context)) => context,
+            Ok(None) => {
+                SOURCE_REJECTIONS.inc();
+                return Ok(None);
+            }
+            Err(error @ NexusError::IncompatiblePackage { .. }) => {
+                SOURCE_REJECTIONS.inc();
+                tracing::warn!(%digest, index, %emitting_package, %error, "Rejected incompatible event source");
+                return Ok(None);
+            }
+            Err(error) => return Err(resolution_error(error)),
+        };
+        classify_nexus_event(
             index,
             digest,
             emitting_package,
-            wrapper_type,
             contents,
-        )? {
-            Some(candidate) => candidate
-                .into_supported()
-                .map(Some)
-                .map_err(NexusEventDecodeError::from),
-            None => Ok(None),
-        }
+            wrapper_type,
+            &context,
+        )
     }
 }
 
@@ -172,24 +214,6 @@ impl NexusEventQuery {
     }
 }
 
-fn classify_parts(
-    context: &NexusContext,
-    index: u64,
-    digest: sui::types::Digest,
-    source_package: sui::types::Address,
-    wrapper_type: &sui::types::StructTag,
-    contents: &[u8],
-) -> Result<Option<NexusEventCandidate>, NexusEventDecodeError> {
-    classify_nexus_event(
-        index,
-        digest,
-        source_package,
-        contents,
-        wrapper_type,
-        context,
-    )
-}
-
 impl EventQuery for NexusEventQuery {
     type Error = NexusEventDecodeError;
     type Output = NexusEventCandidate;
@@ -239,23 +263,15 @@ impl EventQuery for NexusEventQuery {
                 NexusEventDecodeError::Identity(format!("emitting package is invalid: {error}"))
             })?;
 
-        let context = self
-            .decoder
-            .resolver
-            .resolve_emitter_context(Arc::clone(&self.decoder.objects), emitting_package)
+        self.decoder
+            .classify(
+                event_index.into(),
+                digest,
+                emitting_package,
+                &wrapper_type,
+                contents,
+            )
             .await
-            .map_err(|source| NexusEventDecodeError::EmitterPackage {
-                package: emitting_package,
-                source,
-            })?;
-        classify_parts(
-            &context,
-            event_index.into(),
-            digest,
-            emitting_package,
-            &wrapper_type,
-            contents,
-        )
     }
 }
 
@@ -349,6 +365,62 @@ mod tests {
             wrapped_event_name(&event_wrapper("TaskCreatedEvent")),
             Some("TaskCreatedEvent")
         );
+    }
+
+    #[cfg(feature = "test_utils")]
+    #[tokio::test]
+    async fn emitter_lookup_retains_its_rpc_status_in_the_feed() {
+        use crate::{
+            nexus::crawler::Crawler,
+            sui::events::EventIngestionError,
+            test_utils::sui_mocks::{self, grpc},
+        };
+
+        let deployment = Arc::new(sui_mocks::mock_nexus_context());
+        let emitter = deployment
+            .package_id(crate::types::PackageRole::Scheduler)
+            .unwrap();
+        let event = sui::grpc::Event::default()
+            .with_package_id(emitter)
+            .with_event_type(event_wrapper("TaskCreatedEvent").to_string())
+            .with_checkpoint(10)
+            .with_transaction_digest(sui::types::Digest::ZERO)
+            .with_event_index(0)
+            .with_contents(vec![0]);
+        let mut subscription = grpc::MockSubscriptionService::new();
+        subscription
+            .expect_subscribe_events()
+            .once()
+            .returning(move |_| {
+                let frame = sui::grpc::SubscribeEventsResponse::default()
+                    .with_event(event.clone())
+                    .with_watermark(sui::grpc::Watermark::default().with_cursor(b"live".to_vec()));
+                Ok(tonic::Response::new(
+                    Box::pin(futures::stream::iter([Ok(frame)])) as grpc::BoxEventStream,
+                ))
+            });
+        let mut packages = grpc::MockMovePackageService::new();
+        packages
+            .expect_get_package()
+            .once()
+            .returning(|_| Err(tonic::Status::unavailable("package service unavailable")));
+        let rpc = grpc::mock_server(grpc::ServerMocks {
+            subscription_service_mock: Some(subscription),
+            package_service_mock: Some(packages),
+            ..Default::default()
+        });
+        let resolver = StateResolver::new(Arc::new(Crawler::new(Arc::new(
+            sui::grpc::client(&rpc).unwrap(),
+        ))));
+        let decoder = NexusEventDecoder::for_context(resolver, Arc::clone(&deployment));
+        let mut pages = EventIngestor::new(rpc, NexusEventQuery::new(deployment, decoder))
+            .with_skippable_decode_errors(|_| true)
+            .start(None)
+            .unwrap();
+        assert!(
+            matches!(pages.recv().await, Some(Err(EventIngestionError::Rpc { status, .. })) if status.code() == tonic::Code::Unavailable)
+        );
+        assert!(pages.recv().await.is_none());
     }
 
     #[test]

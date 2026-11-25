@@ -367,10 +367,10 @@ impl NexusClientBuilder {
                     Some(timeout) => wallet.with_transaction_timeout(timeout),
                     None => wallet,
                 },
-                crate::events::NexusEventDecoder::new(
+                Some(crate::events::NexusEventDecoder::new(
                     state_resolver.clone(),
                     Arc::clone(&nexus_objects),
-                ),
+                )),
             )
         });
 
@@ -881,7 +881,9 @@ impl NexusClient {
         context: Arc<NexusContext>,
         filter: fn(&str) -> bool,
     ) -> NexusEventIngestor {
-        self.event_ingestor_for_context(context, Some(filter))
+        let decoder =
+            NexusEventDecoder::for_context(self.state_resolver.clone(), Arc::clone(&context));
+        self.event_ingestor_for_context(context, decoder, Some(filter))
     }
 
     async fn event_ingestor_inner(
@@ -890,16 +892,17 @@ impl NexusClient {
         filter: Option<fn(&str) -> bool>,
     ) -> Result<NexusEventIngestor, NexusError> {
         let context = self.context_for_object(filter_source).await?;
-        Ok(self.event_ingestor_for_context(context, filter))
+        let decoder =
+            NexusEventDecoder::new(self.state_resolver.clone(), Arc::clone(&self.nexus_objects));
+        Ok(self.event_ingestor_for_context(context, decoder, filter))
     }
 
     fn event_ingestor_for_context(
         &self,
         context: Arc<NexusContext>,
+        decoder: NexusEventDecoder,
         filter: Option<fn(&str) -> bool>,
     ) -> NexusEventIngestor {
-        let decoder =
-            NexusEventDecoder::new(self.state_resolver.clone(), Arc::clone(&self.nexus_objects));
         let mut query = NexusEventQuery::new(context, decoder);
         if let Some(filter) = filter {
             query = query.with_supported_event_filter(filter);

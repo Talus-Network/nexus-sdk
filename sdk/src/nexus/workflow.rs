@@ -4275,7 +4275,7 @@ mod tests {
                     if matches!(event, NexusEventKind::DAGCreated(_)) {
                         (interface, interface, "dag")
                     } else {
-                        (workflow, workflow, "execution")
+                        (workflow, workflow, "execution_events")
                     };
                 let event_type = format!(
                     "{}::event::EventWrapper<{}::{module}::{}>",
@@ -4558,6 +4558,7 @@ mod tests {
             &nexus_objects,
             version_20.clone(),
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
         expect_object_update_reference(
             &mut ledger_service_mock,
@@ -4706,6 +4707,7 @@ mod tests {
             &nexus_objects,
             version_1.clone(),
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         expect_object_update_reference(
@@ -5159,6 +5161,7 @@ mod tests {
             &nexus_objects,
             object_ref.clone(),
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         expect_object_update_reference(

@@ -201,18 +201,27 @@ impl NexusPackages {
         }
     }
 
-    /// Iterates over every package present in canonical role order.
-    pub fn all(&self) -> impl Iterator<Item = &PackageVersion> {
+    fn roles(&self) -> impl Iterator<Item = (PackageRole, &PackageVersion)> {
         [
-            self.primitives.as_ref(),
-            self.interface.as_ref(),
-            self.tool.as_ref(),
-            self.registry.as_ref(),
-            self.workflow.as_ref(),
-            self.scheduler.as_ref(),
+            PackageRole::Primitives,
+            PackageRole::Interface,
+            PackageRole::Tool,
+            PackageRole::Registry,
+            PackageRole::Workflow,
+            PackageRole::Scheduler,
         ]
         .into_iter()
-        .flatten()
+        .filter_map(|role| self.get(role).map(|package| (role, package)))
+    }
+
+    /// Iterates over every package present in canonical role order.
+    pub fn all(&self) -> impl Iterator<Item = &PackageVersion> {
+        self.roles().map(|(_, package)| package)
+    }
+
+    pub(crate) fn role_for_lineage(&self, lineage: sui::types::Address) -> Option<PackageRole> {
+        self.roles()
+            .find_map(|(role, package)| (package.initial_id == lineage).then_some(role))
     }
 
     /// Returns whether `address` occurs in any selected package family.
@@ -247,6 +256,10 @@ impl NexusContext {
     /// Returns the exact package graph for this operation.
     pub const fn packages(&self) -> &NexusPackages {
         &self.packages
+    }
+
+    pub(crate) fn shared_objects(&self) -> Arc<NexusObjects> {
+        Arc::clone(&self.objects)
     }
 
     /// Returns package metadata for `role`.

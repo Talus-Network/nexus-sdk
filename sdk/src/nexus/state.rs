@@ -31,6 +31,7 @@ use {
             TypeOrigins,
         },
     },
+    anyhow::Context as _,
     futures::future::try_join_all,
     serde::{de::DeserializeOwned, Deserialize},
     std::{collections::HashMap, sync::Arc, time::Duration},
@@ -678,8 +679,7 @@ impl StateResolver {
         }
         validate_state_type_origins(state, &source)?;
 
-        self.resolve_package_graph_from_source(Some(source_role), source)
-            .await
+        self.resolve_package_graph_from_source(source, None).await
     }
 
     /// Resolves the immutable dependency graph for an explicit package.
@@ -714,8 +714,7 @@ impl StateResolver {
             });
         }
 
-        self.resolve_package_graph_from_source(Some(role), source)
-            .await
+        self.resolve_package_graph_from_source(source, None).await
     }
 
     /// Resolves the Nexus dependency graph recorded by an event emitter.
@@ -735,19 +734,39 @@ impl StateResolver {
         objects: Arc<NexusObjects>,
         emitter_package: sui::types::Address,
     ) -> Result<NexusContext, NexusError> {
-        let source = self.resolve_package(emitter_package).await?;
-        let source_role = package_role(&source);
-        let packages = self
-            .resolve_package_graph_from_source(source_role, Arc::clone(&source))
-            .await?;
-        if packages.all().next().is_none() {
-            return Err(NexusError::IncompatiblePackage {
+        let deployment = self.resolve_routing_context(objects, &[]).await?;
+        self.resolve_emitter_context_in(&deployment, emitter_package)
+            .await?
+            .ok_or_else(|| NexusError::IncompatiblePackage {
                 package: emitter_package,
                 reason: "event emitter has no supported Nexus dependency".to_owned(),
-            });
+            })
+    }
+
+    /// Resolves the historical versions of the deployment's package families
+    /// selected by this Move call, including calls through application packages.
+    /// Returns `None` when the emitter has no linkage to this deployment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when package metadata cannot be read or validated.
+    pub async fn resolve_emitter_context_in(
+        &self,
+        deployment: &NexusContext,
+        emitter_package: sui::types::Address,
+    ) -> Result<Option<NexusContext>, NexusError> {
+        let source = self.resolve_package(emitter_package).await?;
+        let packages = self
+            .resolve_package_graph_from_source(source, Some(deployment.packages()))
+            .await?;
+        if packages.all().next().is_none() {
+            return Ok(None);
         }
 
-        Ok(NexusContext::new(objects, packages))
+        Ok(Some(NexusContext::new(
+            deployment.shared_objects(),
+            packages,
+        )))
     }
 
     /// Resolves an explicit creator package and validates every root it uses.
@@ -931,16 +950,21 @@ impl StateResolver {
 
     async fn resolve_package_graph_from_source(
         &self,
-        source_role: Option<PackageRole>,
         source: Arc<PackageVersion>,
+        deployment: Option<&NexusPackages>,
     ) -> Result<NexusPackages, NexusError> {
+        let role_for = |package: &PackageVersion| match deployment {
+            Some(packages) => packages.role_for_lineage(package.initial_id),
+            None => package_role(package),
+        };
         let mut graph = NexusPackages::default();
-        if let Some(source_role) = source_role {
+        if let Some(source_role) = role_for(&source) {
             graph.insert(source_role, source.as_ref().clone());
         }
         let linked_packages = try_join_all(source.linkage.iter().filter_map(|(lineage, link)| {
             if link.storage_id == sui::types::Address::from_static("0x1")
                 || link.storage_id == sui::types::Address::from_static("0x2")
+                || deployment.is_some_and(|packages| packages.role_for_lineage(*lineage).is_none())
             {
                 return None;
             }
@@ -961,7 +985,7 @@ impl StateResolver {
                     ),
                 });
             }
-            let Some(role) = package_role(&linked) else {
+            let Some(role) = role_for(&linked) else {
                 continue;
             };
             if let Some(previous) = graph.insert(role, linked.as_ref().clone()) {
@@ -1736,7 +1760,7 @@ async fn fetch_package_metadata(
         .ledger_client()
         .get_object(request)
         .await
-        .map_err(|error| anyhow::anyhow!("Could not fetch package object '{storage_id}': {error}"))?
+        .with_context(|| format!("Could not fetch package object '{storage_id}'"))?
         .into_inner()
         .object
         .ok_or_else(|| anyhow::anyhow!("Package object '{storage_id}' was not returned"))?;
@@ -1904,6 +1928,70 @@ fn select_state_field(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn emitter_linkage_selects_historical_versions_only_in_trusted_families() {
+        use crate::test_utils::sui_mocks;
+
+        let mut packages = sui_mocks::mock_nexus_packages();
+        let current = packages.primitives.as_mut().unwrap();
+        let previous = current.clone();
+        current.storage_id = sui::types::Address::from_static("0xb1");
+        current.version += 1;
+        let deployment = NexusContext::new(Arc::new(sui_mocks::mock_nexus_objects()), packages);
+
+        let application_id = sui::types::Address::from_static("0xc1");
+        let application = PackageVersion::new(
+            application_id,
+            application_id,
+            1,
+            TypeOrigins::new(),
+            PackageLinkage::from([(
+                previous.initial_id,
+                PackageLink {
+                    storage_id: previous.storage_id,
+                    version: previous.version,
+                },
+            )]),
+        );
+        let foreign_id = sui::types::Address::from_static("0xc2");
+        let mut other_origins = previous.type_origins.clone();
+        for origin in other_origins
+            .values_mut()
+            .flat_map(|types| types.values_mut())
+        {
+            *origin = foreign_id;
+        }
+        let foreign = PackageVersion::new(
+            foreign_id,
+            foreign_id,
+            1,
+            other_origins,
+            PackageLinkage::new(),
+        );
+        assert_eq!(package_role(&foreign), Some(PackageRole::Primitives));
+
+        let crawler = Crawler::new(Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap()));
+        let resolver = StateResolver::new(Arc::new(crawler));
+        resolver.package_cache.write().await.extend(
+            [application, previous.clone(), foreign]
+                .into_iter()
+                .map(|package| (package.storage_id, Arc::new(package))),
+        );
+        for source in [application_id, previous.storage_id] {
+            let resolved = resolver
+                .resolve_emitter_context_in(&deployment, source)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(resolved.packages().all().collect::<Vec<_>>(), [&previous]);
+        }
+        assert!(resolver
+            .resolve_emitter_context_in(&deployment, foreign_id)
+            .await
+            .unwrap()
+            .is_none());
+    }
 
     #[derive(serde::Serialize)]
     struct StateFieldValue<K, V> {

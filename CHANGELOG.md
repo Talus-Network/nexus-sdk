@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Nexus SDK
+
+#### Fixed
+
+- BCS and JSON event decoders return an error when a deadline or timestamp is outside the supported range.
+- Event decoding checks the package lineage and Move type before reading the payload. Calls through application packages still use the event layout selected by their dependencies.
+- Event streams can skip invalid payloads and deliver later events in the same checkpoint. Package lookup errors retain their RPC status so callers can retry.
+- Updated the locked URL parser to 2.5.9 and the zlib bindings to 1.1.33 to address security advisories.
+
 ## [`2.2.0`] - 2026-11-13
 
 ### `nexus-sdk`

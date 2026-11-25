@@ -122,6 +122,7 @@ pub struct EventIngestor<Q: EventQuery> {
     pub(super) replay_concurrency: NonZeroUsize,
     pub(super) cancellation_token: CancellationToken,
     pub(super) recover_replay_gap: bool,
+    pub(super) skip_decode_error: fn(&Q::Error) -> bool,
 }
 
 impl<Q: EventQuery> EventIngestor<Q> {
@@ -140,6 +141,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
             replay_concurrency: DEFAULT_REPLAY_CONCURRENCY,
             cancellation_token: CancellationToken::new(),
             recover_replay_gap: false,
+            skip_decode_error: |_| false,
         }
     }
 
@@ -193,6 +195,14 @@ impl<Q: EventQuery> EventIngestor<Q> {
     /// from the requested checkpoint.
     pub fn with_replay_gap_recovery(mut self) -> Self {
         self.recover_replay_gap = true;
+        self
+    }
+
+    /// Skips individual query errors selected by `predicate` during replay
+    /// and live ingestion. Rejections are logged with their event position.
+    /// RPC failures remain connection errors so the checkpoint can be retried.
+    pub fn with_skippable_decode_errors(mut self, predicate: fn(&Q::Error) -> bool) -> Self {
+        self.skip_decode_error = predicate;
         self
     }
 

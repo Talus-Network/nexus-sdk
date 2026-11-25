@@ -2,14 +2,8 @@
 
 use {
     crate::{
-        events::NexusEventDecoder,
-        nexus::{
-            crawler::Crawler,
-            signer::{ExecutedTransaction, Signer},
-            state::StateResolver,
-        },
+        nexus::signer::{ExecutedTransaction, Signer},
         sui::{self, MovePackageArtifact},
-        test_utils::sui_mocks,
         transactions::tap::publish_package_ptb,
     },
     std::sync::Arc,
@@ -24,15 +18,11 @@ pub async fn publish_move_package(
 ) -> ExecutedTransaction {
     let mut client = sui::grpc::client(rpc_url).expect("could not create gRPC client");
     let address = key.public_key().derive_address();
-    let signer_client = Arc::new(client.clone());
     let signer = Signer::new(
-        Arc::clone(&signer_client),
+        Arc::new(client.clone()),
         key.clone(),
         std::time::Duration::from_secs(30),
-        NexusEventDecoder::new(
-            StateResolver::new(Arc::new(Crawler::new(signer_client))),
-            Arc::new(sui_mocks::mock_nexus_objects()),
-        ),
+        None,
     );
     let reference_gas_price = client
         .get_reference_gas_price()

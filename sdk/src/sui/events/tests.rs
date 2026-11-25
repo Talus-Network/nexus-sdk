@@ -912,13 +912,13 @@ async fn caller_can_resume_from_the_last_inclusive_checkpoint() {
     assert_eq!(subscription_calls.load(Ordering::SeqCst), 2);
 }
 
-struct FailingQuery {
+struct TestDecodeQuery {
     decode_calls: Arc<AtomicUsize>,
 }
 
-impl EventQuery for FailingQuery {
+impl EventQuery for TestDecodeQuery {
     type Error = std::io::Error;
-    type Output = ();
+    type Output = u32;
 
     fn filter(&self) -> sui::grpc::EventFilter {
         sui::grpc::EventFilter::default()
@@ -928,9 +928,15 @@ impl EventQuery for FailingQuery {
         sui::grpc::FieldMask::default()
     }
 
-    async fn decode(&self, _event: sui::grpc::Event) -> Result<Option<Self::Output>, Self::Error> {
+    async fn decode(&self, event: sui::grpc::Event) -> Result<Option<Self::Output>, Self::Error> {
         self.decode_calls.fetch_add(1, Ordering::SeqCst);
-        Err(std::io::Error::other("unsupported event shape"))
+        if event.contents_opt().is_none() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "unsupported event shape",
+            ));
+        }
+        Ok(Some(event.event_index()))
     }
 }
 
@@ -965,7 +971,7 @@ async fn decode_failure_is_terminal_and_preserves_event_identity() {
         ..Default::default()
     });
     let decode_calls = Arc::new(AtomicUsize::new(0));
-    let query = FailingQuery {
+    let query = TestDecodeQuery {
         decode_calls: Arc::clone(&decode_calls),
     };
     let mut pages = EventIngestor::new(&rpc_url, query)
@@ -991,6 +997,79 @@ async fn decode_failure_is_terminal_and_preserves_event_identity() {
     assert!(pages.recv().await.is_none());
     assert_eq!(decode_calls.load(Ordering::SeqCst), 1);
     assert_eq!(subscription_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn rejecting_one_event_keeps_its_checkpoint_siblings_in_replay_and_live() {
+    let event = |checkpoint, index| {
+        sui::grpc::Event::default()
+            .with_checkpoint(checkpoint)
+            .with_transaction_digest(sui::types::Digest::ZERO)
+            .with_event_index(index)
+    };
+    let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
+    subscription
+        .expect_subscribe_events()
+        .once()
+        .returning(move |_| {
+            let frames = [
+                subscription_frame(None, watermark(b"start", Some(10))),
+                subscription_frame(Some(event(11, 0)), watermark(b"first", None)),
+                subscription_frame(
+                    Some(event(11, 1).with_contents(vec![1])),
+                    watermark(b"next", Some(11)),
+                ),
+            ];
+            Ok(tonic::Response::new(
+                Box::pin(futures::stream::iter(frames.map(Ok))) as sui_mocks::grpc::BoxEventStream,
+            ))
+        });
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger.expect_list_events().once().returning(move |_| {
+        let frames = [
+            sui::grpc::ListEventsResponse::default()
+                .with_event(event(10, 0))
+                .with_watermark(watermark(b"first", None)),
+            list_frame(
+                Some(event(10, 1).with_contents(vec![1])),
+                watermark(b"next", Some(10)),
+                sui::grpc::QueryEndReason::CheckpointBound,
+            ),
+        ];
+        Ok(tonic::Response::new(
+            Box::pin(futures::stream::iter(frames.map(Ok))) as sui_mocks::grpc::BoxListEventsStream,
+        ))
+    });
+    let rpc = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        subscription_service_mock: Some(subscription),
+        ledger_service_mock: Some(ledger),
+        ..Default::default()
+    });
+    let query = TestDecodeQuery {
+        decode_calls: Arc::default(),
+    };
+    let mut pages = EventIngestor::new(rpc, query)
+        .with_skippable_decode_errors(|error| error.kind() == std::io::ErrorKind::InvalidData)
+        .start(Some(10))
+        .unwrap();
+    let mut delivered = Vec::new();
+    while delivered.len() < 2 {
+        let page = timeout(Duration::from_secs(5), pages.recv())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        for index in page.events {
+            delivered.push((page.source, page.checkpoint, index));
+        }
+    }
+    assert_eq!(
+        delivered,
+        [
+            (EventPageSource::Replay, 10, 1),
+            (EventPageSource::Live, 11, 1)
+        ]
+    );
 }
 
 #[tokio::test]
